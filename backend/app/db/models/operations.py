@@ -4,7 +4,17 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import (
@@ -36,6 +46,19 @@ class SyncJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="status_valid",
         ),
         CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
+        Index(
+            "uq_sync_jobs_active_strava_summary",
+            "integration_account_id",
+            unique=True,
+            postgresql_where=text(
+                "job_type = 'strava_historical_summary' AND "
+                "status IN ('queued', 'running', 'retry_scheduled')"
+            ),
+            sqlite_where=text(
+                "job_type = 'strava_historical_summary' AND "
+                "status IN ('queued', 'running', 'retry_scheduled')"
+            ),
+        ),
     )
 
     athlete_id: Mapped[UUID] = mapped_column(
@@ -150,4 +173,3 @@ class AuditEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     actor: Mapped[User | None] = relationship(back_populates="audit_events")
     athlete: Mapped[AthleteProfile | None] = relationship(back_populates="audit_events")
-

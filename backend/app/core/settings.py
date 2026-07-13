@@ -1,7 +1,11 @@
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+BACKEND_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
@@ -9,6 +13,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="TC_",
+        env_file=BACKEND_ENV_FILE,
+        env_file_encoding="utf-8",
         case_sensitive=False,
         populate_by_name=True,
     )
@@ -18,8 +24,12 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     log_level: str = "info"
-    database_url: str = (
-        "postgresql+psycopg://triathlon:triathlon@localhost:5432/triathlon_coach"
+    database_url: str = Field(
+        default=(
+            "postgresql+psycopg://triathlon:triathlon@localhost:5432/"
+            "triathlon_coach"
+        ),
+        validation_alias=AliasChoices("TC_DATABASE_URL", "sqlalchemy.url"),
     )
 
     strava_client_id: str | None = Field(
@@ -43,11 +53,30 @@ class Settings(BaseSettings):
         default="https://www.strava.com/oauth/revoke",
         validation_alias="STRAVA_REVOCATION_URL",
     )
+    strava_api_base_url: str = Field(
+        default="https://www.strava.com/api/v3",
+        validation_alias="STRAVA_API_BASE_URL",
+    )
     strava_scopes: str | None = Field(
         default=None, validation_alias="STRAVA_SCOPES"
     )
     oauth_state_ttl_seconds: int = Field(
         default=600, validation_alias="OAUTH_STATE_TTL_SECONDS"
+    )
+    oauth_state_sqlite_path: str | None = Field(
+        default=None, validation_alias="OAUTH_STATE_SQLITE_PATH"
+    )
+    oauth_state_diagnostics: bool = Field(
+        default=False, validation_alias="OAUTH_STATE_DIAGNOSTICS"
+    )
+    strava_import_page_size: int = Field(
+        default=100, validation_alias="STRAVA_IMPORT_PAGE_SIZE"
+    )
+    strava_import_retry_seconds: int = Field(
+        default=60, validation_alias="STRAVA_IMPORT_RETRY_SECONDS"
+    )
+    strava_import_overlap_seconds: int = Field(
+        default=86400, validation_alias="STRAVA_IMPORT_OVERLAP_SECONDS"
     )
 
 

@@ -54,9 +54,36 @@ $env:OAUTH_STATE_TTL_SECONDS = "600"
 
 Then open `http://127.0.0.1:8000/integrations/strava/connect` in a browser. Strava returns to the local callback URI `http://127.0.0.1:8000/integrations/strava/callback`; the callback validates one-time state, exchanges the code, and returns only the provider and connection status.
 
-Real credentials belong only in a local ignored `.env` file or separately loaded environment variables—never commit them or place the client secret in a URL. This version stores OAuth credentials as plaintext for development only; production encryption is mandatory. OAuth state remains process-local and is unsuitable for restarts, multiple workers, or production. Activity import is not implemented yet.
+Real credentials belong only in a local ignored `.env` file or separately loaded environment variables—never commit them or place the client secret in a URL. This version stores OAuth credentials as plaintext for development only; production encryption is mandatory. In development, OAuth state is stored in a local ignored SQLite database, survives application restarts, and is shared by local processes using the same file. It is not the production state-store design; production still requires a shared PostgreSQL, Redis, or equivalent durable store.
 
 Sprint 0.2.4 also provides `GET /integrations/strava/status` and `DELETE /integrations/strava/disconnect`. Status returns only allow-listed connection metadata. Disconnect calls Strava's configured revocation endpoint, hard-deletes the local OAuth credential after confirmed success, marks the account disconnected, and is safe to repeat. Previously imported activities are preserved. If remote revocation fails, credentials remain available only so revocation can be retried; the endpoint does not falsely report success. Production credential encryption and secure-erasure controls remain pending.
+
+## Strava historical summary import (Sprint 0.3.2)
+
+An active Strava connection is required. Start the non-blocking historical
+summary import from PowerShell:
+
+```powershell
+$job = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/integrations/strava/imports"
+$job
+```
+
+Check its safe, checkpointed status with the returned job identifier:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/integrations/strava/imports/$($job.job_id)"
+```
+
+Sprint 0.3.2 imports activity summaries only. It paginates historical results,
+updates existing provider-owned summary fields idempotently, preserves local
+athlete-authored fields, and resumes from committed page checkpoints. Activity
+details, laps, and streams are deliberately deferred to later phases.
+
+Repeated start requests reuse a queued, running, or retry-scheduled job. After a
+job reaches a terminal state, the next request creates a new job. Following a
+successful history import, that job is incremental: it starts from the newest
+stored activity with the configured overlap (24 hours by default), while the
+existing provider-account/activity identity prevents duplicates.
 
 ## Backend 0.1 on Windows
 
@@ -84,7 +111,7 @@ $env:TC_LOG_LEVEL = "info"
 $env:TC_DATABASE_URL = "postgresql+psycopg://triathlon:triathlon@localhost:5432/triathlon_coach"
 ```
 
-The backend reads `TC_*` environment variables directly. The `.env` file is a local reference and is not automatically loaded in version 0.1.
+The backend loads `backend/.env` automatically using an absolute path, and process-level environment variables can override its values.
 
 PostgreSQL is the production database target. The URL above contains local development placeholders only; use separately managed credentials in deployed environments. SQLite is used only by unit tests and is not a supported production database.
 
@@ -96,7 +123,17 @@ After PostgreSQL is running and `TC_DATABASE_URL` points to it, apply the schema
 & ".\.venv\Scripts\python.exe" -m alembic upgrade head
 ```
 
-The initial migration creates the user, athlete, integration account, isolated OAuth credential, completed activity, synchronization job, webhook inbox, and audit tables. Migration `0002_provider_account_owner` adds global provider-account ownership uniqueness. OAuth tokens are plaintext placeholders in this development foundation and must be encrypted before production use.
+The initial migration creates the user, athlete, integration account, isolated OAuth credential, completed activity, synchronization job, webhook inbox, and audit tables. Migration `0002_provider_account_owner` adds global provider-account ownership uniqueness. Migration `0003_strava_summary_import` adds summary metrics and enforces one active historical summary job per Strava account. OAuth tokens are plaintext placeholders in this development foundation and must be encrypted before production use.
+
+### Seed the local development athlete
+
+After applying migrations, run the idempotent development seed from the `backend` directory:
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m app.cli.seed_development_user
+```
+
+The command creates the fixed local MVP user and its athlete profile using placeholder development data. It is safe to run repeatedly and does not create duplicates.
 
 ### Run the backend
 

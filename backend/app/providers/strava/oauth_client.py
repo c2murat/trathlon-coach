@@ -15,15 +15,20 @@ from app.providers.base import (
     RateLimitError,
     TemporaryProviderError,
 )
-from app.providers.strava.oauth_types import StravaRevocationCredential, StravaTokenResult
+from app.providers.strava.oauth_types import (
+    StravaRefreshCredential,
+    StravaRefreshResult,
+    StravaRevocationCredential,
+    StravaTokenResult,
+)
 
 
 class StravaOAuthClient(OAuthProvider):
     """Build authorization URLs and exchange callback codes through a safe transport.
 
-    Sprint 0.2.3 implements authorization URL generation and one authorization-code
-    exchange only. Refresh and revocation remain unavailable. Secret-bearing form
-    bodies and provider responses are never included in representations or logs.
+    Authorization-code exchange, token refresh, and revocation share one
+    secret-safe transport. Secret-bearing form bodies and provider responses are
+    never included in representations or logs.
     """
 
     provider_name = "strava"
@@ -128,9 +133,29 @@ class StravaOAuthClient(OAuthProvider):
         raise ProviderError("Strava token exchange failed")
 
     async def refresh_authorization(self, authorization: object) -> object:
-        """Remain unavailable until the token-refresh sprint."""
+        """Refresh and rotate a Strava token set without exposing either token."""
 
-        raise NotImplementedError("OAuth token refresh is not implemented")
+        if not isinstance(authorization, StravaRefreshCredential):
+            raise AuthenticationError("Strava refresh credential is invalid")
+        response = await self._transport.post_form(
+            self._token_url,
+            data={
+                "client_id": self._client_id,
+                "client_secret": self._client_secret.get_secret_value(),
+                "grant_type": "refresh_token",
+                "refresh_token": authorization.refresh_token.get_secret_value(),
+            },
+            timeout=self._timeout,
+        )
+        if response.status_code == 200:
+            return StravaRefreshResult.from_payload(response.json_body)
+        if response.status_code in {400, 401, 403}:
+            raise AuthenticationError("Strava rejected token refresh")
+        if response.status_code == 429:
+            raise RateLimitError("Strava token refresh rate limit reached")
+        if response.status_code >= 500:
+            raise TemporaryProviderError("Strava token refresh unavailable")
+        raise ProviderError("Strava token refresh failed")
 
     async def revoke_authorization(self, authorization: object) -> None:
         """Revoke one token without retaining or exposing provider response data."""

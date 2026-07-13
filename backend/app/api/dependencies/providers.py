@@ -3,16 +3,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 
 from app.core.settings import Settings, get_settings
+from app.db.session import SessionLocal
+from app.integrations.strava.activity_import import StravaSummaryImportManager
+from app.integrations.strava.token_service import StravaTokenService
 from app.providers.base import (
     AsyncHttpTransport,
     HttpxAsyncTransport,
-    InMemoryOAuthStateStore,
     OAuthStateStore,
 )
 from app.providers.strava import StravaOAuthClient
+from app.providers.strava.activity_client import (
+    HttpxStravaActivityTransport,
+    StravaActivityClient,
+)
 
 
 READ_ONLY_STRAVA_SCOPES = ("read", "activity:read_all")
@@ -37,13 +43,13 @@ class StravaCallbackConfiguration:
     required_scopes: tuple[str, ...]
 
 
-# Deliberately scoped development singleton. It is not multi-worker safe and
-# must be replaced by a shared production store before deployment.
-_development_state_store = InMemoryOAuthStateStore()
+def get_oauth_state_store(request: Request) -> OAuthStateStore:
+    """Return the store owned by the exact FastAPI application serving the request."""
 
-
-def get_oauth_state_store() -> OAuthStateStore:
-    return _development_state_store
+    store = getattr(request.app.state, "oauth_state_store", None)
+    if not isinstance(store, OAuthStateStore):
+        raise _configuration_error("oauth_state_store_unavailable")
+    return store
 
 
 def get_strava_http_transport() -> AsyncHttpTransport:
@@ -108,6 +114,38 @@ def get_strava_callback_configuration(
         redirect_uri=redirect_uri,
         required_scopes=scopes,
     )
+
+
+def get_strava_import_manager(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    oauth_client: StravaOAuthClient = Depends(get_strava_oauth_client),
+) -> StravaSummaryImportManager:
+    """Return one app-owned summary importer with mockable provider boundaries."""
+
+    manager = getattr(request.app.state, "strava_import_manager", None)
+    if isinstance(manager, StravaSummaryImportManager):
+        return manager
+    try:
+        activity_client = StravaActivityClient(
+            api_base_url=settings.strava_api_base_url,
+            transport=HttpxStravaActivityTransport(),
+        )
+        manager = StravaSummaryImportManager(
+            session_factory=SessionLocal,
+            activity_client=activity_client,
+            token_service=StravaTokenService(
+                session_factory=SessionLocal,
+                oauth_client=oauth_client,
+            ),
+            page_size=settings.strava_import_page_size,
+            retry_seconds=settings.strava_import_retry_seconds,
+            incremental_overlap_seconds=settings.strava_import_overlap_seconds,
+        )
+    except ValueError:
+        raise _configuration_error("strava_import_configuration_invalid") from None
+    request.app.state.strava_import_manager = manager
+    return manager
 
 
 def _validated_callback_inputs(settings: Settings) -> tuple[str, tuple[str, ...]]:

@@ -27,6 +27,7 @@ from app.providers.base.oauth_state import (
     OAuthStateStorageError,
     OAuthStateStore,
     OAuthStateUserMismatchError,
+    SQLiteOAuthStateStore,
     generate_oauth_state,
     utc_now,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "OAuthStateStorageError",
     "OAuthStateStore",
     "OAuthStateUserMismatchError",
+    "SQLiteOAuthStateStore",
     "Provider",
     "ProviderError",
     "RateLimitError",

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.api.dependencies.auth import AuthenticatedUser, get_current_user
 from app.api.dependencies.providers import (
@@ -123,7 +124,7 @@ async def disconnect_strava(
 
 
 @router.get("/connect", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-def connect_strava(
+async def connect_strava(
     current_user: AuthenticatedUser = Depends(get_current_user),
     configuration: StravaConnectConfiguration = Depends(
         get_strava_connect_configuration
@@ -138,7 +139,7 @@ def connect_strava(
         expires_at=utc_now() + timedelta(seconds=configuration.state_ttl_seconds),
     )
     try:
-        state_store.save(state)
+        await run_in_threadpool(state_store.save, state)
     except Exception:
         raise _safe_error(
             status.HTTP_503_SERVICE_UNAVAILABLE, "oauth_state_store_unavailable"
@@ -175,7 +176,11 @@ async def strava_callback(
         raise _safe_error(status.HTTP_400_BAD_REQUEST, "oauth_state_invalid")
 
     try:
-        state_store.consume(state_value, user_id=current_user.id)
+        await run_in_threadpool(
+            state_store.consume,
+            state_value,
+            user_id=current_user.id,
+        )
     except OAuthStateUserMismatchError:
         raise _safe_error(status.HTTP_403_FORBIDDEN, "oauth_state_invalid") from None
     except (OAuthStateExpiredError, OAuthStateReusedError, OAuthStateError):

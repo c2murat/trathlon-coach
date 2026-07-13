@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -8,7 +9,12 @@ from pydantic import SecretStr
 from app.api.dependencies.providers import get_oauth_state_store
 from app.core.settings import Settings, get_settings
 from app.main import app
-from app.providers.base import OAuthState, OAuthStateStorageError, OAuthStateStore
+from app.providers.base import (
+    OAuthState,
+    OAuthStateStorageError,
+    OAuthStateStore,
+    SQLiteOAuthStateStore,
+)
 
 
 class RecordingStateStore(OAuthStateStore):
@@ -124,7 +130,7 @@ def test_connect_sets_no_store_headers() -> None:
 
 def test_connect_rejects_missing_configuration_safely() -> None:
     response, _ = connect_with(
-        Settings(environment="test"), RecordingStateStore()
+        Settings(environment="test", _env_file=None), RecordingStateStore()
     )
 
     assert response.status_code == 503
@@ -173,3 +179,44 @@ def test_connect_returns_safe_error_when_state_store_fails() -> None:
         "detail": {"code": "oauth_state_store_unavailable"}
     }
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_connect_with_sqlite_returns_promptly_and_health_stays_responsive(
+    tmp_path,
+) -> None:
+    store = SQLiteOAuthStateStore(tmp_path / "oauth-state.sqlite3")
+    app.dependency_overrides[get_settings] = lambda: configured_settings()
+    app.dependency_overrides[get_oauth_state_store] = lambda: store
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as executor:
+        connect_future = executor.submit(
+            client.get,
+            "/integrations/strava/connect",
+            follow_redirects=False,
+        )
+        health_future = executor.submit(client.get, "/health")
+
+        connect_response = connect_future.result(timeout=2)
+        health_response = health_future.result(timeout=2)
+
+    assert connect_response.status_code == 307
+    assert health_response.status_code == 200
+    assert health_response.json() == {
+        "status": "ok",
+        "service": "triathlon-coach",
+    }
+
+
+def test_repeated_sequential_connects_with_sqlite_complete(tmp_path) -> None:
+    store = SQLiteOAuthStateStore(tmp_path / "oauth-state.sqlite3")
+    app.dependency_overrides[get_settings] = lambda: configured_settings()
+    app.dependency_overrides[get_oauth_state_store] = lambda: store
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as executor:
+        for _ in range(10):
+            response = executor.submit(
+                client.get,
+                "/integrations/strava/connect",
+                follow_redirects=False,
+            ).result(timeout=2)
+            assert response.status_code == 307

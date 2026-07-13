@@ -32,6 +32,7 @@ Secrets and deployment-specific URLs are environment variables:
 | `STRAVA_AUTHORIZATION_URL` | No | Public authorization endpoint; safe official default |
 | `STRAVA_TOKEN_URL` | No | Public token endpoint used by the Sprint 0.2.3 authorization-code exchange |
 | `OAUTH_STATE_TTL_SECONDS` | No | Short-lived state expiry; safe development default of 600 seconds |
+| `OAUTH_STATE_SQLITE_PATH` | No | Development-only SQLite state-store path; defaults to an ignored file under `backend/.oauth-state/` |
 
 Official external endpoints used by the web integration are:
 
@@ -106,7 +107,7 @@ These application endpoints are provider-specific adapters under a provider-neut
 - **Errors:** secret-free `400/403/409/500/502/503` JSON codes cover invalid state/input, insufficient scope, ownership conflict, persistence failure, token exchange failure, and provider unavailability. Responses use no-store headers and never contain provider bodies or credentials.
 - **Security:** atomically consume state before exchange; verify callback origin indirectly through state and registered redirect; exchange over TLS; validate returned athlete ID/scopes; redact code, tokens, client secret, provider body, and Basic/Bearer headers from logs/errors/audit.
 - **Database changes:** create/reconnect `IntegrationAccount`; insert/update the single `OAuthCredential`; persist actual scopes/expiry; audit connection creation/reconnection, authorization denial, insufficient scope, exchange failure, and ownership conflict. A global unique constraint on `(provider, external_account_id)` prevents silent cross-athlete reassignment. Do not start a backfill in the request.
-- **Development limits:** OAuth state is an in-memory, process-local store. Tokens are plaintext development placeholders under the existing encryption TODO and are not production-safe. Unit tests use SQLite and a mocked transport; PostgreSQL locking/concurrency and migration execution require integration validation.
+- **Development limits:** OAuth state uses a dedicated local SQLite store with transactional, one-time consumption. It survives restarts and can be shared by local processes using the same file, but it is not the production state-store design. Tokens are plaintext development placeholders under the existing encryption TODO and are not production-safe. Unit tests use SQLite and a mocked transport; PostgreSQL locking/concurrency and migration execution require integration validation.
 
 ### `GET /integrations/strava/status`
 
@@ -338,7 +339,7 @@ Later optional manual verification uses a registered development application/acc
 ### 0.2.2 — Connect endpoint and OAuth state
 
 - **Scope:** authenticated connect route, allow-listed redirect construction, server-side state issue/TTL/binding/atomic consumption contract.
-- **Development implementation:** one process-local, thread-safe in-memory store binds state to the temporary local MVP user for 600 seconds by default. It is replaceable through FastAPI dependencies and is explicitly unsuitable for restarts, multiple workers, multiple hosts, or production.
+- **Development implementation:** a dedicated SQLite store binds state to the temporary local MVP user for 600 seconds by default. State creation is durable and consumption is atomic, user-bound, and one-time. Expired rows are rejected and removed. The interface remains replaceable so production can use a shared PostgreSQL, Redis, or equivalent durable store.
 - **Acceptance:** valid request redirects to Strava with minimum scopes; CSRF state, replay, return target, authentication, and conflict tests pass.
 - **Excluded:** callback exchange, credentials, sync, webhook subscription.
 
@@ -409,7 +410,7 @@ Later optional manual verification uses a registered development application/acc
 
 ### Questions before implementation
 
-1. Which shared production store (PostgreSQL, Redis, or another durable TTL store) will replace the Sprint 0.2.2 in-memory store? The development TTL defaults to 600 seconds and remains configurable.
+1. Which shared production store (PostgreSQL, Redis, or another durable TTL store) will replace the development-only SQLite store? The development TTL defaults to 600 seconds and remains configurable.
 2. Is `activity:read_all` mandatory at first release, or will a clearly labeled `activity:read` limited mode be supported?
 3. What historical import default range and athlete-selectable maximum balance product value and rate budget?
 4. What refresh safety window and lock mechanism fit the initial single-worker deployment while remaining safe when scaled?

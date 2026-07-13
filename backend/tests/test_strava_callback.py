@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -15,7 +16,7 @@ from app.db.base import Base
 from app.db.models import AthleteProfile, AuditEvent, IntegrationAccount, OAuthCredential, User
 from app.db.session import get_db_session
 from app.main import app
-from app.providers.base import AsyncHttpTransport, HttpResponse, InMemoryOAuthStateStore, OAuthState, utc_now
+from app.providers.base import AsyncHttpTransport, HttpResponse, OAuthState, SQLiteOAuthStateStore, utc_now
 
 
 ACCESS = "callback-access-secret"
@@ -46,7 +47,7 @@ def token_payload(*, athlete_id=98765, access=ACCESS, refresh=REFRESH, scope="re
 
 
 @pytest.fixture
-def callback_context():
+def callback_context(tmp_path):
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -67,7 +68,7 @@ def callback_context():
         session.add(AthleteProfile(user_id=user.id, timezone="Europe/Madrid"))
         session.commit()
 
-    store = InMemoryOAuthStateStore()
+    store = SQLiteOAuthStateStore(tmp_path / "oauth-state.sqlite3")
     transport = StubTransport()
     settings = Settings(
         environment="test",
@@ -82,7 +83,7 @@ def callback_context():
             yield session
 
     app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[get_oauth_state_store] = lambda: store
+    app.state.oauth_state_store = store
     app.dependency_overrides[get_strava_http_transport] = lambda: transport
     app.dependency_overrides[get_db_session] = db_override
     yield TestClient(app), factory, store, transport
@@ -124,6 +125,27 @@ def test_success_persists_account_credential_and_safe_audit(callback_context) ->
         rendered += repr(credential) + repr(audit.event_metadata)
     assert ACCESS not in rendered
     assert REFRESH not in rendered
+
+
+def test_connect_and_callback_share_application_state_store(callback_context) -> None:
+    client, factory, _, transport = callback_context
+    connect_response = client.get(
+        "/integrations/strava/connect", follow_redirects=False
+    )
+    state = parse_qs(urlsplit(connect_response.headers["location"]).query)["state"][0]
+
+    callback_response = callback(client, state)
+
+    assert connect_response.status_code == 307
+    assert callback_response.status_code == 200
+    assert callback_response.json() == {
+        "provider": "strava",
+        "status": "connected",
+    }
+    assert transport.calls == 1
+    with factory() as session:
+        assert session.scalar(select(IntegrationAccount)) is not None
+        assert session.scalar(select(OAuthCredential)) is not None
 
 
 def test_state_is_consumed_exactly_once(callback_context) -> None:

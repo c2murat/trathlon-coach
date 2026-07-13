@@ -131,6 +131,56 @@ class StravaRevocationCredential:
         return "<StravaRevocationCredential access_token=<redacted>>"
 
 
+@dataclass(frozen=True, slots=True)
+class StravaRefreshCredential:
+    """Refresh token passed only to the OAuth refresh boundary."""
+
+    refresh_token: SecretStr = field(repr=False)
+
+    def __repr__(self) -> str:
+        return "<StravaRefreshCredential refresh_token=<redacted>>"
+
+
+@dataclass(frozen=True, slots=True)
+class StravaRefreshResult:
+    """Validated rotated token set returned by a refresh request."""
+
+    access_token: SecretStr = field(repr=False)
+    refresh_token: SecretStr = field(repr=False)
+    expires_at: datetime
+    token_type: str
+
+    @classmethod
+    def from_payload(cls, payload: object) -> StravaRefreshResult:
+        if not isinstance(payload, Mapping):
+            raise InvalidPayloadError("Refresh response is invalid")
+        expires_at_value = payload.get("expires_at")
+        if isinstance(expires_at_value, bool) or not isinstance(expires_at_value, int):
+            raise InvalidPayloadError("Refresh response expiry is invalid")
+        try:
+            expires_at = datetime.fromtimestamp(expires_at_value, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            raise InvalidPayloadError("Refresh response expiry is invalid") from None
+        if expires_at <= datetime.now(timezone.utc):
+            raise InvalidPayloadError("Refresh response expiry is invalid")
+        token_type = payload.get("token_type", "Bearer")
+        if not isinstance(token_type, str) or not token_type.strip():
+            raise InvalidPayloadError("Refresh response type is invalid")
+        return cls(
+            access_token=_required_secret(payload, "access_token"),
+            refresh_token=_required_secret(payload, "refresh_token"),
+            expires_at=expires_at,
+            token_type=token_type.strip(),
+        )
+
+    def __repr__(self) -> str:
+        return (
+            "<StravaRefreshResult access_token=<redacted> "
+            "refresh_token=<redacted> "
+            f"expires_at={self.expires_at!r}>"
+        )
+
+
 def _required_secret(payload: Mapping[object, object], field_name: str) -> SecretStr:
     value = payload.get(field_name)
     if not isinstance(value, str) or not value:
