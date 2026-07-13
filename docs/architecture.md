@@ -1,4 +1,4 @@
-﻿# Triathlon Coach Architecture
+# Triathlon Coach Architecture
 
 ## Architecture style
 
@@ -55,10 +55,12 @@ trathlon-coach/
 |   |   |   |-- recovery/
 |   |   |   |-- equipment/
 |   |   |   `-- coaching/
-|   |   |-- integrations/
-|   |   |   |-- strava/
-|   |   |   |-- garmin/
-|   |   |   `-- ai_provider/
+|   |   |-- providers/
+|   |   |   |-- base/                # Provider-neutral contracts and errors
+|   |   |   |-- strava/              # Strava adapter metadata and behavior
+|   |   |   `-- garmin/              # Future Garmin adapter
+|   |   |-- integrations/            # Application orchestration around providers
+|   |   |   `-- ai_provider/         # Future AI-specific integration boundary
 |   |   |-- schemas/                 # Public request/response contracts
 |   |   `-- workers/                 # Queue runtime and schedules
 |   `-- tests/
@@ -101,7 +103,7 @@ trathlon-coach/
     `-- integrations/                # Provider behavior
 ```
 
-Each backend domain will contain entities/value objects, domain services, ports (interfaces required from storage/providers), and domain errors. Implementations stay in `db` or `integrations`.
+Each backend domain will contain entities/value objects, domain services, ports (interfaces required from storage/providers), and domain errors. Persistence implementations stay in `db`; external platform contracts and adapters stay in `providers`; application-level integration orchestration stays in `integrations`.
 
 Each frontend feature owns its pages, feature-only components, hooks, queries, validation, state, and tests. Only genuinely reusable pieces move to the shared top-level folders.
 
@@ -122,6 +124,10 @@ Configuration, secrets access, authentication/authorization primitives, time and
 ### Database
 
 PostgreSQL sessions, transactions, migrations, indexes, ORM mappings, and repository implementations. ORM types do not leak into domain rules.
+
+### Provider layer
+
+Defines provider-neutral metadata, OAuth, activity-mapping, synchronization, and webhook contracts plus common provider exception categories. Application and domain code depend on these contracts rather than Strava or future Garmin implementations. Provider-specific packages implement only their adapter responsibilities; persistence, API routing, and business orchestration remain outside this layer.
 
 ### Workers
 
