@@ -1,3 +1,4 @@
+﻿from app.db.models.evidence import ActivityEvidenceState, ActivityLap, ActivityRouteEvidence, ActivityStream
 from app.db.models.activity import CompletedActivity
 from app.db.models.athlete import AthleteProfile
 from app.db.models.integration import IntegrationAccount, OAuthCredential
@@ -8,6 +9,10 @@ __all__ = [
     "AthleteProfile",
     "AuditEvent",
     "CompletedActivity",
+    "ActivityEvidenceState",
+    "ActivityLap",
+    "ActivityStream",
+    "ActivityRouteEvidence",
     "IntegrationAccount",
     "OAuthCredential",
     "SyncJob",

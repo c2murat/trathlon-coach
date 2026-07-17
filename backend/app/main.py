@@ -1,12 +1,17 @@
-from pathlib import Path
+﻿from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.api.v1.routes.activities import router as activities_router
+from app.api.v1.routes.dashboard import router as dashboard_router
 from app.api.v1.routes.strava_integrations import router as strava_integrations_router
 from app.api.v1.routes.strava_imports import router as strava_imports_router
+from app.api.v1.routes.strava_enrichments import router as strava_enrichments_router
+from app.api.v1.routes.strava_evidence import router as strava_evidence_router
 from app.core.settings import get_settings
 from app.providers.base import SQLiteOAuthStateStore
 
@@ -14,6 +19,13 @@ from app.providers.base import SQLiteOAuthStateStore
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(title=settings.service_name, version="0.1.0")
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.frontend_origin],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Accept", "Content-Type"],
+    )
     if settings.environment not in {"development", "test"}:
         raise RuntimeError(
             "A shared production OAuth state store must be configured"
@@ -51,8 +63,12 @@ def create_app() -> FastAPI:
         return await http_exception_handler(request, exc)
 
     application.include_router(health_router)
+    application.include_router(activities_router)
+    application.include_router(dashboard_router)
     application.include_router(strava_integrations_router)
     application.include_router(strava_imports_router)
+    application.include_router(strava_enrichments_router)
+    application.include_router(strava_evidence_router)
     return application
 
 

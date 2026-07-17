@@ -1,0 +1,4 @@
+﻿import { useCallback, useEffect, useState } from "react";
+export function navigate(path:string){window.history.pushState({},"",path);window.dispatchEvent(new PopStateEvent("popstate"));}
+export function usePathname(){const [path,setPath]=useState(window.location.pathname);useEffect(()=>{const update=()=>setPath(window.location.pathname);window.addEventListener("popstate",update);return()=>window.removeEventListener("popstate",update)},[]);return [path,useCallback((next:string)=>navigate(next),[])] as const;}
+export function AppLink({to,className,children,onClick,"aria-label":ariaLabel}:{to:string;className?:string;children:React.ReactNode;onClick?():void;"aria-label"?:string}){return <a href={to} className={className} aria-label={ariaLabel} onClick={event=>{if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&event.button===0){event.preventDefault();navigate(to);onClick?.();}}}>{children}</a>}

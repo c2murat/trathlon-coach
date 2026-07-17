@@ -1,0 +1,3 @@
+﻿import type { ReactNode } from "react";
+interface StatusCardProps { label:string; value:string; icon?:string; tone?:"positive"|"neutral"|"warning"; detail?:ReactNode; }
+export function StatusCard({label,value,icon="•",tone="neutral",detail}:StatusCardProps){return <section className={`status-card status-card--${tone}`} aria-label={label}><div className="status-card__heading"><span className="status-card__icon" aria-hidden="true">{icon}</span><p className="status-card__label">{label}</p></div><p className="status-card__value">{value}</p>{detail&&<div className="status-card__detail">{detail}</div>}</section>}

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -58,6 +58,23 @@ class SyncJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
                 "job_type = 'strava_historical_summary' AND "
                 "status IN ('queued', 'running', 'retry_scheduled')"
             ),
+        ),
+        Index(
+            "uq_sync_jobs_active_strava_detail",
+            "integration_account_id",
+            unique=True,
+            postgresql_where=text(
+                "job_type = 'strava_activity_detail' AND "
+                "status IN ('queued', 'running', 'retry_scheduled')"
+            ),
+            sqlite_where=text(
+                "job_type = 'strava_activity_detail' AND "
+                "status IN ('queued', 'running', 'retry_scheduled')"
+            ),
+        ),        Index(
+            "uq_sync_jobs_active_strava_evidence", "integration_account_id", unique=True,
+            postgresql_where=text("job_type = 'strava_activity_evidence' AND status IN ('queued','running','retry_scheduled')"),
+            sqlite_where=text("job_type = 'strava_activity_evidence' AND status IN ('queued','running','retry_scheduled')"),
         ),
     )
 

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import timedelta
 from uuid import uuid4
 
@@ -14,10 +15,13 @@ from app.main import create_app
 
 
 class FakeManager:
-    def __init__(self, *, start_error=None, status_error=None) -> None:
+    def __init__(
+        self, *, start_error=None, status_error=None, latest_not_started=False
+    ) -> None:
         self.job_id = uuid4()
         self.start_error = start_error
         self.status_error = status_error
+        self.latest_not_started = latest_not_started
         self.scheduled = []
 
     def create_or_resume_job(self, user_id):
@@ -34,6 +38,24 @@ class FakeManager:
         if self.status_error or job_id != self.job_id:
             raise self.status_error or ImportJobNotFoundError()
         return self.view("running")
+
+    def latest_job_for_user(self, user_id):
+        del user_id
+        if self.status_error:
+            raise self.status_error
+        if self.latest_not_started:
+            return replace(
+                self.view("not_started"),
+                job_id=None,
+                imported_count=0,
+                updated_count=0,
+                skipped_count=0,
+                failed_count=0,
+                page=0,
+                last_external_activity_id=None,
+                started_at=None,
+            )
+        return self.view("succeeded")
 
     def view(self, status):
         now = utc_now()
@@ -111,3 +133,23 @@ def test_start_requires_active_connection_and_status_is_owner_scoped():
         response = client.get(f"/integrations/strava/imports/{manager.job_id}")
     assert response.status_code == 404
     assert response.json() == {"detail": {"code": "strava_import_not_found"}}
+
+
+def test_latest_import_exists_and_is_secret_free(caplog):
+    manager = FakeManager()
+    with client_with(manager) as client:
+        response = client.get("/integrations/strava/imports/latest")
+    assert response.status_code == 200
+    assert response.json()["job_id"] == str(manager.job_id)
+    assert response.json()["status"] == "succeeded"
+    assert "secret" not in response.text + caplog.text
+
+
+def test_latest_import_not_started_response():
+    manager = FakeManager(latest_not_started=True)
+    with client_with(manager) as client:
+        response = client.get("/integrations/strava/imports/latest")
+    assert response.status_code == 200
+    assert response.json()["job_id"] is None
+    assert response.json()["status"] == "not_started"
+    assert response.json()["imported_count"] == 0

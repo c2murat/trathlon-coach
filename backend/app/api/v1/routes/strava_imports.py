@@ -46,6 +46,29 @@ async def start_strava_summary_import(
     )
 
 
+@router.get("/latest")
+async def latest_strava_summary_import(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    manager: StravaSummaryImportManager = Depends(get_strava_import_manager),
+) -> JSONResponse:
+    """Return the latest owned import or a safe not-started projection."""
+
+    try:
+        job = await run_in_threadpool(
+            manager.latest_job_for_user, current_user.id
+        )
+    except Exception:
+        raise _safe_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "strava_import_status_unavailable",
+        ) from None
+    return JSONResponse(
+        jsonable_encoder(asdict(job)),
+        status_code=status.HTTP_200_OK,
+        headers=NO_STORE_HEADERS,
+    )
+
+
 @router.get("/{job_id}")
 async def strava_summary_import_status(
     job_id: UUID,

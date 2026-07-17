@@ -158,6 +158,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Node / Vite
+node_modules/
+.vite/
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -217,3 +221,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+backend/.pytest-tmp-*/
+backend/pytest-cache-files-*/
+backend/.pytest_cache/
+frontend/node_modules/
+frontend/dist/

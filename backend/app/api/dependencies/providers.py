@@ -8,6 +8,8 @@ from fastapi import Depends, HTTPException, Request, status
 from app.core.settings import Settings, get_settings
 from app.db.session import SessionLocal
 from app.integrations.strava.activity_import import StravaSummaryImportManager
+from app.integrations.strava.activity_enrichment import StravaActivityEnrichmentManager
+from app.integrations.strava.activity_evidence import StravaActivityEvidenceManager
 from app.integrations.strava.token_service import StravaTokenService
 from app.providers.base import (
     AsyncHttpTransport,
@@ -148,6 +150,30 @@ def get_strava_import_manager(
     return manager
 
 
+def get_strava_enrichment_manager(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    oauth_client: StravaOAuthClient = Depends(get_strava_oauth_client),
+) -> StravaActivityEnrichmentManager:
+    manager = getattr(request.app.state, "strava_enrichment_manager", None)
+    if isinstance(manager, StravaActivityEnrichmentManager):
+        return manager
+    activity_client = StravaActivityClient(api_base_url=settings.strava_api_base_url, transport=HttpxStravaActivityTransport())
+    manager = StravaActivityEnrichmentManager(
+        session_factory=SessionLocal, activity_client=activity_client,
+        token_service=StravaTokenService(session_factory=SessionLocal, oauth_client=oauth_client),
+        retry_seconds=settings.strava_import_retry_seconds,
+    )
+    request.app.state.strava_enrichment_manager = manager
+    return manager
+
+def get_strava_evidence_manager(request: Request, settings: Settings = Depends(get_settings), oauth_client: StravaOAuthClient = Depends(get_strava_oauth_client)) -> StravaActivityEvidenceManager:
+    manager=getattr(request.app.state,"strava_evidence_manager",None)
+    if isinstance(manager,StravaActivityEvidenceManager):return manager
+    client=StravaActivityClient(api_base_url=settings.strava_api_base_url,transport=HttpxStravaActivityTransport())
+    manager=StravaActivityEvidenceManager(session_factory=SessionLocal,client=client,token_service=StravaTokenService(session_factory=SessionLocal,oauth_client=oauth_client),stream_retention_enabled=settings.activity_stream_retention_enabled,location_retention_enabled=settings.activity_location_stream_retention_enabled,max_samples=settings.activity_stream_max_samples,retention_days=settings.activity_stream_retention_days,retry_seconds=settings.strava_import_retry_seconds)
+    request.app.state.strava_evidence_manager=manager;return manager
+
 def _validated_callback_inputs(settings: Settings) -> tuple[str, tuple[str, ...]]:
     if not settings.strava_redirect_uri or not settings.strava_scopes:
         raise _configuration_error("strava_configuration_missing")
@@ -192,3 +218,5 @@ def _configuration_error(code: str) -> HTTPException:
         detail={"code": code},
         headers={"Cache-Control": "no-store"},
     )
+
+

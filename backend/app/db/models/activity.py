@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -22,6 +22,7 @@ from app.db.base import Base, TimestampMixin, UTCDateTime, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.db.models.athlete import AthleteProfile
     from app.db.models.integration import IntegrationAccount
+    from app.db.models.evidence import ActivityEvidenceState, ActivityLap, ActivityRouteEvidence, ActivityStream
 
 
 class CompletedActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -92,6 +93,28 @@ class CompletedActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     manual: Mapped[bool | None] = mapped_column(Boolean)
     visibility: Mapped[str | None] = mapped_column(String(32))
     description: Mapped[str | None] = mapped_column(Text)
+    # Provider-owned detail fields. Local description/RPE remain separate.
+    provider_description: Mapped[str | None] = mapped_column(Text)
+    device_name: Mapped[str | None] = mapped_column(String(300))
+    gear_id: Mapped[str | None] = mapped_column(String(255))
+    suffer_score: Mapped[int | None] = mapped_column(Integer)
+    provider_perceived_exertion: Mapped[float | None] = mapped_column(Float)
+    total_work_j: Mapped[float | None] = mapped_column(Float)
+    kilojoules: Mapped[float | None] = mapped_column(Float)
+    average_temperature_c: Mapped[float | None] = mapped_column(Float)
+    workout_type: Mapped[int | None] = mapped_column(Integer)
+    achievement_count: Mapped[int | None] = mapped_column(Integer)
+    kudos_count: Mapped[int | None] = mapped_column(Integer)
+    athlete_count: Mapped[int | None] = mapped_column(Integer)
+    photo_count: Mapped[int | None] = mapped_column(Integer)
+    has_heartrate: Mapped[bool | None] = mapped_column(Boolean)
+    has_power_meter: Mapped[bool | None] = mapped_column(Boolean)
+    hide_from_home: Mapped[bool | None] = mapped_column(Boolean)
+    private: Mapped[bool | None] = mapped_column(Boolean)
+    flagged: Mapped[bool | None] = mapped_column(Boolean)
+    enriched_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), index=True)
+    enrichment_status: Mapped[str | None] = mapped_column(String(32), index=True)
+    enrichment_error_category: Mapped[str | None] = mapped_column(String(100))
     provider_created_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     provider_updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_synced_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
@@ -99,6 +122,10 @@ class CompletedActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
     athlete: Mapped[AthleteProfile] = relationship(back_populates="completed_activities")
+    laps: Mapped[list[ActivityLap]] = relationship(back_populates="completed_activity", cascade="all, delete-orphan")
+    streams: Mapped[list[ActivityStream]] = relationship(back_populates="completed_activity", cascade="all, delete-orphan")
+    route_evidence: Mapped[ActivityRouteEvidence | None] = relationship(back_populates="completed_activity", cascade="all, delete-orphan", uselist=False)
+    evidence_state: Mapped[ActivityEvidenceState | None] = relationship(back_populates="completed_activity", cascade="all, delete-orphan", uselist=False)
     source_integration_account: Mapped[IntegrationAccount | None] = relationship(
         back_populates="completed_activities"
     )

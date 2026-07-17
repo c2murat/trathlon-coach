@@ -1,7 +1,8 @@
-from functools import lru_cache
+﻿from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,10 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     log_level: str = "info"
+    frontend_origin: str = Field(
+        default="http://127.0.0.1:5173",
+        validation_alias="FRONTEND_ORIGIN",
+    )
     database_url: str = Field(
         default=(
             "postgresql+psycopg://triathlon:triathlon@localhost:5432/"
@@ -78,6 +83,27 @@ class Settings(BaseSettings):
     strava_import_overlap_seconds: int = Field(
         default=86400, validation_alias="STRAVA_IMPORT_OVERLAP_SECONDS"
     )
+
+    activity_stream_retention_enabled: bool = True
+    activity_location_stream_retention_enabled: bool = False
+    activity_stream_max_samples: int = Field(default=1000, ge=2, le=10000)
+    activity_stream_retention_days: int = Field(default=0, ge=0, le=3650)
+    @field_validator("frontend_origin")
+    @classmethod
+    def validate_frontend_origin(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            value == "*"
+            or parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("FRONTEND_ORIGIN must be one explicit HTTP origin")
+        return value.rstrip("/")
 
 
 @lru_cache

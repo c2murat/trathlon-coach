@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
@@ -62,7 +62,7 @@ class ActivityOwnershipMismatchError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class StravaImportJobView:
-    job_id: UUID
+    job_id: UUID | None
     provider: str
     status: str
     imported_count: int
@@ -252,6 +252,44 @@ class StravaSummaryImportManager:
                 raise ImportJobNotFoundError
             return self._view(row[0], row[1].provider)
 
+    def latest_job_for_user(self, user_id: UUID) -> StravaImportJobView:
+        with self._session_factory() as session:
+            row = session.execute(
+                select(SyncJob, IntegrationAccount)
+                .join(
+                    IntegrationAccount,
+                    SyncJob.integration_account_id == IntegrationAccount.id,
+                )
+                .join(
+                    AthleteProfile,
+                    IntegrationAccount.athlete_id == AthleteProfile.id,
+                )
+                .where(
+                    AthleteProfile.user_id == user_id,
+                    IntegrationAccount.provider == "strava",
+                )
+                .order_by(SyncJob.created_at.desc(), SyncJob.id.desc())
+            ).first()
+            if row is None:
+                now = self._clock()
+                return StravaImportJobView(
+                    job_id=None,
+                    provider="strava",
+                    status="not_started",
+                    imported_count=0,
+                    updated_count=0,
+                    skipped_count=0,
+                    failed_count=0,
+                    page=0,
+                    last_external_activity_id=None,
+                    started_at=None,
+                    updated_at=now,
+                    completed_at=None,
+                    next_resume_at=None,
+                    error_category=None,
+                )
+            return self._view(row[0], row[1].provider)
+
     def schedule(self, job_id: UUID) -> None:
         existing = self._tasks.get(job_id)
         if existing is not None and not existing.done():
@@ -399,6 +437,7 @@ class StravaSummaryImportManager:
                             source_integration_account_id=account.id,
                             external_activity_id=mapped.external_activity_id,
                             last_synced_at=now,
+                            provider_updated_at=now,
                             **provider_fields,
                         )
                         session.add(activity)
@@ -411,6 +450,8 @@ class StravaSummaryImportManager:
                         for field_name, value in provider_fields.items():
                             setattr(activity, field_name, value)
                         activity.last_synced_at = now
+                        if changed:
+                            activity.provider_updated_at = now
                         counter = "updated_count" if changed else "skipped_count"
                         stats[counter] = int(stats[counter]) + 1
                     stats["last_external_activity_id"] = (

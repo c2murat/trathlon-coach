@@ -128,6 +128,10 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
         "sync_jobs",
         "webhook_events",
         "audit_events",
+        "activity_laps",
+        "activity_streams",
+        "activity_route_evidence",
+        "activity_evidence_states",
     }
     assert set(Base.metadata.tables) == expected_tables
     assert activity.start_at.utcoffset() == timedelta(0)
@@ -241,3 +245,4 @@ def test_oauth_credential_repr_redacts_secrets() -> None:
     assert "refresh-super-secret" not in rendered
     assert "access_token" not in rendered
     assert "refresh_token" not in rendered
+

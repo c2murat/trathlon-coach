@@ -385,6 +385,17 @@ def test_terminal_job_creates_new_job(database, terminal_status):
         assert session.scalar(select(func.count(SyncJob.id))) == 2
 
 
+def test_latest_job_lookup_is_user_owned(database):
+    importer, _, _ = manager(database)
+    _, (user_id, _, _, _) = database
+    owned = importer.create_or_resume_job(user_id)
+
+    assert importer.latest_job_for_user(user_id).job_id == owned.job_id
+    isolated = importer.latest_job_for_user(uuid4())
+    assert isolated.job_id is None
+    assert isolated.status == "not_started"
+
+
 def test_succeeded_history_creates_incremental_overlap_without_duplicates(database):
     importer, _, _ = manager(
         database, [StravaActivityPage((activity(10),), EMPTY_RATE)]

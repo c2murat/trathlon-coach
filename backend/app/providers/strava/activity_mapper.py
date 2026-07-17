@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -64,8 +64,70 @@ class MappedStravaActivitySummary:
         }
 
 
+
+@dataclass(frozen=True, slots=True)
+class MappedStravaActivityDetail:
+    external_activity_id: str
+    provider_description: str | None
+    calories_kcal: float | None
+    device_name: str | None
+    gear_id: str | None
+    suffer_score: int | None
+    provider_perceived_exertion: float | None
+    total_work_j: float | None
+    kilojoules: float | None
+    average_temperature_c: float | None
+    max_power_w: float | None
+    workout_type: int | None
+    achievement_count: int | None
+    kudos_count: int | None
+    athlete_count: int | None
+    photo_count: int | None
+    has_heartrate: bool | None
+    has_power_meter: bool | None
+    hide_from_home: bool | None
+    private: bool | None
+    flagged: bool | None
+
+    def provider_fields(self) -> dict[str, object]:
+        return {name: getattr(self, name) for name in self.__dataclass_fields__ if name != "external_activity_id"}
+
 class StravaActivityMapper:
     """Map one Strava summary without HTTP, persistence, or raw retention."""
+
+    def map_detail(
+        self, payload: object, *, expected_external_activity_id: str,
+        external_account_id: str,
+    ) -> MappedStravaActivityDetail:
+        if not isinstance(payload, Mapping):
+            raise InvalidPayloadError("Strava activity detail is invalid")
+        external_id = _external_id(payload.get("id"))
+        if external_id != expected_external_activity_id:
+            raise InvalidPayloadError("Strava activity identity mismatch")
+        _validate_owner(payload.get("athlete"), external_account_id)
+        return MappedStravaActivityDetail(
+            external_activity_id=external_id,
+            provider_description=_optional_text(payload.get("description"), 10000),
+            calories_kcal=_optional_nonnegative_number(payload.get("calories")),
+            device_name=_optional_text(payload.get("device_name"), 300),
+            gear_id=_optional_text(payload.get("gear_id"), 255),
+            suffer_score=_optional_nonnegative_provider_int(payload.get("suffer_score")),
+            provider_perceived_exertion=_optional_nonnegative_number(payload.get("perceived_exertion")),
+            total_work_j=_optional_nonnegative_number(payload.get("total_work")),
+            kilojoules=_optional_nonnegative_number(payload.get("kilojoules")),
+            average_temperature_c=_optional_number(payload.get("average_temp")),
+            max_power_w=_optional_nonnegative_number(payload.get("max_watts")),
+            workout_type=_optional_nonnegative_provider_int(payload.get("workout_type")),
+            achievement_count=_optional_nonnegative_provider_int(payload.get("achievement_count")),
+            kudos_count=_optional_nonnegative_provider_int(payload.get("kudos_count")),
+            athlete_count=_optional_nonnegative_provider_int(payload.get("athlete_count")),
+            photo_count=_optional_nonnegative_provider_int(payload.get("total_photo_count", payload.get("photo_count"))),
+            has_heartrate=_optional_bool(payload.get("has_heartrate")),
+            has_power_meter=_optional_bool(payload.get("device_watts")),
+            hide_from_home=_optional_bool(payload.get("hide_from_home")),
+            private=_optional_bool(payload.get("private")),
+            flagged=_optional_bool(payload.get("flagged")),
+        )
 
     def map_summary(
         self,
@@ -166,6 +228,12 @@ def _required_nonnegative_int(value: object, label: str) -> int:
     return parsed
 
 
+def _optional_nonnegative_provider_int(value: object) -> int | None:
+    """Accept provider JSON integers serialized as an integral float."""
+    if isinstance(value, float) and value >= 0 and value.is_integer():
+        return int(value)
+    return _optional_nonnegative_int(value)
+
 def _optional_nonnegative_int(value: object) -> int | None:
     if value is None:
         return None
@@ -247,3 +315,19 @@ def _sport(value: object) -> str:
     if normalized == "multisport":
         return "multisport"
     return "other"
+
+
+def _optional_text(value: object, maximum: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise InvalidPayloadError("Strava activity text field is invalid")
+    return value.strip()[:maximum] or None
+
+
+def _optional_number(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidPayloadError("Strava activity numeric metric is invalid")
+    return float(value)

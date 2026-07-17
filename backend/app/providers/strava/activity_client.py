@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -33,7 +33,7 @@ class StravaActivityTransport(Protocol):
         url: str,
         *,
         headers: Mapping[str, str],
-        params: Mapping[str, int],
+        params: Mapping[str, object],
         timeout: HttpTimeout,
     ) -> StravaApiResponse:
         """Return one parsed response without logging headers or payloads."""
@@ -47,7 +47,7 @@ class HttpxStravaActivityTransport:
         url: str,
         *,
         headers: Mapping[str, str],
-        params: Mapping[str, int],
+        params: Mapping[str, object],
         timeout: HttpTimeout,
     ) -> StravaApiResponse:
         httpx_timeout = httpx.Timeout(
@@ -86,6 +86,28 @@ class StravaRateLimitSnapshot:
     general_usage: tuple[int, int] | None
     read_limit: tuple[int, int] | None
     read_usage: tuple[int, int] | None
+
+
+@dataclass(frozen=True, slots=True)
+class StravaActivityLaps:
+    laps: tuple[object, ...] = field(repr=False)
+    rate_limit: StravaRateLimitSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class StravaActivityStreams:
+    streams: Mapping[str, object] = field(repr=False)
+    rate_limit: StravaRateLimitSnapshot
+
+@dataclass(frozen=True, slots=True)
+class StravaActivityDetail:
+    """One typed detailed activity response and safe rate observations."""
+    payload: Mapping[str, object] = field(repr=False)
+    rate_limit: StravaRateLimitSnapshot
+
+
+class StravaActivityUnavailableError(ProviderError):
+    """The provider activity was deleted, private, or otherwise unavailable."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +194,56 @@ class StravaActivityClient:
             raise TemporaryProviderError("Strava activity service unavailable")
         raise ProviderError("Strava activity request failed")
 
+    async def fetch_activity_detail(
+        self, *, access_token: SecretStr, external_activity_id: str
+    ) -> StravaActivityDetail:
+        if not external_activity_id.isdecimal() or int(external_activity_id) <= 0:
+            raise ValueError("Invalid Strava activity identifier")
+        response = await self._transport.get_json(
+            f"{self._api_base_url}/activities/{external_activity_id}",
+            headers={"Authorization": f"Bearer {access_token.get_secret_value()}", "Accept": "application/json"},
+            params={}, timeout=self._timeout,
+        )
+        rate_limit = _parse_rate_headers(response.headers)
+        if response.status_code == 200:
+            if not isinstance(response.json_body, Mapping):
+                raise InvalidPayloadError("Strava activity detail is invalid")
+            return StravaActivityDetail(payload=response.json_body, rate_limit=rate_limit)
+        if response.status_code in {401, 403}:
+            raise AuthenticationError("Strava activity authorization rejected")
+        if response.status_code in {404, 410}:
+            raise StravaActivityUnavailableError("Strava activity is unavailable")
+        if response.status_code == 429:
+            raise StravaActivityRateLimitError(retry_after_seconds=_positive_int(_header(response.headers, "retry-after")), rate_limit=rate_limit)
+        if response.status_code >= 500:
+            raise TemporaryProviderError("Strava activity service unavailable")
+        raise ProviderError("Strava activity request failed")
+
+    async def fetch_activity_laps(self, *, access_token: SecretStr, external_activity_id: str) -> StravaActivityLaps:
+        response = await self._resource(access_token, external_activity_id, "laps", {})
+        if not isinstance(response.json_body, list):
+            raise InvalidPayloadError("Strava activity laps are invalid")
+        return StravaActivityLaps(tuple(response.json_body), _parse_rate_headers(response.headers))
+
+    async def fetch_activity_streams(self, *, access_token: SecretStr, external_activity_id: str, stream_types: tuple[str, ...]) -> StravaActivityStreams:
+        allowed={"time","distance","heartrate","watts","cadence","altitude","velocity_smooth","latlng"}
+        if not stream_types or any(item not in allowed for item in stream_types):
+            raise ValueError("Invalid Strava stream selection")
+        response = await self._resource(access_token, external_activity_id, "streams", {"keys": ",".join(stream_types), "key_by_type": "true"})
+        if not isinstance(response.json_body, Mapping):
+            raise InvalidPayloadError("Strava activity streams are invalid")
+        return StravaActivityStreams(response.json_body, _parse_rate_headers(response.headers))
+
+    async def _resource(self, access_token: SecretStr, external_activity_id: str, suffix: str, params: Mapping[str, object]) -> StravaApiResponse:
+        if not external_activity_id.isdecimal() or int(external_activity_id)<=0:raise ValueError("Invalid Strava activity identifier")
+        response=await self._transport.get_json(f"{self._api_base_url}/activities/{external_activity_id}/{suffix}",headers={"Authorization":f"Bearer {access_token.get_secret_value()}","Accept":"application/json"},params=params,timeout=self._timeout)
+        rate=_parse_rate_headers(response.headers)
+        if response.status_code==200:return response
+        if response.status_code in {401,403}:raise AuthenticationError("Strava activity authorization rejected")
+        if response.status_code in {404,410}:raise StravaActivityUnavailableError("Strava activity is unavailable")
+        if response.status_code==429:raise StravaActivityRateLimitError(retry_after_seconds=_positive_int(_header(response.headers,"retry-after")),rate_limit=rate)
+        if response.status_code>=500:raise TemporaryProviderError("Strava activity service unavailable")
+        raise ProviderError("Strava activity request failed")
     def __repr__(self) -> str:
         return "<StravaActivityClient provider='strava'>"
 
