@@ -405,3 +405,5 @@ Location retention is disabled by default. `latlng` is neither requested nor per
 
 `GET /activities/{activity_id}/evidence` is athlete-owned and response-bounded. It exposes supported factual streams only, never `latlng`; route output contains a polyline only when location retention is enabled. This sprint adds no analytics interpretation, sport metrics, observations, recommendations, coaching or AI.
 
+
+La versión 0.6C consume únicamente resúmenes y evidencia almacenada; no solicita datos adicionales al proveedor durante el recálculo.

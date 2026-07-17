@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.v1.routes.activities import router as activities_router
+from app.api.v1.routes.activity_metrics import router as activity_metrics_router
 from app.api.v1.routes.dashboard import router as dashboard_router
 from app.api.v1.routes.strava_integrations import router as strava_integrations_router
 from app.api.v1.routes.strava_imports import router as strava_imports_router
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
 
     application.include_router(health_router)
     application.include_router(activities_router)
+    application.include_router(activity_metrics_router)
     application.include_router(dashboard_router)
     application.include_router(strava_integrations_router)
     application.include_router(strava_imports_router)

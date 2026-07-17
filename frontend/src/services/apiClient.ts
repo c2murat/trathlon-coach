@@ -11,6 +11,7 @@
   EnrichmentStart,
   EnrichmentStatus,
   ActivityEvidence,
+  ActivityMetrics,
   EvidenceStart,
   EvidenceJob,
   StravaStatus,
@@ -29,6 +30,8 @@ export interface ApiClient {
   startEnrichment?(activityIds:string[],limit?:number):Promise<EnrichmentStart>;
   enrichmentStatus?(jobId:string):Promise<EnrichmentStatus>;
   activityEvidence?(activityId:string):Promise<ActivityEvidence>;
+  activityMetrics?(activityId:string):Promise<ActivityMetrics>;
+  recalculateMetrics?(activityId:string):Promise<ActivityMetrics>;
   startEvidence?(activityIds:string[],includeLocation:boolean):Promise<EvidenceStart>;
   evidenceStatus?(jobId:string):Promise<EvidenceJob>;
   latestImport(): Promise<ImportStatus>;
@@ -68,6 +71,10 @@ export class FetchApiClient implements ApiClient {
   startEnrichment(activityIds:string[],limit=activityIds.length) { return this.request<EnrichmentStart>("/integrations/strava/enrichments", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({activity_ids:activityIds,limit}) }); }
 
   enrichmentStatus(jobId:string) { return this.request<EnrichmentStatus>("/integrations/strava/enrichments/" + encodeURIComponent(jobId)); }
+
+  activityMetrics(activityId:string) { return this.request<ActivityMetrics>("/activities/" + encodeURIComponent(activityId) + "/metrics"); }
+
+  recalculateMetrics(activityId:string) { return this.request<ActivityMetrics>("/activities/" + encodeURIComponent(activityId) + "/metrics/recalculate", {method:"POST"}); }
 
   activityEvidence(activityId:string) { return this.request<ActivityEvidence>("/activities/" + encodeURIComponent(activityId) + "/evidence"); }
 

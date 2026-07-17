@@ -19,3 +19,5 @@ __all__ = [
     "User",
     "WebhookEvent",
 ]
+
+from app.db.models.metrics import ActivityMetric

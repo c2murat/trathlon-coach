@@ -286,3 +286,13 @@ An LLM may be considered only in a later explicitly approved sprint, after deter
 - **Explicit exclusions:** Metrics, observations, recommendations, coaching, AI, planning, Garmin, editing, social features, segments, and live tracking.
 - **Next sprint:** Version 0.6C — deterministic factual metrics and coverage rules. It has not begun.
 
+
+## Version 0.6C — métricas factuales
+
+La primera implementación de 0.6C calcula métricas deterministas sobre actividades ya importadas. Cada resultado conserva estado (`available`, `partial`, `unavailable`, `not_applicable`), unidad, fuente, muestras, cobertura, notas y motivo seguro de indisponibilidad. El algoritmo estable es `0.6c.1`.
+
+La persistencia usa `activity_metrics`, relacionada con `completed_activities`, con unicidad por actividad, métrica y versión. Los endpoints son `GET /activities/{activity_id}/metrics` y `POST /activities/{activity_id}/metrics/recalculate`; el recálculo es aislado e idempotente.
+
+Incluye tiempo, distancia, desnivel, velocidades, frecuencia cardiaca, potencia, cadencia, vueltas y muestras de streams. Las fuentes son resumen almacenado y streams disponibles; no se interpolan streams ausentes o desalineados. Los valores no numéricos, NaN e infinitos se descartan y nunca se convierten silenciosamente en cero.
+
+Quedan fuera TSS, TRIMP, NP, IF, VI, GAP, SWOLF, zonas, umbrales, carga, recuperación, fatiga, readiness, coaching, recomendaciones, planificación e IA. No hay recálculo masivo automático ni worker independiente.

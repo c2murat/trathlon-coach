@@ -1,4 +1,4 @@
-from datetime import timedelta
+﻿from datetime import timedelta
 from uuid import UUID
 
 import pytest
@@ -132,6 +132,7 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
         "activity_streams",
         "activity_route_evidence",
         "activity_evidence_states",
+        "activity_metrics",
     }
     assert set(Base.metadata.tables) == expected_tables
     assert activity.start_at.utcoffset() == timedelta(0)

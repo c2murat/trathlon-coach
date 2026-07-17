@@ -170,3 +170,13 @@ This specification adds no packages, models, migrations, endpoints, jobs, calcul
 ### Version 0.6B evidence storage decision
 
 Version 0.6B implements Level 0/1 evidence needed by later metrics: normalized laps, bounded aligned streams, provenance and coverage. Values use JSONB on PostgreSQL and JSON on SQLite behind one portable type. This is evidence storage, not a calculation layer. Downsampling metadata and checksums must be considered by future metric coverage rules; no Version 0.6C formula is implemented here.
+
+## Version 0.6C — métricas factuales
+
+La primera implementación de 0.6C calcula métricas deterministas sobre actividades ya importadas. Cada resultado conserva estado (`available`, `partial`, `unavailable`, `not_applicable`), unidad, fuente, muestras, cobertura, notas y motivo seguro de indisponibilidad. El algoritmo estable es `0.6c.1`.
+
+La persistencia usa `activity_metrics`, relacionada con `completed_activities`, con unicidad por actividad, métrica y versión. Los endpoints son `GET /activities/{activity_id}/metrics` y `POST /activities/{activity_id}/metrics/recalculate`; el recálculo es aislado e idempotente.
+
+Incluye tiempo, distancia, desnivel, velocidades, frecuencia cardiaca, potencia, cadencia, vueltas y muestras de streams. Las fuentes son resumen almacenado y streams disponibles; no se interpolan streams ausentes o desalineados. Los valores no numéricos, NaN e infinitos se descartan y nunca se convierten silenciosamente en cero.
+
+Quedan fuera TSS, TRIMP, NP, IF, VI, GAP, SWOLF, zonas, umbrales, carga, recuperación, fatiga, readiness, coaching, recomendaciones, planificación e IA. No hay recálculo masivo automático ni worker independiente.

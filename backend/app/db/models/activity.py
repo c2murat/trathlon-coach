@@ -18,11 +18,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UTCDateTime, UUIDPrimaryKeyMixin
+from app.db.models.metrics import ActivityMetric
 
 if TYPE_CHECKING:
     from app.db.models.athlete import AthleteProfile
     from app.db.models.integration import IntegrationAccount
     from app.db.models.evidence import ActivityEvidenceState, ActivityLap, ActivityRouteEvidence, ActivityStream
+    from app.db.models.metrics import ActivityMetric
 
 
 class CompletedActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -126,6 +128,7 @@ class CompletedActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     streams: Mapped[list[ActivityStream]] = relationship(back_populates="completed_activity", cascade="all, delete-orphan")
     route_evidence: Mapped[ActivityRouteEvidence | None] = relationship(back_populates="completed_activity", cascade="all, delete-orphan", uselist=False)
     evidence_state: Mapped[ActivityEvidenceState | None] = relationship(back_populates="completed_activity", cascade="all, delete-orphan", uselist=False)
+    metrics: Mapped[list[ActivityMetric]] = relationship(cascade="all, delete-orphan")
     source_integration_account: Mapped[IntegrationAccount | None] = relationship(
         back_populates="completed_activities"
     )
