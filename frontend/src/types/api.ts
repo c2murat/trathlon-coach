@@ -22,3 +22,12 @@ export interface EvidenceStart { job_id:string;status:SyncStatus; }
 export interface EvidenceJob { job_id:string;status:SyncStatus;selected_count:number;laps_imported:number;streams_imported:number;activities_completed:number;skipped_count:number;failed_count:number;last_activity_id:string|null;started_at:string|null;updated_at:string;completed_at:string|null;next_resume_at:string|null;error_category:string|null;location_retention_enabled:boolean; }
 export interface ActivityMetric { key:string; label:string; status:'available'|'partial'|'unavailable'|'not_applicable'; value:number|null; unit:string|null; source:string|null; sample_count:number|null; coverage_ratio:number|null; quality_notes:string[]; unavailable_reason:string|null; }
 export interface ActivityMetrics { activity_id:string; algorithm_version:string; calculated_at:string|null; metrics:ActivityMetric[]; coverage_summary:Record<string,number>; warnings:string[]; }
+export interface PerformanceZone {number:number;name:string;lower:number;upper:number|null;unit:string;direction:string;reference:number;algorithm_version:string}
+export interface PerformanceProfile {id:string;effective_from:string;data_origin:string;source_note:string|null;resting_heart_rate_bpm:number|null;maximum_heart_rate_bpm:number|null;weight_kg:number|null;cycling_ftp_watts:number|null;cycling_threshold_heart_rate_bpm:number|null;running_threshold_heart_rate_bpm:number|null;running_threshold_pace_seconds_per_km:number|null;swimming_css_seconds_per_100m:number|null;preferred_pool_length_metres:number|null;algorithm_version:string;created_at:string;zones:Record<string,PerformanceZone[]>}
+
+export type PerformanceReferenceSport = "cycling"|"running"|"swimming"|"general";
+export type PerformanceReferenceMetric = "heart_rate"|"power"|"pace"|"swim_pace"|"weight";
+export type PerformanceReferenceUnit = "bpm"|"W"|"s/km"|"s/100m"|"kg";
+export type PerformanceReferenceOrigin = "manual"|"measured"|"imported"|"derived"|"estimated";
+export type PerformanceReferenceQuality = "low"|"medium"|"high"|"confirmed";
+export interface PerformanceReference { id:string; athlete_profile_id:string; sport:PerformanceReferenceSport; metric_type:PerformanceReferenceMetric; value:number; unit:PerformanceReferenceUnit; data_origin:PerformanceReferenceOrigin; quality_level:PerformanceReferenceQuality; effective_from:string; measured_at:string|null; calculation_method:string|null; algorithm_version:string|null; source_note:string|null; created_at:string; updated_at:string; effective?:boolean; }

@@ -1,0 +1,8 @@
+﻿export function paceToSeconds(minutes:string,seconds:string):number|null{if(minutes===""||seconds==="")return null;return Number(minutes)*60+Number(seconds)}
+export function secondsToPace(value:number|null):{minutes:string;seconds:string}{if(value===null||!Number.isFinite(value))return {minutes:"",seconds:""};const total=Math.max(0,Math.round(value));return {minutes:String(Math.floor(total/60)),seconds:String(total%60).padStart(2,"0")}}
+export const cssToSeconds=paceToSeconds;
+export const secondsToCss=secondsToPace;
+export function formatPace(seconds:number):string { const total=Math.max(0,Math.round(Number.isFinite(seconds)?seconds:0)); return `${Math.floor(total/60)}:${String(total%60).padStart(2,"0")} min/km`; }
+export function formatSwimPace(seconds:number):string { const total=Math.max(0,Math.round(Number.isFinite(seconds)?seconds:0)); return `${Math.floor(total/60)}:${String(total%60).padStart(2,"0")} min/100 m`; }
+export function formatPaceRange(lower:number|null, upper:number|null):string { if(lower===null&&upper===null)return "Sin datos"; if(upper===null)return `Más lento que ${formatPace(lower as number)}`; if(lower===null)return `Más rápido que ${formatPace(upper)}`; return `${formatPace(lower).replace(" min/km","")}–${formatPace(upper)}`; }
+export function formatSwimPaceRange(lower:number|null, upper:number|null):string { if(lower===null&&upper===null)return "Sin datos"; if(upper===null)return `Más lento que ${formatSwimPace(lower as number)}`; if(lower===null)return `Más rápido que ${formatSwimPace(upper)}`; return `${formatSwimPace(lower).replace(" min/100 m","")}–${formatSwimPace(upper)}`; }

@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.v1.routes.activities import router as activities_router
+from app.api.v1.routes.performance_profiles import router as performance_profiles_router
+from app.api.v1.routes.performance_references import router as performance_references_router
+from app.api.v1.routes.performance_zones import router as performance_zones_router
 from app.api.v1.routes.activity_metrics import router as activity_metrics_router
 from app.api.v1.routes.dashboard import router as dashboard_router
 from app.api.v1.routes.strava_integrations import router as strava_integrations_router
@@ -22,10 +25,10 @@ def create_app() -> FastAPI:
     application = FastAPI(title=settings.service_name, version="0.1.0")
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.frontend_origin],
-        allow_credentials=False,
-        allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Accept", "Content-Type"],
+        allow_origins=[x.strip().rstrip("/") for x in (settings.frontend_origins or (settings.frontend_origin + ",http://localhost:5173")).split(",") if x.strip()],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     if settings.environment not in {"development", "test"}:
         raise RuntimeError(
@@ -65,6 +68,9 @@ def create_app() -> FastAPI:
 
     application.include_router(health_router)
     application.include_router(activities_router)
+    application.include_router(performance_profiles_router)
+    application.include_router(performance_references_router)
+    application.include_router(performance_zones_router)
     application.include_router(activity_metrics_router)
     application.include_router(dashboard_router)
     application.include_router(strava_integrations_router)
@@ -75,3 +81,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

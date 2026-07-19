@@ -133,6 +133,8 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
         "activity_route_evidence",
         "activity_evidence_states",
         "activity_metrics",
+        "athlete_performance_profile_versions",
+        "athlete_performance_references",
     }
     assert set(Base.metadata.tables) == expected_tables
     assert activity.start_at.utcoffset() == timedelta(0)

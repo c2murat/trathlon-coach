@@ -176,6 +176,9 @@ def test_cors_allows_only_the_configured_frontend_origin(activity_client):
         "http://127.0.0.1:5173"
     )
 
+    localhost = client.options("/activities", headers={"Origin":"http://localhost:5173","Access-Control-Request-Method":"GET"})
+    assert localhost.headers["access-control-allow-origin"] == "http://localhost:5173"
+
     rejected = client.options(
         "/activities",
         headers={

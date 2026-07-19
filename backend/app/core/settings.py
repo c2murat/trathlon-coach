@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     log_level: str = "info"
+    frontend_origins: str | None = Field(default=None, validation_alias="FRONTEND_ORIGINS")
     frontend_origin: str = Field(
         default="http://127.0.0.1:5173",
         validation_alias="FRONTEND_ORIGIN",

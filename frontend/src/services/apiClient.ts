@@ -41,6 +41,14 @@ export interface ApiClient {
   dashboardTrends(): Promise<WeeklyTrend[]>;
   dashboardConsistency(): Promise<Consistency>;
   connectUrl(): string;
+  performanceProfile?():Promise<{profile:any|null;derived:Record<string,number>}>;
+  performanceProfileHistory?():Promise<any[]>;
+  createPerformanceProfile?(input:Record<string,unknown>):Promise<any>;
+  performanceReferences?(query?:string):Promise<import("../types/api").PerformanceReference[]>;
+  performanceReferenceHistory?(query?:string):Promise<import("../types/api").PerformanceReference[]>;
+  createPerformanceReference?(input:Record<string,unknown>):Promise<import("../types/api").PerformanceReference>;
+  performanceReference?(id:string):Promise<import("../types/api").PerformanceReference>;
+  performanceZones?(query?:string):Promise<any[]>;
 }
 
 export class FetchApiClient implements ApiClient {
@@ -104,6 +112,17 @@ export class FetchApiClient implements ApiClient {
 
   dashboardConsistency() { return this.request<Consistency>("/dashboard/consistency?weeks=12"); }
 
+  performanceProfile(){return this.request<any>("/athlete/performance-profile")}
+  performanceProfileHistory(){return this.request<any[]>("/athlete/performance-profile/history")} 
+  createPerformanceProfile?(input:Record<string,unknown>){return this.request<any>("/athlete/performance-profile/versions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
+
+  performanceReferences(query=""){return this.request<any[]>("/athlete/performance-references"+(query?"?"+query:""))}
+  performanceReferenceHistory(query=""){return this.request<any[]>("/athlete/performance-references/history"+(query?"?"+query:""))}
+  createPerformanceReference(input:Record<string,unknown>){return this.request<any>("/athlete/performance-references",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
+  performanceReference(id:string){return this.request<any>("/athlete/performance-references/"+encodeURIComponent(id))}
+
+  performanceZones(query=""){return this.request<any[]>("/athlete/performance-zones"+(query?"?"+query:""))}
+
   connectUrl() {
     return this.baseUrl + "/integrations/strava/connect";
   }
@@ -116,13 +135,18 @@ export class FetchApiClient implements ApiClient {
       headers,
     });
     if (!response.ok) {
-      throw new Error("TriCoach API request failed (" + response.status + ")");
+      let detail = "";
+      try { const body = await response.json(); detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body); } catch { detail = response.statusText; }
+      throw new Error(`TriCoach API request failed (${response.status}): ${detail}`);
     }
     return (await response.json()) as T;
   }
 }
 
 export const apiClient = new FetchApiClient();
+
+
+
 
 
 

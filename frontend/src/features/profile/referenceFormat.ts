@@ -1,0 +1,5 @@
+﻿import {formatPace,formatSwimPace} from "./profileFormat";
+export function getPerformanceReferenceLabel(sport:string,metric:string){if(metric==="power")return "FTP";if(metric==="heart_rate")return "Frecuencia cardíaca umbral";if(metric==="pace")return "Ritmo umbral";if(metric==="swim_pace")return "CSS";return "Referencia de rendimiento";}
+export function getReferenceOriginLabel(origin:string){return ({manual:"Introducida manualmente",measured:"Medición automática",estimated:"Estimada",imported:"Importada",derived:"Derivada"} as Record<string,string>)[origin]??"Origen no especificado";}
+export function getReferenceQualityLabel(quality:string|null|undefined){return ({confirmed:"Confirmada",high:"Alta",medium:"Media",low:"Baja"} as Record<string,string>)[quality??""]??"Calidad no especificada";}
+export function formatReferenceValue(sport:string,metric:string,value:number){if(metric==="pace")return formatPace(value);if(metric==="swim_pace")return formatSwimPace(value);if(metric==="heart_rate")return `${Math.round(value)} ppm`;if(metric==="power")return `${Math.round(value)} W`;return String(value);}

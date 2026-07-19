@@ -21,3 +21,7 @@ __all__ = [
 ]
 
 from app.db.models.metrics import ActivityMetric
+
+from app.db.models.performance_profile import AthletePerformanceProfileVersion
+
+from app.db.models.performance_reference import AthletePerformanceReference
