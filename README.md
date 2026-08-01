@@ -426,3 +426,37 @@ Perfil de rendimiento histï¿½rico, API mï¿½nima, zonas dinï¿½micas y CORS local 
 Las referencias granulares se almacenan histï¿½ricamente en thlete_performance_references; los snapshots 0.7A.2 permanecen como histï¿½rico agregado durante la transiciï¿½n. Las nuevas referencias granulares son la fuente de verdad para nuevas altas. Las zonas continï¿½an calculï¿½ndose bajo demanda y no se persisten.
 
 Endpoints: GET/POST /athlete/performance-references, GET /history y GET /{reference_id}. Soportan filtros por deporte, mï¿½trica y fecha efectiva.
+
+## Versiï¿½n 0.7B.1 ï¿½ Dominio de carga
+
+Se aï¿½adiï¿½ un dominio puro y determinista para estimar puntos de carga por actividad. Incluye mï¿½todos de potencia ciclista, frecuencia cardiaca, ritmo de carrera, CSS de nataciï¿½n y fallback conservador por duraciï¿½n. No incluye persistencia, API, frontend, TSS oficial, TRIMP, CTL, ATL, TSB ni entrenador.
+
+## Versiï¿½n 0.7B.2 ï¿½ Persistencia de carga por actividad
+
+La carga determinista 0.7B.1 puede persistirse por actividad con algoritmo versionado e idempotencia por actividad y versiï¿½n. Se selecciona el perfil histï¿½rico mï¿½s reciente con `effective_from` anterior o igual al inicio de la actividad. No hay endpoints ni frontend; CTL, ATL, TSB, TSS/TRIMP oficiales y agregados permanecen fuera de alcance.
+
+## Versiï¿½n 0.7B.3 ï¿½ API de carga por actividad
+
+Se exponen `GET /activities/{activity_id}/training-load` para consultar ï¿½nicamente cargas persistidas y `POST /activities/{activity_id}/training-load/recalculate` para calcular o recalcular explï¿½citamente. El GET nunca calcula; una carga puede ser nula con cobertura y motivo explï¿½citos. Se mantiene el aislamiento por atleta, el perfil histï¿½rico vigente y la idempotencia por versiï¿½n de algoritmo. No hay frontend, CTL, ATL, TSB, agregados, entrenador ni IA.
+
+## Versiï¿½n 0.7C.1 ï¿½ Agregaciï¿½n temporal pura
+
+Se aï¿½adiï¿½ el dominio inmutable para agregados diarios y semanales de cargas ya calculadas. Usa fechas locales IANA y semanas ISO, valida versiones estrictamente, ignora cargas nulas al sumar pero las contabiliza, y no persiste ni expone API. CTL, ATL, TSB y series continuas permanecen fuera de alcance.
+
+## Versiï¿½n 0.7C.2 ï¿½ Persistencia de agregados de carga
+
+Se aï¿½adieron agregados diarios y semanales histï¿½ricos a partir exclusivamente de `ActivityTrainingLoad`. Los agregados se guardan con zona horaria IANA, versiï¿½n de carga fuente y versiï¿½n de agregaciï¿½n, cobertura, calidad, advertencias e identificadores de actividad. Las claves ï¿½nicas permiten coexistencia segura por configuraciï¿½n.
+
+El recï¿½lculo diario usa un intervalo local inclusivo convertido a UTC mediante lï¿½mite superior exclusivo. El recï¿½lculo semanal expande el rango a lunes-domingo ISO completos. No se persisten periodos vacï¿½os; sï¿½ se conservan periodos con actividades y cargas nulas. Las actividades sin carga persistida quedan excluidas y las cargas cero se conservan. Las operaciones son idempotentes, actualizan filas existentes y eliminan sobrantes ï¿½nicamente dentro de la configuraciï¿½n y rango afectados.
+
+La versiï¿½n 0.7C.2 no aï¿½ade API ni frontend, y quedan fuera CTL, ATL, TSB, series continuas, recomendaciones y entrenador IA.
+
+## Versión 0.7D.1
+
+Se añadió una capa TypeScript para consultar agregados diarios y semanales de carga mediante `GET /training-load/daily` y `GET /training-load/weekly`. Incluye DTOs tipados, validación de respuestas en arrays y formateadores puros en español para carga, duración, fechas, semanas ISO, cobertura y calidad.
+
+Esta fase no incorpora una pantalla visual, recálculos automáticos, CTL, ATL ni TSB, y no modifica el backend.
+
+## Versión 0.7D.2A
+
+Estabilización de AppShell y pruebas accesibles para saludo horario y navegación móvil, sin cambios de backend ni nuevas funcionalidades.

@@ -21,4 +21,4 @@ class ActivityMetric(UUIDPrimaryKeyMixin, TimestampMixin, Base):
  quality_notes:Mapped[list[str]]=mapped_column(JSON_DOCUMENT,nullable=False,default=list)
  unavailable_reason:Mapped[str|None]=mapped_column(String(64))
  calculated_at:Mapped[object]=mapped_column(UTCDateTime(),nullable=False)
- completed_activity:Mapped["CompletedActivity"]=relationship()
+ completed_activity:Mapped["CompletedActivity"]=relationship(back_populates="metrics")

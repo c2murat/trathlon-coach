@@ -1,0 +1,5 @@
+export type TrainingLoadCoverage = "complete" | "partial" | "unavailable";
+export type TrainingLoadQuality = "none" | "low" | "medium" | "high";
+export interface DailyTrainingLoadAggregate { id:string; local_date:string; timezone_name:string; source_load_algorithm_version:string; aggregation_algorithm_version:string; total_load:number; activity_count:number; loaded_activity_count:number; null_load_activity_count:number; total_duration_seconds:number; coverage:TrainingLoadCoverage; quality:TrainingLoadQuality; warnings:string[]; activity_ids:string[]; calculated_at:string; }
+export interface WeeklyTrainingLoadAggregate { id:string; iso_year:number; iso_week:number; week_start_date:string; week_end_date:string; timezone_name:string; source_load_algorithm_version:string; aggregation_algorithm_version:string; total_load:number; activity_count:number; loaded_activity_count:number; null_load_activity_count:number; total_duration_seconds:number; coverage:TrainingLoadCoverage; quality:TrainingLoadQuality; warnings:string[]; activity_ids:string[]; calculated_at:string; }
+export interface TrainingLoadDateRange { startDate:string; endDate:string; timezoneName:string; }

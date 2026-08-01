@@ -25,3 +25,6 @@ from app.db.models.metrics import ActivityMetric
 from app.db.models.performance_profile import AthletePerformanceProfileVersion
 
 from app.db.models.performance_reference import AthletePerformanceReference
+from app.db.models.training_load import ActivityTrainingLoad
+
+from app.db.models.training_load_aggregate import AthleteDailyTrainingLoad, AthleteWeeklyTrainingLoad

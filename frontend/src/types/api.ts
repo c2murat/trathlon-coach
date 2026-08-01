@@ -31,3 +31,5 @@ export type PerformanceReferenceUnit = "bpm"|"W"|"s/km"|"s/100m"|"kg";
 export type PerformanceReferenceOrigin = "manual"|"measured"|"imported"|"derived"|"estimated";
 export type PerformanceReferenceQuality = "low"|"medium"|"high"|"confirmed";
 export interface PerformanceReference { id:string; athlete_profile_id:string; sport:PerformanceReferenceSport; metric_type:PerformanceReferenceMetric; value:number; unit:PerformanceReferenceUnit; data_origin:PerformanceReferenceOrigin; quality_level:PerformanceReferenceQuality; effective_from:string; measured_at:string|null; calculation_method:string|null; algorithm_version:string|null; source_note:string|null; created_at:string; updated_at:string; effective?:boolean; }
+
+export interface TrainingLoadResponse {activity_id:string;load_value:number|null;method:string;unit:string;coverage:string;quality:string|null;reason:string|null;algorithm_version:string;duration_seconds:number|null;effective_intensity:number|null;reference_value:number|null;reference_metric:string|null;source_metrics:Record<string,unknown>;warnings:string[];calculated_at:string;}

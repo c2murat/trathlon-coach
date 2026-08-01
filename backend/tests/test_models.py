@@ -1,4 +1,4 @@
-﻿from datetime import timedelta
+from datetime import timedelta
 from uuid import UUID
 
 import pytest
@@ -134,8 +134,10 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
         "activity_evidence_states",
         "activity_metrics",
         "athlete_performance_profile_versions",
-        "athlete_performance_references",
-    }
+        "athlete_performance_references",            "activity_training_loads",
+            "athlete_daily_training_loads",
+            "athlete_weekly_training_loads",
+        }
     assert set(Base.metadata.tables) == expected_tables
     assert activity.start_at.utcoffset() == timedelta(0)
     assert all(
@@ -248,4 +250,8 @@ def test_oauth_credential_repr_redacts_secrets() -> None:
     assert "refresh-super-secret" not in rendered
     assert "access_token" not in rendered
     assert "refresh_token" not in rendered
+
+
+
+
 

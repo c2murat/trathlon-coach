@@ -7,10 +7,15 @@ from pydantic import BaseModel,model_validator
 from sqlalchemy.orm import Session
 from app.api.dependencies.auth import AuthenticatedUser,get_current_user
 from app.application.queries.activity_summaries import ActivitySummaryQuery
+from app.application.training_load import TrainingLoadApplication,ALGORITHM_VERSION
+from app.db.models.training_load import ActivityTrainingLoad
+from app.db.models import AthleteProfile
 from app.db.session import get_db_session
 router=APIRouter(prefix="/activities",tags=["activities"])
 class ActivitySummaryResponse(BaseModel):
  id:UUID;external_activity_id:str|None;name:str;sport_type:str;start_time:datetime;athlete_timezone:str;distance_metres:float|None;moving_time_seconds:int|None;elapsed_time_seconds:int;elevation_metres:float|None;average_heart_rate:float|None;average_watts:float|None;trainer:bool|None;manual:bool|None;visibility:str|None
+class TrainingLoadResponse(BaseModel):
+ activity_id:UUID;load_value:float|None;method:str;unit:str;coverage:str;quality:str|None;reason:str|None;algorithm_version:str;duration_seconds:float|None;effective_intensity:float|None;reference_value:float|None;reference_metric:str|None;source_metrics:dict;warnings:list;calculated_at:datetime
 class ActivityPageResponse(BaseModel):total:int;limit:int;offset:int;items:list[ActivitySummaryResponse]
 class FilterOptionsResponse(BaseModel):sport_types:list[str];visibility_values:list[str];minimum_activity_date:date|None;maximum_activity_date:date|None
 class ActivityDetailResponse(ActivitySummaryResponse):
@@ -31,10 +36,26 @@ def list_activities(limit:int=Query(20,ge=1,le=100),offset:int=Query(0,ge=0),spo
 @router.get("/filter-options",response_model=FilterOptionsResponse)
 def filter_options(current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
  x=ActivitySummaryQuery(session).filter_options(current_user.id);return FilterOptionsResponse(sport_types=list(x.sport_types),visibility_values=list(x.visibility_values),minimum_activity_date=x.minimum_activity_date,maximum_activity_date=x.maximum_activity_date)
+@router.get("/{activity_id}/training-load",response_model=TrainingLoadResponse)
+def training_load_get(activity_id:UUID,algorithm_version:str=Query(ALGORITHM_VERSION,min_length=1,max_length=32),current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
+ athlete=session.scalar(__import__("sqlalchemy").select(AthleteProfile).where(AthleteProfile.user_id==current_user.id))
+ try: row=TrainingLoadApplication(session).get_persisted(athlete.id if athlete else current_user.id,activity_id,algorithm_version)
+ except LookupError: raise HTTPException(404,detail={"code":"activity_not_found"})
+ if not row: raise HTTPException(404,detail={"code":"training_load_not_found"})
+ return TrainingLoadResponse(activity_id=activity_id,**{k:getattr(row,k) for k in ("load_value","method","unit","coverage","quality","reason","algorithm_version","duration_seconds","effective_intensity","reference_value","reference_metric","source_metrics","warnings","calculated_at")})
+@router.post("/{activity_id}/training-load/recalculate",response_model=TrainingLoadResponse)
+def training_load_recalculate(activity_id:UUID,current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
+ athlete=session.scalar(__import__("sqlalchemy").select(AthleteProfile).where(AthleteProfile.user_id==current_user.id))
+ try: result=TrainingLoadApplication(session).calculate_for_activity(athlete.id if athlete else current_user.id,activity_id); session.commit(); row=TrainingLoadApplication(session).get_persisted(athlete.id if athlete else current_user.id,activity_id)
+ except LookupError: session.rollback(); raise HTTPException(404,detail={"code":"activity_not_found"})
+ return TrainingLoadResponse(activity_id=activity_id,**{k:getattr(row,k) for k in ("load_value","method","unit","coverage","quality","reason","algorithm_version","duration_seconds","effective_intensity","reference_value","reference_metric","source_metrics","warnings","calculated_at")})
+
 @router.get("/{activity_id}",response_model=ActivityDetailResponse)
 def activity_detail(activity_id:UUID,current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
  a=ActivitySummaryQuery(session).detail(current_user.id,activity_id)
  if not a:raise HTTPException(404,detail={"code":"activity_not_found"})
  return ActivityDetailResponse(id=a.id,external_activity_id=a.external_activity_id,name=a.name,sport_type=a.sport,start_time=a.start_at,athlete_timezone=a.timezone,distance_metres=a.distance_m,moving_time_seconds=a.moving_time_s,elapsed_time_seconds=a.elapsed_time_s,elevation_metres=a.elevation_gain_m,average_heart_rate=a.average_heart_rate_bpm,max_heart_rate=a.max_heart_rate_bpm,average_speed_metres_per_second=a.average_speed_mps,max_speed_metres_per_second=a.max_speed_mps,average_cadence=a.average_cadence_rpm,average_watts=a.average_power_w,weighted_average_watts=a.weighted_average_power_w,trainer=a.indoor,commute=a.commute,manual=a.manual,visibility=a.visibility,created_at=a.created_at,updated_at=a.updated_at,provider_description=a.provider_description,calories=a.calories_kcal,device_name=a.device_name,gear_id=a.gear_id,suffer_score=a.suffer_score,perceived_exertion=a.provider_perceived_exertion,total_work_joules=a.total_work_j,kilojoules=a.kilojoules,average_temperature_celsius=a.average_temperature_c,max_watts=a.max_power_w,workout_type=a.workout_type,achievement_count=a.achievement_count,kudos_count=a.kudos_count,athlete_count=a.athlete_count,photo_count=a.photo_count,has_heartrate=a.has_heartrate,has_power_meter=a.has_power_meter,hide_from_home=a.hide_from_home,private=a.private,flagged=a.flagged,enriched_at=a.enriched_at,enrichment_status=a.enrichment_status,enrichment_error_category=a.enrichment_error_category)
+
+
 
 

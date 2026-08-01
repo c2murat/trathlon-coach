@@ -128,7 +128,11 @@ class CompletedActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     streams: Mapped[list[ActivityStream]] = relationship(back_populates="completed_activity", cascade="all, delete-orphan")
     route_evidence: Mapped[ActivityRouteEvidence | None] = relationship(back_populates="completed_activity", cascade="all, delete-orphan", uselist=False)
     evidence_state: Mapped[ActivityEvidenceState | None] = relationship(back_populates="completed_activity", cascade="all, delete-orphan", uselist=False)
-    metrics: Mapped[list[ActivityMetric]] = relationship(cascade="all, delete-orphan")
+    metrics: Mapped[list[ActivityMetric]] = relationship(
+        back_populates="completed_activity",
+        cascade="all, delete-orphan",
+    )
     source_integration_account: Mapped[IntegrationAccount | None] = relationship(
         back_populates="completed_activities"
     )
+

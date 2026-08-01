@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   ActivityPage,
   ActivityDetail,
   ActivityFilterOptions,
@@ -14,8 +14,9 @@
   ActivityMetrics,
   EvidenceStart,
   EvidenceJob,
-  StravaStatus,
+  StravaStatus
 } from "../types/api";
+import type { DailyTrainingLoadAggregate, WeeklyTrainingLoadAggregate, TrainingLoadDateRange } from "../types/trainingLoad";
 
 const configuredBaseUrl =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -27,6 +28,8 @@ export interface ApiClient {
   browseActivities(query: string): Promise<ActivityPage>;
   activityDetail(id: string): Promise<ActivityDetail>;
   activityFilterOptions(): Promise<ActivityFilterOptions>;
+  trainingLoad?(activityId:string,algorithmVersion?:string):Promise<import("../types/api").TrainingLoadResponse>;
+  recalculateTrainingLoad?(activityId:string):Promise<import("../types/api").TrainingLoadResponse>;
   startEnrichment?(activityIds:string[],limit?:number):Promise<EnrichmentStart>;
   enrichmentStatus?(jobId:string):Promise<EnrichmentStatus>;
   activityEvidence?(activityId:string):Promise<ActivityEvidence>;
@@ -49,6 +52,8 @@ export interface ApiClient {
   createPerformanceReference?(input:Record<string,unknown>):Promise<import("../types/api").PerformanceReference>;
   performanceReference?(id:string):Promise<import("../types/api").PerformanceReference>;
   performanceZones?(query?:string):Promise<any[]>;
+  getDailyTrainingLoad?(range: TrainingLoadDateRange): Promise<DailyTrainingLoadAggregate[]>;
+  getWeeklyTrainingLoad?(range: TrainingLoadDateRange): Promise<WeeklyTrainingLoadAggregate[]>;
 }
 
 export class FetchApiClient implements ApiClient {
@@ -75,6 +80,8 @@ export class FetchApiClient implements ApiClient {
   activityDetail(id: string) { return this.request<ActivityDetail>("/activities/" + encodeURIComponent(id)); }
 
   activityFilterOptions() { return this.request<ActivityFilterOptions>("/activities/filter-options"); }
+  trainingLoad(activityId:string,algorithmVersion="0.7b.1"){return this.request<import("../types/api").TrainingLoadResponse>(`/activities/${encodeURIComponent(activityId)}/training-load?algorithm_version=${encodeURIComponent(algorithmVersion)}`)}
+  recalculateTrainingLoad(activityId:string){return this.request<import("../types/api").TrainingLoadResponse>(`/activities/${encodeURIComponent(activityId)}/training-load/recalculate`,{method:"POST"})}
 
   startEnrichment(activityIds:string[],limit=activityIds.length) { return this.request<EnrichmentStart>("/integrations/strava/enrichments", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({activity_ids:activityIds,limit}) }); }
 
@@ -123,9 +130,14 @@ export class FetchApiClient implements ApiClient {
 
   performanceZones(query=""){return this.request<any[]>("/athlete/performance-zones"+(query?"?"+query:""))}
 
+  getDailyTrainingLoad(range: TrainingLoadDateRange) { return this.request<unknown[]>("/training-load/daily?" + new URLSearchParams({start_date:range.startDate,end_date:range.endDate,timezone_name:range.timezoneName}).toString()).then(this.requireArray<DailyTrainingLoadAggregate>); }
+  getWeeklyTrainingLoad(range: TrainingLoadDateRange) { return this.request<unknown[]>("/training-load/weekly?" + new URLSearchParams({start_date:range.startDate,end_date:range.endDate,timezone_name:range.timezoneName}).toString()).then(this.requireArray<WeeklyTrainingLoadAggregate>); }
+
   connectUrl() {
     return this.baseUrl + "/integrations/strava/connect";
   }
+
+  private requireArray<T>(value: unknown[]): T[] { if (!Array.isArray(value)) throw new Error("Invalid training load response"); return value as T[]; }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers);
@@ -144,6 +156,10 @@ export class FetchApiClient implements ApiClient {
 }
 
 export const apiClient = new FetchApiClient();
+
+
+
+
 
 
 
