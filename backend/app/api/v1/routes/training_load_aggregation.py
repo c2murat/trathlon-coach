@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import AuthenticatedUser, get_current_user
-from app.application.training_load_aggregation import (
+from app.application.combined_training_load_aggregation import (
     AGGREGATION_ALGORITHM_VERSION,
     InvalidAggregationRangeError,
     TrainingLoadAggregationApplication,
@@ -31,6 +31,10 @@ class DailyTrainingLoadResponse(BaseModel):
     source_load_algorithm_version: str
     aggregation_algorithm_version: str
     total_load: float
+    endurance_load: float
+    strength_load: float
+    strength_session_count: int
+    manual_strength_algorithm_version: str
     activity_count: int
     loaded_activity_count: int
     null_load_activity_count: int
@@ -52,6 +56,10 @@ class WeeklyTrainingLoadResponse(BaseModel):
     source_load_algorithm_version: str
     aggregation_algorithm_version: str
     total_load: float
+    endurance_load: float
+    strength_load: float
+    strength_session_count: int
+    manual_strength_algorithm_version: str
     activity_count: int
     loaded_activity_count: int
     null_load_activity_count: int

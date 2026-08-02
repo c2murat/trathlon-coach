@@ -1,5 +1,6 @@
 from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from app.application.manual_strength import (
     ManualStrengthAthleteNotFoundError,
     ManualStrengthSessionNotFoundError,
 )
+from app.application.combined_training_load_aggregation import TrainingLoadAggregationApplication
 from app.db.models import AthleteProfile, ManualStrengthSession, ManualStrengthTrainingLoad
 from app.db.session import get_db_session
 from app.domains.manual_strength import ALGORITHM_VERSION
@@ -27,6 +29,12 @@ from app.domains.manual_strength import ALGORITHM_VERSION
 router = APIRouter(
     prefix="/manual-strength-sessions", tags=["Manual strength sessions"]
 )
+
+def _recalculate_aggregates(session: Session, athlete_id: UUID, coordinates):
+    application = TrainingLoadAggregationApplication(session)
+    for started_at, timezone_name in set(coordinates):
+        local_date = started_at.astimezone(ZoneInfo(timezone_name)).date()
+        application.recalculate_all(athlete_id, start_date=local_date, end_date=local_date, timezone_name=timezone_name)
 
 
 def _active_athlete(session: Session, user: AuthenticatedUser) -> AthleteProfile:
@@ -133,6 +141,7 @@ def create_session(
             notes=body.notes,
         )
         load = _current_load(session, row.id)
+        _recalculate_aggregates(session, athlete.id, [(row.started_at, row.timezone_name)])
         session.commit()
         return _session_response(row, load)
     except ManualStrengthApplicationError as error:
@@ -141,6 +150,9 @@ def create_session(
     except SQLAlchemyError as error:
         session.rollback()
         raise _database_error() from error
+    except Exception as error:
+        session.rollback()
+        raise HTTPException(500, detail={"code": "manual_strength_aggregation_error"}) from error
 
 
 @router.get("", response_model=list[ManualStrengthSessionResponse])
@@ -199,10 +211,14 @@ def update_session(
         values["body_regions"] = tuple(values["body_regions"])
     athlete = _active_athlete(session, current_user)
     try:
-        row = ManualStrengthApplication(session).update_manual_strength_session(
+        application = ManualStrengthApplication(session)
+        previous = application.get_manual_strength_session(athlete.id, session_id)
+        old_coordinates = (previous.started_at, previous.timezone_name)
+        row = application.update_manual_strength_session(
             athlete.id, session_id, **values
         )
         load = _current_load(session, row.id)
+        _recalculate_aggregates(session, athlete.id, [old_coordinates, (row.started_at, row.timezone_name)])
         session.commit()
         return _session_response(row, load)
     except ManualStrengthApplicationError as error:
@@ -211,6 +227,9 @@ def update_session(
     except SQLAlchemyError as error:
         session.rollback()
         raise _database_error() from error
+    except Exception as error:
+        session.rollback()
+        raise HTTPException(500, detail={"code": "manual_strength_aggregation_error"}) from error
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -221,9 +240,13 @@ def delete_session(
 ):
     athlete = _active_athlete(session, current_user)
     try:
-        ManualStrengthApplication(session).delete_manual_strength_session(
+        application = ManualStrengthApplication(session)
+        previous = application.get_manual_strength_session(athlete.id, session_id)
+        coordinates = (previous.started_at, previous.timezone_name)
+        application.delete_manual_strength_session(
             athlete.id, session_id
         )
+        _recalculate_aggregates(session, athlete.id, [coordinates])
         session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except ManualStrengthApplicationError as error:
@@ -232,6 +255,9 @@ def delete_session(
     except SQLAlchemyError as error:
         session.rollback()
         raise _database_error() from error
+    except Exception as error:
+        session.rollback()
+        raise HTTPException(500, detail={"code": "manual_strength_aggregation_error"}) from error
 
 
 @router.post(
@@ -245,9 +271,12 @@ def recalculate_load(
 ):
     athlete = _active_athlete(session, current_user)
     try:
-        load = ManualStrengthApplication(session).recalculate_manual_strength_load(
+        application = ManualStrengthApplication(session)
+        row = application.get_manual_strength_session(athlete.id, session_id)
+        load = application.recalculate_manual_strength_load(
             athlete.id, session_id
         )
+        _recalculate_aggregates(session, athlete.id, [(row.started_at, row.timezone_name)])
         session.commit()
         return _load_response(load)
     except ManualStrengthApplicationError as error:
@@ -256,3 +285,6 @@ def recalculate_load(
     except SQLAlchemyError as error:
         session.rollback()
         raise _database_error() from error
+    except Exception as error:
+        session.rollback()
+        raise HTTPException(500, detail={"code": "manual_strength_aggregation_error"}) from error
