@@ -28,3 +28,6 @@ from app.db.models.performance_reference import AthletePerformanceReference
 from app.db.models.training_load import ActivityTrainingLoad
 
 from app.db.models.training_load_aggregate import AthleteDailyTrainingLoad, AthleteWeeklyTrainingLoad
+from app.db.models.manual_strength import ManualStrengthSession, ManualStrengthTrainingLoad
+
+__all__ += ['ManualStrengthSession', 'ManualStrengthTrainingLoad']
