@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
 import { ThemeProvider } from "./ThemeProvider";
 
+vi.mock("../features/manualStrength/ManualStrengthPage", () => ({
+  ManualStrengthPage: () => <h1>Fuerza manual de prueba</h1>,
+}));
+
 function renderShell(path: string) {
   window.history.replaceState({}, "", path);
 
@@ -34,6 +38,16 @@ afterEach(() => {
 });
 
 describe("AppShell", () => {
+  it("shows the strength access, renders its route and marks it active", () => {
+    renderShell("/activities/strength");
+    const strengthLink = screen.getByRole("link", { name: "Fuerza" });
+    expect(strengthLink).toHaveAttribute("href", "/activities/strength");
+    expect(strengthLink).toHaveClass("nav-link--active");
+    expect(screen.getByRole("heading", { name: "Fuerza manual de prueba" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Inicio" })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: "Calendario" })).toHaveAttribute("href", "/calendar");
+  });
+
   it("redirects root to dashboard and marks it active", async () => {
     renderShell("/");
 

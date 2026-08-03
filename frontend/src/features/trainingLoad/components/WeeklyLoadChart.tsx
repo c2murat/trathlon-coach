@@ -25,10 +25,12 @@ export function WeeklyLoadChart({ rows }: Props) {
           const barHeight = row.total_load / scaleMaximum * plotHeight;
           const x = padding.left + index * slot + (slot - barWidth) / 2;
           const y = padding.top + plotHeight - barHeight;
-          const label = `${formatIsoWeekLabel(row.iso_year, row.iso_week)}: ${formatTrainingLoad(row.total_load)} puntos de carga`;
+          const label = `${formatIsoWeekLabel(row.iso_year, row.iso_week)}: ${formatTrainingLoad(row.total_load)} puntos de carga; resistencia ${formatTrainingLoad(row.endurance_load??row.total_load)}, fuerza ${formatTrainingLoad(row.strength_load??0)}, sesiones de fuerza ${row.strength_session_count??0}`;
+          const strengthHeight=(row.strength_load??0)/scaleMaximum*plotHeight;
           return <g key={row.id} className="training-chart__datum" tabIndex={0} role="img" aria-label={label}>
             <title>{label}</title>
             <rect x={x} y={y} width={barWidth} height={Math.max(barHeight, 2)} rx="8" className="training-bar-chart__bar" />
+            {strengthHeight>0&&<rect x={x} y={padding.top+plotHeight-strengthHeight} width={barWidth} height={strengthHeight} rx="4" className="training-bar-chart__strength" />}
             <g className="training-chart__tooltip" transform={`translate(${x + barWidth / 2} ${Math.max(y - 6, 28)})`} aria-hidden="true">
               <rect x="-50" y="-23" width="100" height="20" rx="5" />
               <text x="0" y="-10" textAnchor="middle">{formatTrainingLoad(row.total_load)} pts</text>

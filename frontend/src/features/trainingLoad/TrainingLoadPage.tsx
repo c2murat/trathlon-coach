@@ -4,6 +4,7 @@ import type {
   DailyTrainingLoadAggregate,
   WeeklyTrainingLoadAggregate,
 } from "../../types/trainingLoad";
+import {normalizeTrainingLoad} from "../../types/trainingLoad";
 import {
   formatIsoWeekLabel,
   formatTrainingDuration,
@@ -63,8 +64,8 @@ export function TrainingLoadPage({ client }: { client: ApiClient }) {
         throw new Error("La API de carga no está disponible.");
       }
 
-      setDaily(dailyResponse);
-      setWeekly(weeklyResponse);
+      setDaily(dailyResponse.map(normalizeTrainingLoad));
+      setWeekly(weeklyResponse.map(normalizeTrainingLoad));
     } catch {
       setError(true);
     } finally {
@@ -80,6 +81,9 @@ export function TrainingLoadPage({ client }: { client: ApiClient }) {
     (total, row) => total + row.total_load,
     0,
   );
+  const enduranceLoad=daily.reduce((total,row)=>total+(row.endurance_load??row.total_load),0);
+  const strengthLoad=daily.reduce((total,row)=>total+(row.strength_load??0),0);
+  const strengthSessions=daily.reduce((total,row)=>total+(row.strength_session_count??0),0);
 
   const activityCount = daily.reduce(
     (total, row) => total + row.loaded_activity_count,
@@ -181,11 +185,13 @@ export function TrainingLoadPage({ client }: { client: ApiClient }) {
 
             <SummaryCard
               icon="activity"
-              label="Actividades"
-              value={String(activityCount)}
-              detail="Con carga calculada"
+              label="Resistencia"
+              value={formatTrainingLoad(enduranceLoad)}
+              detail={`${activityCount} actividades con carga`}
               variant="activity"
             />
+            <SummaryCard icon="load" label="Fuerza" value={formatTrainingLoad(strengthLoad)} detail="Carga de fuerza acumulada" variant="average" />
+            <SummaryCard icon="activity" label="Sesiones de fuerza" value={String(strengthSessions)} detail="En el periodo seleccionado" variant="duration" />
 
             <SummaryCard
               icon="duration"

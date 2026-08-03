@@ -27,6 +27,35 @@ describe("training load visual components", () => {
     expect(bar.querySelector(".training-chart__tooltip")).toBeInTheDocument();
   });
 
+  it.each([
+    ["a day without strength", 42, undefined, undefined, /42 puntos de carga; resistencia 42, fuerza 0/],
+    ["a strength-only day", 30, 0, 30, /30 puntos de carga; resistencia 0, fuerza 30/],
+    ["a mixed day", 50, 35, 15, /50 puntos de carga; resistencia 35, fuerza 15/],
+  ])("represents %s with a consistent total split", (_case, total, endurance, strength, label) => {
+    const rows = [{
+      ...daily[0],
+      total_load: total,
+      endurance_load: endurance,
+      strength_load: strength,
+    }];
+    render(<DailyLoadChart rows={rows} />);
+    expect(screen.getByRole("img", { name: label })).toBeInTheDocument();
+    expect(total).toBe((endurance ?? total) + (strength ?? 0));
+  });
+
+  it("includes total, endurance and strength in the weekly tooltip", () => {
+    render(<WeeklyLoadChart rows={[{
+      ...weekly[0],
+      total_load: 100,
+      endurance_load: 70,
+      strength_load: 30,
+      strength_session_count: 2,
+    }]} />);
+    expect(screen.getByRole("img", {
+      name: /100 puntos de carga; resistencia 70, fuerza 30/,
+    })).toBeInTheDocument();
+  });
+
 
   it("renders consistent hidden SVG summary icons without emoji text", () => {
     const { container } = render(<>

@@ -17,6 +17,7 @@ import type {
   StravaStatus
 } from "../types/api";
 import type { DailyTrainingLoadAggregate, WeeklyTrainingLoadAggregate, TrainingLoadDateRange } from "../types/trainingLoad";
+import type {ManualStrengthSession,ManualStrengthSessionCreate,ManualStrengthSessionUpdate,ManualStrengthTrainingLoad} from "../types/manualStrength";
 
 const configuredBaseUrl =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -54,6 +55,11 @@ export interface ApiClient {
   performanceZones?(query?:string):Promise<any[]>;
   getDailyTrainingLoad?(range: TrainingLoadDateRange): Promise<DailyTrainingLoadAggregate[]>;
   getWeeklyTrainingLoad?(range: TrainingLoadDateRange): Promise<WeeklyTrainingLoadAggregate[]>;
+  listManualStrengthSessions?():Promise<ManualStrengthSession[]>;
+  createManualStrengthSession?(input:ManualStrengthSessionCreate):Promise<ManualStrengthSession>;
+  updateManualStrengthSession?(id:string,input:ManualStrengthSessionUpdate):Promise<ManualStrengthSession>;
+  deleteManualStrengthSession?(id:string):Promise<void>;
+  recalculateManualStrengthLoad?(id:string):Promise<ManualStrengthTrainingLoad>;
 }
 
 export class FetchApiClient implements ApiClient {
@@ -132,6 +138,11 @@ export class FetchApiClient implements ApiClient {
 
   getDailyTrainingLoad(range: TrainingLoadDateRange) { return this.request<unknown[]>("/training-load/daily?" + new URLSearchParams({start_date:range.startDate,end_date:range.endDate,timezone_name:range.timezoneName}).toString()).then(this.requireArray<DailyTrainingLoadAggregate>); }
   getWeeklyTrainingLoad(range: TrainingLoadDateRange) { return this.request<unknown[]>("/training-load/weekly?" + new URLSearchParams({start_date:range.startDate,end_date:range.endDate,timezone_name:range.timezoneName}).toString()).then(this.requireArray<WeeklyTrainingLoadAggregate>); }
+  listManualStrengthSessions(){return this.request<ManualStrengthSession[]>("/manual-strength-sessions?limit=100&offset=0")}
+  createManualStrengthSession(input:ManualStrengthSessionCreate){return this.request<ManualStrengthSession>("/manual-strength-sessions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
+  updateManualStrengthSession(id:string,input:ManualStrengthSessionUpdate){return this.request<ManualStrengthSession>(`/manual-strength-sessions/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
+  deleteManualStrengthSession(id:string){return this.request<void>(`/manual-strength-sessions/${encodeURIComponent(id)}`,{method:"DELETE"})}
+  recalculateManualStrengthLoad(id:string){return this.request<ManualStrengthTrainingLoad>(`/manual-strength-sessions/${encodeURIComponent(id)}/training-load/recalculate`,{method:"POST"})}
 
   connectUrl() {
     return this.baseUrl + "/integrations/strava/connect";

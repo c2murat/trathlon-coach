@@ -26,14 +26,14 @@ export function DailyLoadChart({ rows }: Props) {
         <path className="training-line-chart__area" d={`${path} L ${points.at(-1)!.x} ${padding.top + plotHeight} L ${points[0].x} ${padding.top + plotHeight} Z`} />
         <path className="training-line-chart__line" d={path} />
         {data.map((row, index) => {
-          const label = `${formatTrainingLoadDate(row.local_date)}: ${formatTrainingLoad(row.total_load)} puntos de carga`;
+          const label = `${formatTrainingLoadDate(row.local_date)}: ${formatTrainingLoad(row.total_load)} puntos de carga; resistencia ${formatTrainingLoad(row.endurance_load??row.total_load)}, fuerza ${formatTrainingLoad(row.strength_load??0)}, sesiones de fuerza ${row.strength_session_count??0}`;
           return <g key={row.id} className="training-chart__datum" tabIndex={0} role="img" aria-label={label}>
             <title>{label}</title>
             <circle className="training-line-chart__point-halo" cx={points[index].x} cy={points[index].y} r="10" />
             <circle className="training-line-chart__point" cx={points[index].x} cy={points[index].y} r="5" />
             <g className="training-chart__tooltip" transform={`translate(${points[index].x} ${Math.max(points[index].y - 16, 24)})`} aria-hidden="true">
               <rect x="-50" y="-23" width="100" height="20" rx="5" />
-              <text x="0" y="-10" textAnchor="middle">{formatTrainingLoad(row.total_load)} pts</text>
+              <text x="0" y="-10" textAnchor="middle">{formatTrainingLoad(row.total_load)} pts total</text>
             </g>
             {(index % labelEvery === 0 || index === data.length - 1) && <text className="training-chart__x-label" x={points[index].x} y={height - 18} textAnchor="middle">{new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", timeZone: "UTC" }).format(new Date(`${row.local_date}T00:00:00Z`))}</text>}
           </g>;
