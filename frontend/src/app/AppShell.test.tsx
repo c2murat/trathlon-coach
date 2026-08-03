@@ -7,6 +7,9 @@ import { ThemeProvider } from "./ThemeProvider";
 vi.mock("../features/manualStrength/ManualStrengthPage", () => ({
   ManualStrengthPage: () => <h1>Fuerza manual de prueba</h1>,
 }));
+vi.mock("../features/trainingStatus/TrainingStatusPage", () => ({
+  TrainingStatusPage: () => <h1>Estado de entrenamiento de prueba</h1>,
+}));
 
 function renderShell(path: string) {
   window.history.replaceState({}, "", path);
@@ -38,6 +41,16 @@ afterEach(() => {
 });
 
 describe("AppShell", () => {
+  it("shows and activates the training status route without breaking previous accesses", () => {
+    renderShell("/statistics/training-status");
+    const statusLink=screen.getByRole("link",{name:"Estado"});
+    expect(statusLink).toHaveAttribute("href","/statistics/training-status");
+    expect(statusLink).toHaveClass("nav-link--active");
+    expect(screen.getByRole("heading",{name:"Estado de entrenamiento de prueba"})).toBeInTheDocument();
+    expect(screen.getByRole("link",{name:"Carga de entrenamiento"})).toHaveAttribute("href","/statistics/training-load");
+    expect(screen.getByRole("link",{name:"Fuerza"})).toHaveAttribute("href","/activities/strength");
+  });
+
   it("shows the strength access, renders its route and marks it active", () => {
     renderShell("/activities/strength");
     const strengthLink = screen.getByRole("link", { name: "Fuerza" });

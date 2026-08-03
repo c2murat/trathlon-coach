@@ -18,6 +18,7 @@ import type {
 } from "../types/api";
 import type { DailyTrainingLoadAggregate, WeeklyTrainingLoadAggregate, TrainingLoadDateRange } from "../types/trainingLoad";
 import type {ManualStrengthSession,ManualStrengthSessionCreate,ManualStrengthSessionUpdate,ManualStrengthTrainingLoad} from "../types/manualStrength";
+import type {DailyTrainingStatus,LatestTrainingStatusQuery,TrainingStatusQuery} from "../types/trainingStatus";
 
 const configuredBaseUrl =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -60,6 +61,9 @@ export interface ApiClient {
   updateManualStrengthSession?(id:string,input:ManualStrengthSessionUpdate):Promise<ManualStrengthSession>;
   deleteManualStrengthSession?(id:string):Promise<void>;
   recalculateManualStrengthLoad?(id:string):Promise<ManualStrengthTrainingLoad>;
+  listTrainingStatus?(query:TrainingStatusQuery):Promise<DailyTrainingStatus[]>;
+  getLatestTrainingStatus?(query:LatestTrainingStatusQuery):Promise<DailyTrainingStatus|null>;
+  recalculateTrainingStatus?(query:TrainingStatusQuery):Promise<DailyTrainingStatus[]>;
 }
 
 export class FetchApiClient implements ApiClient {
@@ -143,12 +147,16 @@ export class FetchApiClient implements ApiClient {
   updateManualStrengthSession(id:string,input:ManualStrengthSessionUpdate){return this.request<ManualStrengthSession>(`/manual-strength-sessions/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   deleteManualStrengthSession(id:string){return this.request<void>(`/manual-strength-sessions/${encodeURIComponent(id)}`,{method:"DELETE"})}
   recalculateManualStrengthLoad(id:string){return this.request<ManualStrengthTrainingLoad>(`/manual-strength-sessions/${encodeURIComponent(id)}/training-load/recalculate`,{method:"POST"})}
+  listTrainingStatus(query:TrainingStatusQuery){return this.request<DailyTrainingStatus[]>("/training-status?"+this.trainingStatusParams(query))}
+  async getLatestTrainingStatus(query:LatestTrainingStatusQuery){try{return await this.request<DailyTrainingStatus>("/training-status/latest?"+this.trainingStatusParams(query))}catch(error){if(error instanceof Error&&error.message.includes("(404)")&&error.message.includes("training_status_not_found"))return null;throw error}}
+  recalculateTrainingStatus(query:TrainingStatusQuery){return this.request<DailyTrainingStatus[]>("/training-status/recalculate?"+this.trainingStatusParams(query),{method:"POST"})}
 
   connectUrl() {
     return this.baseUrl + "/integrations/strava/connect";
   }
 
   private requireArray<T>(value: unknown[]): T[] { if (!Array.isArray(value)) throw new Error("Invalid training load response"); return value as T[]; }
+  private trainingStatusParams(query:TrainingStatusQuery|LatestTrainingStatusQuery){const values:Record<string,string>={timezone_name:query.timezoneName,training_load_algorithm_version:query.trainingLoadAlgorithmVersion??"0.7b.1",manual_strength_algorithm_version:query.manualStrengthAlgorithmVersion??"0.7e.1",training_status_algorithm_version:query.trainingStatusAlgorithmVersion??"0.7f.1"};if("startDate" in query){values.start_date=query.startDate;values.end_date=query.endDate}return new URLSearchParams(values).toString()}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers);
