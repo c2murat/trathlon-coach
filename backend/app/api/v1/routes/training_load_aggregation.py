@@ -14,6 +14,8 @@ from app.application.combined_training_load_aggregation import (
     InvalidAggregationRangeError,
     TrainingLoadAggregationApplication,
 )
+from app.application.training_status_sync import sync_training_status_after_load_change
+from app.domains.manual_strength import ALGORITHM_VERSION as MANUAL_STRENGTH_VERSION
 from app.db.models import AthleteProfile
 from app.db.session import get_db_session
 
@@ -206,6 +208,15 @@ def recalculate_daily_training_load(
             timezone_name=timezone_name,
             source_load_algorithm_version=source_load_algorithm_version,
         )
+        sync_training_status_after_load_change(
+            session,
+            athlete_id=athlete_profile_id,
+            affected_start_date=start_date,
+            affected_end_date=end_date,
+            timezone_name=timezone_name,
+            training_load_algorithm_version=source_load_algorithm_version,
+            manual_strength_algorithm_version=MANUAL_STRENGTH_VERSION,
+        )
         session.commit()
 
         rows = application.get_daily_aggregates(
@@ -335,6 +346,15 @@ def recalculate_training_load(
             end_date=end_date,
             timezone_name=timezone_name,
             source_load_algorithm_version=source_load_algorithm_version,
+        )
+        sync_training_status_after_load_change(
+            session,
+            athlete_id=athlete_profile_id,
+            affected_start_date=start_date,
+            affected_end_date=end_date,
+            timezone_name=timezone_name,
+            training_load_algorithm_version=source_load_algorithm_version,
+            manual_strength_algorithm_version=MANUAL_STRENGTH_VERSION,
         )
         session.commit()
 

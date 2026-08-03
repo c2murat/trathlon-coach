@@ -460,3 +460,16 @@ Esta fase no incorpora una pantalla visual, rec�lculos autom�ticos, CTL, ATL ni 
 ## Versi�n 0.7D.2A
 
 Estabilizaci�n de AppShell y pruebas accesibles para saludo horario y navegaci�n m�vil, sin cambios de backend ni nuevas funcionalidades.
+
+## Versión 0.7F.5 — Backfill y sincronización del estado de entrenamiento
+
+El estado diario (Fitness, Fatiga y Forma) se sincroniza automáticamente, dentro de la misma transacción, después de recalcular agregados diarios o completos y después de crear, editar, eliminar o recalcular una sesión manual de fuerza. El recálculo semanal aislado no modifica el estado diario.
+
+Backfill histórico seguro desde `backend`:
+
+```powershell
+python scripts/backfill_training_status.py --athlete-id <UUID> --dry-run
+python scripts/backfill_training_status.py --athlete-id <UUID>
+```
+
+Por defecto usa `Europe/Madrid`, carga `0.7b.1`, fuerza manual `0.7e.1` y la versión vigente del estado. Sin fechas, comienza en la primera carga diaria compatible y alcanza el día local actual. Para limitarlo, deben proporcionarse juntas `--start-date YYYY-MM-DD` y `--end-date YYYY-MM-DD`. `--dry-run` ejecuta el cálculo completo y muestra el resumen, pero revierte toda la transacción; la ejecución real realiza un único commit al finalizar. El proceso es idempotente y no modifica las cargas fuente.

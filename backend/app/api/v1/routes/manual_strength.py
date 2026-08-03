@@ -22,6 +22,10 @@ from app.application.manual_strength import (
     ManualStrengthSessionNotFoundError,
 )
 from app.application.combined_training_load_aggregation import TrainingLoadAggregationApplication
+from app.application.training_status_sync import (
+    TrainingStatusSyncCoordinate,
+    sync_training_status_coordinates,
+)
 from app.db.models import AthleteProfile, ManualStrengthSession, ManualStrengthTrainingLoad
 from app.db.session import get_db_session
 from app.domains.manual_strength import ALGORITHM_VERSION
@@ -32,9 +36,21 @@ router = APIRouter(
 
 def _recalculate_aggregates(session: Session, athlete_id: UUID, coordinates):
     application = TrainingLoadAggregationApplication(session)
+    status_coordinates = []
     for started_at, timezone_name in set(coordinates):
         local_date = started_at.astimezone(ZoneInfo(timezone_name)).date()
         application.recalculate_all(athlete_id, start_date=local_date, end_date=local_date, timezone_name=timezone_name)
+        status_coordinates.append(
+            TrainingStatusSyncCoordinate(
+                athlete_id=athlete_id,
+                affected_start_date=local_date,
+                affected_end_date=local_date,
+                timezone_name=timezone_name,
+                training_load_algorithm_version="0.7b.1",
+                manual_strength_algorithm_version=ALGORITHM_VERSION,
+            )
+        )
+    sync_training_status_coordinates(session, tuple(status_coordinates))
 
 
 def _active_athlete(session: Session, user: AuthenticatedUser) -> AthleteProfile:
