@@ -14,7 +14,7 @@ describe("training status formatting", () => {
   it("formats load, date and historical day", () => {
     expect(formatDailyLoad(72.5)).toBe("72,50 puntos");
     expect(formatStatusDate("2026-08-03")).toBe("3 de agosto de 2026");
-    expect(formatHistoryDay(93)).toBe("Día histórico 93");
+    expect(formatHistoryDay(93)).toBe("Día del historial: 93");
   });
   it.each([[4,"2026-07-07"],[8,"2026-06-09"],[12,"2026-05-12"]] as const)("creates an inclusive %i-week local range", (weeks,startDate) => {
     expect(getTrainingStatusRange(weeks,new Date(2026,7,3,12))).toEqual({startDate,endDate:"2026-08-03"});

@@ -50,32 +50,32 @@ export function TrainingStatusPage({ client }: { client: ApiClient }) {
   const globallyEmpty=!latest&&!rows.length;
   return <article className="training-status-page">
     <header className="status-page-header">
-      <div><p className="training-load-eyebrow">Estadísticas</p><h1>Estado de entrenamiento</h1><p>Consulta la evolución matemática de Fitness, Fatiga y Forma.</p></div>
+      <div><p className="training-load-eyebrow">Estadísticas</p><h1>Estado de entrenamiento</h1><p>Consulta la evolución matemática del fitness, la fatiga y la forma.</p></div>
       <div className="status-page-actions">
         <label htmlFor="training-status-period">Periodo</label>
         <select id="training-status-period" value={weeks} onChange={(event)=>setWeeks(Number(event.target.value) as TrainingStatusPeriodWeeks)}>
           {TRAINING_STATUS_PERIODS.map(value=><option key={value} value={value}>Últimas {value} semanas</option>)}
         </select>
         <span>{formatStatusDate(range.startDate)} – {formatStatusDate(range.endDate)}</span>
-        {!globallyEmpty&&<button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>{recalculating?"Recalculando…":"Recalcular estado"}</button>}
+        {!globallyEmpty&&<button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>{recalculating?"Recalculando…":"Recalcular el estado"}</button>}
       </div>
     </header>
     <div className="status-announcement" aria-live="polite">{announcement}</div>
     {loading&&<section className="training-load-state" role="status"><strong>Cargando estado de entrenamiento…</strong></section>}
     {!loading&&queryError&&<section className="training-load-state training-load-state--error" role="alert"><strong>No se ha podido consultar el estado de entrenamiento.</strong></section>}
-    {!loading&&!queryError&&globallyEmpty&&!noSources&&<section className="training-load-state status-empty"><h2>Todavía no hay un estado de entrenamiento calculado</h2><p>Calcula el estado para obtener la evolución de Fitness, Fatiga y Forma a partir de tu carga diaria.</p><button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>Calcular estado de entrenamiento</button></section>}
+    {!loading&&!queryError&&globallyEmpty&&!noSources&&<section className="training-load-state status-empty"><h2>Todavía no hay un estado de entrenamiento calculado</h2><p>Calcula el estado para obtener la evolución del fitness, la fatiga y la forma a partir de tu carga diaria.</p><button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>Calcular estado de entrenamiento</button></section>}
     {!loading&&!queryError&&noSources&&<section className="training-load-state status-empty"><h2>No hay carga de entrenamiento disponible</h2><p>Registra o importa entrenamientos antes de calcular el estado.</p></section>}
     {recalculationError&&<p className="status-recalculation-error" role="alert" aria-live="assertive">{recalculationError}</p>}
     {!loading&&!queryError&&latest&&<>
       <section className="status-summary-grid" aria-label="Estado más reciente">
         <StatusSummaryCard label="Fitness" value={formatStatusValue(latest.fitness)} detail="Carga crónica suavizada a medio plazo" variant="fitness"/>
         <StatusSummaryCard label="Fatiga" value={formatStatusValue(latest.fatigue)} detail="Carga aguda suavizada de los últimos días" variant="fatigue"/>
-        <StatusSummaryCard label="Forma" value={formatForm(latest.form)} detail="Diferencia entre Fitness y Fatiga" variant="form"/>
+        <StatusSummaryCard label="Forma" value={formatForm(latest.form)} detail="Diferencia entre el fitness y la fatiga" variant="form"/>
         <StatusSummaryCard label="Carga del día" value={formatDailyLoad(latest.total_load)} detail={formatStatusDate(latest.date)} variant="load"/>
       </section>
       <WarmupNotice status={latest}/>
       <TrainingStatusChart rows={rows}/>
-      <details className="status-interpretation"><summary>Cómo interpretar estos datos</summary><ul><li>Fitness representa la carga crónica suavizada.</li><li>Fatiga representa la carga aguda suavizada.</li><li>Forma es Fitness menos Fatiga.</li><li>Una Forma negativa indica que la Fatiga calculada supera al Fitness.</li><li>Una Forma positiva indica que el Fitness calculado supera a la Fatiga.</li><li>Los indicadores describen carga matemática y no sustituyen sensaciones, descanso, salud ni criterio profesional.</li></ul></details>
+      <details className="status-interpretation"><summary>Cómo interpretar estos datos</summary><p>El fitness representa la carga crónica suavizada. La fatiga representa la carga aguda suavizada. La forma es la diferencia entre el fitness y la fatiga.</p><p>Una forma negativa indica que la fatiga calculada supera al fitness; una forma positiva indica lo contrario.</p><p>Estos indicadores describen una estimación matemática de la carga y no sustituyen las sensaciones personales, el descanso, la salud ni el criterio profesional.</p></details>
       <footer className="status-technical"><span>Última actualización: {formatCalculatedAt(latest.calculated_at)}</span><span>Modelo {latest.training_status_algorithm_version}</span><span>Carga {latest.training_load_algorithm_version}</span><span>Fuerza {latest.manual_strength_algorithm_version}</span></footer>
     </>}
     {!loading&&!queryError&&!globallyEmpty&&latest&&rows.length===0&&<p className="status-interval-empty">No hay estados en el intervalo seleccionado; se muestra el estado más reciente.</p>}

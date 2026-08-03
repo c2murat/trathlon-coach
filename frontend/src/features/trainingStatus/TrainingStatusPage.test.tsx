@@ -32,7 +32,7 @@ describe("TrainingStatusPage",()=>{
   it.each([[1,true],[84,true],[85,false]] as const)("handles warm-up on historical day %i",async(day,isWarmup)=>{
     const value={...latest,history_day_number:day,is_warmup:isWarmup};
     render(<TrainingStatusPage client={client({listTrainingStatus:vi.fn().mockResolvedValue([value]),getLatestTrainingStatus:vi.fn().mockResolvedValue(value)})}/>);
-    if(isWarmup)expect(await screen.findByText(`Día histórico ${day} de 84`)).toBeInTheDocument();
+    if(isWarmup)expect(await screen.findByText(`Día del historial: ${day} de 84`)).toBeInTheDocument();
     else expect(await screen.findByText("Historial consolidado")).toBeInTheDocument();
   });
   it("offers 4, 8 and 12 weeks and changing it only performs GET",async()=>{
@@ -50,7 +50,7 @@ describe("TrainingStatusPage",()=>{
     const updated={...latest,fitness:50,form:4.2,is_warmup:false,history_day_number:93};
     const api=client({recalculateTrainingStatus:vi.fn().mockResolvedValue([updated]),getLatestTrainingStatus:vi.fn().mockResolvedValueOnce(latest).mockResolvedValueOnce(updated)});
     const user=userEvent.setup();render(<TrainingStatusPage client={api}/>);
-    await user.click(await screen.findByRole("button",{name:"Recalcular estado"}));
+    await user.click(await screen.findByRole("button",{name:"Recalcular el estado"}));
     expect(await screen.findByText("Estado de entrenamiento recalculado correctamente.")).toBeInTheDocument();
     expect(card("Fitness").getByText("50,00")).toBeInTheDocument();
     expect(card("Forma").getByText("+4,20")).toBeInTheDocument();
@@ -60,7 +60,7 @@ describe("TrainingStatusPage",()=>{
     let resolve!: (value:DailyTrainingStatus[])=>void;
     const api=client({recalculateTrainingStatus:vi.fn(()=>new Promise(r=>{resolve=r}))});
     const user=userEvent.setup();render(<TrainingStatusPage client={api}/>);
-    const button=await screen.findByRole("button",{name:"Recalcular estado"});
+    const button=await screen.findByRole("button",{name:"Recalcular el estado"});
     await user.dblClick(button);
     expect(api.recalculateTrainingStatus).toHaveBeenCalledTimes(1);
     expect(button).toBeDisabled();resolve([latest]);
@@ -74,7 +74,7 @@ describe("TrainingStatusPage",()=>{
   it("keeps existing data on recalculation error and shows neutral interpretation",async()=>{
     const api=client({recalculateTrainingStatus:vi.fn().mockRejectedValue(new Error("failed"))});
     const user=userEvent.setup();render(<TrainingStatusPage client={api}/>);
-    await user.click(await screen.findByRole("button",{name:"Recalcular estado"}));
+    await user.click(await screen.findByRole("button",{name:"Recalcular el estado"}));
     expect(await screen.findByRole("alert")).toHaveTextContent("No se ha podido recalcular");
     expect(card("Fitness").getByText("46,31")).toBeInTheDocument();
     expect(screen.getByText("Cómo interpretar estos datos")).toBeInTheDocument();

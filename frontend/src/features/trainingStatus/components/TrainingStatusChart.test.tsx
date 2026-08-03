@@ -8,7 +8,7 @@ const row:DailyTrainingStatus={date:"2026-08-03",timezone_name:"Europe/Madrid",t
 describe("TrainingStatusChart",()=>{
   it("renders three independent labelled series, axes and zero line",()=>{
     const {container}=render(<TrainingStatusChart rows={[row]}/>);
-    expect(screen.getByRole("img",{name:"Gráfico diario de Fitness, Fatiga y Forma"})).toBeInTheDocument();
+    expect(screen.getByRole("img",{name:"Gráfico diario del fitness, la fatiga y la forma"})).toBeInTheDocument();
     expect(screen.getByText("Fitness")).toBeInTheDocument();
     expect(screen.getByText("Fatiga")).toBeInTheDocument();
     expect(screen.getByText("Forma")).toBeInTheDocument();

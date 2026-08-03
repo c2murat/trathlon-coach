@@ -11,7 +11,7 @@ export function WarmupNotice({ status }: { status: DailyTrainingStatus }) {
         El estado todavía se está estabilizando porque hay menos de 85 días
         completos de historial.
       </p>
-      <span>Día histórico {status.history_day_number} de 84</span>
+      <span>Día del historial: {status.history_day_number} de 84</span>
     </section>
   );
 }

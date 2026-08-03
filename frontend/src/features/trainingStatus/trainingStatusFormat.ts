@@ -37,7 +37,7 @@ export function formatCalculatedAt(value: string): string {
 }
 
 export function formatHistoryDay(value: number): string {
-  return `Día histórico ${value}`;
+  return `Día del historial: ${value}`;
 }
 
 function localIsoDate(value: Date): string {

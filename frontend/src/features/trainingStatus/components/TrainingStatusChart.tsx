@@ -5,7 +5,7 @@ const SERIES = [{ key: "fitness", label: "Fitness" }, { key: "fatigue", label: "
 
 export function TrainingStatusChart({ rows }: { rows: DailyTrainingStatus[] }) {
   const data = [...rows].sort((a, b) => a.date.localeCompare(b.date));
-  if (!data.length) return <section className="status-chart-card"><h2>Evolución de Fitness, Fatiga y Forma</h2><p>No hay estados en el intervalo seleccionado.</p></section>;
+  if (!data.length) return <section className="status-chart-card"><h2>Evolución del fitness, la fatiga y la forma</h2><p>No hay estados en el intervalo seleccionado.</p></section>;
   const width = 900, height = 390;
   const padding = { top: 35, right: 24, bottom: 62, left: 62 };
   const plotWidth = width - padding.left - padding.right, plotHeight = height - padding.top - padding.bottom;
@@ -16,10 +16,10 @@ export function TrainingStatusChart({ rows }: { rows: DailyTrainingStatus[] }) {
   const y = (value: number) => padding.top + (maximum - value) / scale * plotHeight;
   const ticks = [0, .25, .5, .75, 1], labelEvery = Math.max(1, Math.ceil(data.length / 7));
   return <section className="status-chart-card">
-    <header><div><h2>Evolución de Fitness, Fatiga y Forma</h2><p>Valores diarios de carga matemática suavizada.</p></div>
+    <header><div><h2>Evolución del fitness, la fatiga y la forma</h2><p>Valores diarios de carga matemática suavizada.</p></div>
       <ul className="status-chart-legend" aria-label="Series del gráfico">{SERIES.map((series) => <li key={series.key} data-series={series.key}>{series.label}</li>)}</ul>
     </header>
-    <svg className="status-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Gráfico diario de Fitness, Fatiga y Forma">
+    <svg className="status-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Gráfico diario del fitness, la fatiga y la forma">
       <text className="status-chart__axis-title" x="16" y="20">Valor</text>
       <g className="training-chart__grid">{ticks.map((tick) => { const position = padding.top + plotHeight * tick; return <line key={tick} x1={padding.left} x2={width-padding.right} y1={position} y2={position}/>; })}</g>
       <g className="training-chart__labels">{ticks.map((tick) => { const value=maximum-scale*tick, position=padding.top+plotHeight*tick; return <text key={tick} x={padding.left-10} y={position+4} textAnchor="end">{formatStatusValue(value)}</text>; })}</g>
