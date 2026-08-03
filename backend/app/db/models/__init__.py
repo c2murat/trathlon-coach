@@ -29,5 +29,7 @@ from app.db.models.training_load import ActivityTrainingLoad
 
 from app.db.models.training_load_aggregate import AthleteDailyTrainingLoad, AthleteWeeklyTrainingLoad
 from app.db.models.manual_strength import ManualStrengthSession, ManualStrengthTrainingLoad
+from app.db.models.training_status import AthleteDailyTrainingStatus
 
 __all__ += ['ManualStrengthSession', 'ManualStrengthTrainingLoad']
+__all__ += ["AthleteDailyTrainingStatus"]
