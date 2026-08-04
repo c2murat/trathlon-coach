@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,model_validator
 from sqlalchemy.orm import Session
-from app.api.dependencies.auth import AuthenticatedUser,get_current_user
 from app.api.dependencies.current_athlete import CurrentAthleteContext,get_current_athlete
 from app.application.queries.activity_summaries import ActivitySummaryQuery
 from app.application.training_load import TrainingLoadApplication,ALGORITHM_VERSION
@@ -28,14 +27,14 @@ class BrowseFilters(BaseModel):
   if self.min_distance_metres is not None and self.max_distance_metres is not None and self.min_distance_metres>self.max_distance_metres:raise ValueError("minimum distance must not exceed maximum")
   return self
 @router.get("",response_model=ActivityPageResponse)
-def list_activities(limit:int=Query(20,ge=1,le=100),offset:int=Query(0,ge=0),sport:Literal["swimming","cycling","running","strength","multisport","other"]|None=None,date_from:date|None=None,date_to:date|None=None,min_distance_metres:float|None=Query(None,ge=0),max_distance_metres:float|None=Query(None,ge=0),trainer:bool|None=None,manual:bool|None=None,visibility:Literal["everyone","followers_only","only_me","unknown"]|None=None,search:str|None=Query(None,min_length=1,max_length=300),current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
+def list_activities(limit:int=Query(20,ge=1,le=100),offset:int=Query(0,ge=0),sport:Literal["swimming","cycling","running","strength","multisport","other"]|None=None,date_from:date|None=None,date_to:date|None=None,min_distance_metres:float|None=Query(None,ge=0),max_distance_metres:float|None=Query(None,ge=0),trainer:bool|None=None,manual:bool|None=None,visibility:Literal["everyone","followers_only","only_me","unknown"]|None=None,search:str|None=Query(None,min_length=1,max_length=300),current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
  if date_from and date_to and date_from>date_to:raise HTTPException(422,detail={"code":"invalid_date_range"})
  if min_distance_metres is not None and max_distance_metres is not None and min_distance_metres>max_distance_metres:raise HTTPException(422,detail={"code":"invalid_distance_range"})
- page=ActivitySummaryQuery(session).for_user(current_user.id,limit=limit,offset=offset,sport=sport,date_from=date_from,date_to=date_to,min_distance_metres=min_distance_metres,max_distance_metres=max_distance_metres,trainer=trainer,manual=manual,visibility=visibility,search=search)
+ page=ActivitySummaryQuery(session).for_athlete(current_athlete.athlete_id,limit=limit,offset=offset,sport=sport,date_from=date_from,date_to=date_to,min_distance_metres=min_distance_metres,max_distance_metres=max_distance_metres,trainer=trainer,manual=manual,visibility=visibility,search=search)
  return ActivityPageResponse(total=page.total,limit=page.limit,offset=page.offset,items=[ActivitySummaryResponse.model_validate(x,from_attributes=True) for x in page.items])
 @router.get("/filter-options",response_model=FilterOptionsResponse)
-def filter_options(current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
- x=ActivitySummaryQuery(session).filter_options(current_user.id);return FilterOptionsResponse(sport_types=list(x.sport_types),visibility_values=list(x.visibility_values),minimum_activity_date=x.minimum_activity_date,maximum_activity_date=x.maximum_activity_date)
+def filter_options(current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+ x=ActivitySummaryQuery(session).filter_options(current_athlete.athlete_id);return FilterOptionsResponse(sport_types=list(x.sport_types),visibility_values=list(x.visibility_values),minimum_activity_date=x.minimum_activity_date,maximum_activity_date=x.maximum_activity_date)
 @router.get("/{activity_id}/training-load",response_model=TrainingLoadResponse)
 def training_load_get(activity_id:UUID,algorithm_version:str=Query(ALGORITHM_VERSION,min_length=1,max_length=32),current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
  try: row=TrainingLoadApplication(session).get_persisted(current_athlete.athlete_id,activity_id,algorithm_version)
@@ -49,8 +48,8 @@ def training_load_recalculate(activity_id:UUID,current_athlete:CurrentAthleteCon
  return TrainingLoadResponse(activity_id=activity_id,**{k:getattr(row,k) for k in ("load_value","method","unit","coverage","quality","reason","algorithm_version","duration_seconds","effective_intensity","reference_value","reference_metric","source_metrics","warnings","calculated_at")})
 
 @router.get("/{activity_id}",response_model=ActivityDetailResponse)
-def activity_detail(activity_id:UUID,current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
- a=ActivitySummaryQuery(session).detail(current_user.id,activity_id)
+def activity_detail(activity_id:UUID,current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+ a=ActivitySummaryQuery(session).detail(current_athlete.athlete_id,activity_id)
  if not a:raise HTTPException(404,detail={"code":"activity_not_found"})
  return ActivityDetailResponse(id=a.id,external_activity_id=a.external_activity_id,name=a.name,sport_type=a.sport,start_time=a.start_at,athlete_timezone=a.timezone,distance_metres=a.distance_m,moving_time_seconds=a.moving_time_s,elapsed_time_seconds=a.elapsed_time_s,elevation_metres=a.elevation_gain_m,average_heart_rate=a.average_heart_rate_bpm,max_heart_rate=a.max_heart_rate_bpm,average_speed_metres_per_second=a.average_speed_mps,max_speed_metres_per_second=a.max_speed_mps,average_cadence=a.average_cadence_rpm,average_watts=a.average_power_w,weighted_average_watts=a.weighted_average_power_w,trainer=a.indoor,commute=a.commute,manual=a.manual,visibility=a.visibility,created_at=a.created_at,updated_at=a.updated_at,provider_description=a.provider_description,calories=a.calories_kcal,device_name=a.device_name,gear_id=a.gear_id,suffer_score=a.suffer_score,perceived_exertion=a.provider_perceived_exertion,total_work_joules=a.total_work_j,kilojoules=a.kilojoules,average_temperature_celsius=a.average_temperature_c,max_watts=a.max_power_w,workout_type=a.workout_type,achievement_count=a.achievement_count,kudos_count=a.kudos_count,athlete_count=a.athlete_count,photo_count=a.photo_count,has_heartrate=a.has_heartrate,has_power_meter=a.has_power_meter,hide_from_home=a.hide_from_home,private=a.private,flagged=a.flagged,enriched_at=a.enriched_at,enrichment_status=a.enrichment_status,enrichment_error_category=a.enrichment_error_category)
 

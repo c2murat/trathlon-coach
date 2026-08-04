@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import AuthenticatedUser, get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
 from app.api.v1.schemas.manual_strength import (
     ManualStrengthSessionCreateRequest,
     ManualStrengthSessionResponse,
@@ -26,7 +26,7 @@ from app.application.training_status_sync import (
     TrainingStatusSyncCoordinate,
     sync_training_status_coordinates,
 )
-from app.db.models import AthleteProfile, ManualStrengthSession, ManualStrengthTrainingLoad
+from app.db.models import ManualStrengthSession, ManualStrengthTrainingLoad
 from app.db.session import get_db_session
 from app.domains.manual_strength import ALGORITHM_VERSION
 
@@ -51,15 +51,6 @@ def _recalculate_aggregates(session: Session, athlete_id: UUID, coordinates):
             )
         )
     sync_training_status_coordinates(session, tuple(status_coordinates))
-
-
-def _active_athlete(session: Session, user: AuthenticatedUser) -> AthleteProfile:
-    athlete = session.scalar(
-        select(AthleteProfile).where(AthleteProfile.user_id == user.id)
-    )
-    if athlete is None:
-        raise HTTPException(status_code=404, detail={"code": "athlete_not_found"})
-    return athlete
 
 
 def _http_error(error: ManualStrengthApplicationError) -> HTTPException:
@@ -142,13 +133,13 @@ def _current_load(session: Session, session_id: UUID) -> ManualStrengthTrainingL
 @router.post("", response_model=ManualStrengthSessionResponse, status_code=201)
 def create_session(
     body: ManualStrengthSessionCreateRequest,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete = _active_athlete(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         row = ManualStrengthApplication(session).create_manual_strength_session(
-            athlete.id,
+            athlete_id,
             started_at=body.started_at,
             timezone_name=body.timezone_name,
             duration_minutes=body.duration_minutes,
@@ -157,7 +148,7 @@ def create_session(
             notes=body.notes,
         )
         load = _current_load(session, row.id)
-        _recalculate_aggregates(session, athlete.id, [(row.started_at, row.timezone_name)])
+        _recalculate_aggregates(session, athlete_id, [(row.started_at, row.timezone_name)])
         session.commit()
         return _session_response(row, load)
     except ManualStrengthApplicationError as error:
@@ -177,10 +168,10 @@ def list_sessions(
     end_at: datetime | None = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete = _active_athlete(session, current_user)
+    athlete_id = current_athlete.athlete_id
     if start_at is not None and (start_at.tzinfo is None or start_at.utcoffset() is None):
         raise HTTPException(422, detail={"code": "naive_start_at"})
     if end_at is not None and (end_at.tzinfo is None or end_at.utcoffset() is None):
@@ -189,7 +180,7 @@ def list_sessions(
         raise HTTPException(422, detail={"code": "invalid_date_range"})
     try:
         rows = ManualStrengthApplication(session).list_manual_strength_sessions(
-            athlete.id, start_at=start_at, end_at=end_at
+            athlete_id, start_at=start_at, end_at=end_at
         )[offset : offset + limit]
     except ManualStrengthApplicationError as error:
         raise _http_error(error) from error
@@ -200,13 +191,13 @@ def list_sessions(
 @router.get("/{session_id}", response_model=ManualStrengthSessionResponse)
 def get_session(
     session_id: UUID,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete = _active_athlete(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         row = ManualStrengthApplication(session).get_manual_strength_session(
-            athlete.id, session_id
+            athlete_id, session_id
         )
     except ManualStrengthApplicationError as error:
         raise _http_error(error) from error
@@ -217,7 +208,7 @@ def get_session(
 def update_session(
     session_id: UUID,
     body: ManualStrengthSessionUpdateRequest,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
     if not body.model_fields_set:
@@ -225,16 +216,16 @@ def update_session(
     values = body.model_dump(exclude_unset=True)
     if "body_regions" in values and values["body_regions"] is not None:
         values["body_regions"] = tuple(values["body_regions"])
-    athlete = _active_athlete(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         application = ManualStrengthApplication(session)
-        previous = application.get_manual_strength_session(athlete.id, session_id)
+        previous = application.get_manual_strength_session(athlete_id, session_id)
         old_coordinates = (previous.started_at, previous.timezone_name)
         row = application.update_manual_strength_session(
-            athlete.id, session_id, **values
+            athlete_id, session_id, **values
         )
         load = _current_load(session, row.id)
-        _recalculate_aggregates(session, athlete.id, [old_coordinates, (row.started_at, row.timezone_name)])
+        _recalculate_aggregates(session, athlete_id, [old_coordinates, (row.started_at, row.timezone_name)])
         session.commit()
         return _session_response(row, load)
     except ManualStrengthApplicationError as error:
@@ -251,18 +242,18 @@ def update_session(
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_session(
     session_id: UUID,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete = _active_athlete(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         application = ManualStrengthApplication(session)
-        previous = application.get_manual_strength_session(athlete.id, session_id)
+        previous = application.get_manual_strength_session(athlete_id, session_id)
         coordinates = (previous.started_at, previous.timezone_name)
         application.delete_manual_strength_session(
-            athlete.id, session_id
+            athlete_id, session_id
         )
-        _recalculate_aggregates(session, athlete.id, [coordinates])
+        _recalculate_aggregates(session, athlete_id, [coordinates])
         session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except ManualStrengthApplicationError as error:
@@ -282,17 +273,17 @@ def delete_session(
 )
 def recalculate_load(
     session_id: UUID,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete = _active_athlete(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         application = ManualStrengthApplication(session)
-        row = application.get_manual_strength_session(athlete.id, session_id)
+        row = application.get_manual_strength_session(athlete_id, session_id)
         load = application.recalculate_manual_strength_load(
-            athlete.id, session_id
+            athlete_id, session_id
         )
-        _recalculate_aggregates(session, athlete.id, [(row.started_at, row.timezone_name)])
+        _recalculate_aggregates(session, athlete_id, [(row.started_at, row.timezone_name)])
         session.commit()
         return _load_response(load)
     except ManualStrengthApplicationError as error:

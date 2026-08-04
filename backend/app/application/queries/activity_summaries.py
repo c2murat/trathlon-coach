@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.db.base import utc_now
-from app.db.models import AthleteProfile, CompletedActivity
+from app.db.models import CompletedActivity
 
 @dataclass(frozen=True,slots=True)
 class ActivitySummaryView:
@@ -20,9 +20,9 @@ class ActivityFilterOptions:
 class ActivitySummaryQuery:
  def __init__(self,session:Session):self._session=session
  @staticmethod
- def _base(user_id:UUID):return (CompletedActivity.athlete_id==AthleteProfile.id,AthleteProfile.user_id==user_id,AthleteProfile.deleted_at.is_(None),CompletedActivity.deleted_at.is_(None),CompletedActivity.provider_deleted_at.is_(None),CompletedActivity.start_at<=utc_now())
- def for_user(self,user_id:UUID,*,limit:int,offset:int,sport:str|None=None,date_from:date|None=None,date_to:date|None=None,min_distance_metres:float|None=None,max_distance_metres:float|None=None,trainer:bool|None=None,manual:bool|None=None,visibility:str|None=None,search:str|None=None)->ActivitySummaryPage:
-  filters=list(self._base(user_id))
+ def _base(athlete_id:UUID):return (CompletedActivity.athlete_id==athlete_id,CompletedActivity.deleted_at.is_(None),CompletedActivity.provider_deleted_at.is_(None),CompletedActivity.start_at<=utc_now())
+ def for_athlete(self,athlete_id:UUID,*,limit:int,offset:int,sport:str|None=None,date_from:date|None=None,date_to:date|None=None,min_distance_metres:float|None=None,max_distance_metres:float|None=None,trainer:bool|None=None,manual:bool|None=None,visibility:str|None=None,search:str|None=None)->ActivitySummaryPage:
+  filters=list(self._base(athlete_id))
   if sport:filters.append(CompletedActivity.sport==sport)
   if date_from:filters.append(CompletedActivity.start_at>=datetime.combine(date_from,time.min,tzinfo=timezone.utc))
   if date_to:filters.append(CompletedActivity.start_at<datetime.combine(date_to,time.max,tzinfo=timezone.utc))
@@ -32,12 +32,12 @@ class ActivitySummaryQuery:
   if manual is not None:filters.append(CompletedActivity.manual==manual)
   if visibility:filters.append(CompletedActivity.visibility==visibility)
   if search:filters.append(func.lower(CompletedActivity.name).contains(search.strip().lower()))
-  total=self._session.scalar(select(func.count(CompletedActivity.id)).select_from(CompletedActivity).join(AthleteProfile).where(*filters))
-  rows=self._session.scalars(select(CompletedActivity).join(AthleteProfile).where(*filters).order_by(CompletedActivity.start_at.desc(),CompletedActivity.id.desc()).limit(limit).offset(offset)).all()
+  total=self._session.scalar(select(func.count(CompletedActivity.id)).select_from(CompletedActivity).where(*filters))
+  rows=self._session.scalars(select(CompletedActivity).where(*filters).order_by(CompletedActivity.start_at.desc(),CompletedActivity.id.desc()).limit(limit).offset(offset)).all()
   return ActivitySummaryPage(int(total or 0),limit,offset,tuple(self._view(x) for x in rows))
- def detail(self,user_id:UUID,activity_id:UUID)->CompletedActivity|None:return self._session.scalar(select(CompletedActivity).join(AthleteProfile).where(*self._base(user_id),CompletedActivity.id==activity_id))
- def filter_options(self,user_id:UUID)->ActivityFilterOptions:
-  base=self._base(user_id);rows=self._session.execute(select(CompletedActivity.sport,CompletedActivity.visibility,CompletedActivity.start_at).join(AthleteProfile).where(*base)).all()
+ def detail(self,athlete_id:UUID,activity_id:UUID)->CompletedActivity|None:return self._session.scalar(select(CompletedActivity).where(*self._base(athlete_id),CompletedActivity.id==activity_id))
+ def filter_options(self,athlete_id:UUID)->ActivityFilterOptions:
+  base=self._base(athlete_id);rows=self._session.execute(select(CompletedActivity.sport,CompletedActivity.visibility,CompletedActivity.start_at).where(*base)).all()
   sports=tuple(sorted({x.sport for x in rows}));vis=tuple(sorted({x.visibility for x in rows if x.visibility}));dates=[x.start_at.date() for x in rows]
   return ActivityFilterOptions(sports,vis,min(dates,default=None),max(dates,default=None))
  @staticmethod

@@ -2,9 +2,8 @@
 from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from sqlalchemy.orm import Session
-from app.api.dependencies.auth import AuthenticatedUser,get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext,get_current_athlete
 from app.application.performance_profiles import PerformanceProfileError,PerformanceProfileRepository
-from app.db.models import AthleteProfile
 from app.db.session import get_db_session
 from app.domains.performance_profile.zones import *
 router=APIRouter(prefix="/athlete/performance-profile",tags=["performance-profile"])
@@ -22,17 +21,14 @@ def zones(row):
  return out
 def serialize(row):
  fields={k:getattr(row,k) for k in ProfileIn.model_fields if k!="effective_from"}; fields["effective_from"]=row.effective_from;return ProfileOut(**fields,id=str(row.id),algorithm_version=row.algorithm_version,created_at=row.created_at,zones=zones(row))
-def athlete(session,user):return session.scalar(__import__('sqlalchemy').select(AthleteProfile).where(AthleteProfile.user_id==user.id))
 @router.get("",response_model=CurrentOut)
-def current(user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
- a=athlete(session,user); row=PerformanceProfileRepository(session).latest(a.id) if a else None; return CurrentOut(profile=serialize(row) if row else None,derived={})
+def current(current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+ row=PerformanceProfileRepository(session).latest(current_athlete.athlete_id); return CurrentOut(profile=serialize(row) if row else None,derived={})
 @router.get("/history",response_model=list[ProfileOut])
-def history(user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
- a=athlete(session,user); return [serialize(x) for x in PerformanceProfileRepository(session).history(a.id)] if a else []
+def history(current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+ return [serialize(x) for x in PerformanceProfileRepository(session).history(current_athlete.athlete_id)]
 @router.post("/versions",response_model=ProfileOut,status_code=201)
-def create(data:ProfileIn,user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
- a=athlete(session,user)
- if not a:raise HTTPException(404,"athlete_not_found")
- try: row=PerformanceProfileRepository(session).add_version(a.id,**data.model_dump(),algorithm_version=ALGORITHM_VERSION);session.commit();session.refresh(row);return serialize(row)
+def create(data:ProfileIn,current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+ try: row=PerformanceProfileRepository(session).add_version(current_athlete.athlete_id,**data.model_dump(),algorithm_version=ALGORITHM_VERSION);session.commit();session.refresh(row);return serialize(row)
  except PerformanceProfileError as e:session.rollback();raise HTTPException(422,str(e))
  except Exception:session.rollback();raise

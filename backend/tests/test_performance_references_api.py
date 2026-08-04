@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 from app.api.dependencies.auth import LOCAL_MVP_USER_ID
 from app.db.base import Base, utc_now
-from app.db.models import AthleteProfile, User
+from app.db.models import AthleteProfile, User, UserAthleteMembership
 from app.db.session import get_db_session
 from app.main import create_app
 
@@ -14,7 +14,7 @@ from app.main import create_app
 def performance_client():
  e=create_engine("sqlite+pysqlite:///:memory:",connect_args={"check_same_thread":False},poolclass=StaticPool); Base.metadata.create_all(e)
  with Session(e) as s:
-  u=User(id=LOCAL_MVP_USER_ID,email="a@a.invalid",normalized_email="a@a.invalid",auth_subject="local"); s.add(AthleteProfile(user=u)); s.commit()
+  u=User(id=LOCAL_MVP_USER_ID,email="a@a.invalid",normalized_email="a@a.invalid",auth_subject="local"); a=AthleteProfile(user=u); s.add(a); s.flush(); s.add(UserAthleteMembership(user=u,athlete_profile=a,role="owner",is_active=True,is_default=True)); s.commit()
  def override():
   with Session(e) as s: yield s
  app=create_app(); app.dependency_overrides[get_db_session]=override

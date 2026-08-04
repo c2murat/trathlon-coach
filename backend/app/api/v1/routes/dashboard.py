@@ -3,7 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.api.dependencies.auth import AuthenticatedUser, get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
 from app.application.queries.dashboard_analytics import DashboardAnalyticsQuery
 from app.db.session import get_db_session
 
@@ -17,8 +17,8 @@ class TrendResponse(BaseModel):
 class ConsistencyResponse(BaseModel):
     weeks: int; active_weeks: int; current_training_streak_weeks: int; longest_training_streak_weeks: int; average_active_days_per_week: float; average_moving_time_seconds_per_week: float; last_activity_at: datetime | None
 @router.get("/summary", response_model=SummaryResponse)
-def summary(period: Literal["week","month","last_30_days","year"]="week", user:AuthenticatedUser=Depends(get_current_user), session:Session=Depends(get_db_session)): return DashboardAnalyticsQuery(session).summary(user.id, period)
+def summary(period: Literal["week","month","last_30_days","year"]="week", current_athlete:CurrentAthleteContext=Depends(get_current_athlete), session:Session=Depends(get_db_session)): return DashboardAnalyticsQuery(session).summary(current_athlete.athlete_id, period)
 @router.get("/trends", response_model=list[TrendResponse])
-def trends(weeks:int=Query(8,ge=4,le=52), user:AuthenticatedUser=Depends(get_current_user), session:Session=Depends(get_db_session)): return DashboardAnalyticsQuery(session).trends(user.id, weeks)
+def trends(weeks:int=Query(8,ge=4,le=52), current_athlete:CurrentAthleteContext=Depends(get_current_athlete), session:Session=Depends(get_db_session)): return DashboardAnalyticsQuery(session).trends(current_athlete.athlete_id, weeks)
 @router.get("/consistency", response_model=ConsistencyResponse)
-def consistency(weeks:int=Query(12,ge=4,le=52), user:AuthenticatedUser=Depends(get_current_user), session:Session=Depends(get_db_session)): return DashboardAnalyticsQuery(session).consistency(user.id, weeks)
+def consistency(weeks:int=Query(12,ge=4,le=52), current_athlete:CurrentAthleteContext=Depends(get_current_athlete), session:Session=Depends(get_db_session)): return DashboardAnalyticsQuery(session).consistency(current_athlete.athlete_id, weeks)

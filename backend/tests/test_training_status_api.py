@@ -24,6 +24,7 @@ from app.db.models import (
     AthleteDailyTrainingStatus,
     AthleteProfile,
     User,
+    UserAthleteMembership,
 )
 from app.db.session import get_db_session
 from app.main import create_app
@@ -74,6 +75,7 @@ def api_context():
             athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
             session.add(athlete)
             session.flush()
+            session.add(UserAthleteMembership(user=user, athlete_profile=athlete, role="owner", is_active=True, is_default=True))
             athlete_ids.append(athlete.id)
         session.commit()
 
@@ -396,7 +398,7 @@ def test_missing_athlete_is_404_and_not_editable(api_context):
     active["user_id"] = uuid4()
     response = client.get("/training-status", params=params())
     assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "athlete_not_found"
+    assert response.json()["detail"]["code"] == "athlete_profile_not_found"
 
 
 def test_openapi_documents_routes_schema_defaults_and_no_athlete_id(api_context):

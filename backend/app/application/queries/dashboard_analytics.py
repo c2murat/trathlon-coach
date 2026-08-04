@@ -38,14 +38,14 @@ class DashboardAnalyticsQuery:
         self.session = session
         self.now = now or utc_now()
 
-    def context(self, user_id: UUID) -> AnalyticsContext:
-        athlete = self.session.scalar(select(AthleteProfile).where(AthleteProfile.user_id == user_id, AthleteProfile.deleted_at.is_(None)))
-        tz = ZoneInfo(athlete.timezone if athlete else "UTC")
-        rows = () if athlete is None else tuple(self.session.scalars(select(CompletedActivity).where(CompletedActivity.athlete_id == athlete.id, CompletedActivity.deleted_at.is_(None), CompletedActivity.provider_deleted_at.is_(None), CompletedActivity.start_at <= self.now).order_by(CompletedActivity.start_at)).all())
+    def context(self, athlete_id: UUID) -> AnalyticsContext:
+        athlete = self.session.get(AthleteProfile, athlete_id)
+        tz = ZoneInfo(athlete.timezone if athlete and athlete.deleted_at is None else "UTC")
+        rows = () if athlete is None or athlete.deleted_at is not None else tuple(self.session.scalars(select(CompletedActivity).where(CompletedActivity.athlete_id == athlete_id, CompletedActivity.deleted_at.is_(None), CompletedActivity.provider_deleted_at.is_(None), CompletedActivity.start_at <= self.now).order_by(CompletedActivity.start_at)).all())
         return AnalyticsContext(tz, self.now, rows)
 
-    def summary(self, user_id: UUID, period: str) -> dict:
-        c = self.context(user_id); today = c.now.astimezone(c.timezone).date()
+    def summary(self, athlete_id: UUID, period: str) -> dict:
+        c = self.context(athlete_id); today = c.now.astimezone(c.timezone).date()
         if period == "week": start_day, end_day = week_start(today), week_start(today) + timedelta(days=7)
         elif period == "month": start_day = today.replace(day=1); end_day = (start_day.replace(day=28) + timedelta(days=4)).replace(day=1)
         elif period == "year": start_day, end_day = date(today.year, 1, 1), date(today.year + 1, 1, 1)
@@ -59,8 +59,8 @@ class DashboardAnalyticsQuery:
             breakdown.append({"sport_type": sport, "activity_count": values["activity_count"], "moving_time_seconds": values["total_moving_time_seconds"], "distance_metres": values["total_distance_metres"], "elevation_metres": values["total_elevation_metres"]})
         return {"period": period, "period_start": start, "period_end": end, **total, "sport_breakdown": breakdown}
 
-    def trends(self, user_id: UUID, weeks: int) -> list[dict]:
-        c = self.context(user_id); current = week_start(c.now.astimezone(c.timezone).date()); first = current - timedelta(weeks=weeks - 1)
+    def trends(self, athlete_id: UUID, weeks: int) -> list[dict]:
+        c = self.context(athlete_id); current = week_start(c.now.astimezone(c.timezone).date()); first = current - timedelta(weeks=weeks - 1)
         result = []
         for index in range(weeks):
             start_day = first + timedelta(weeks=index); end_day = start_day + timedelta(days=7)
@@ -69,8 +69,8 @@ class DashboardAnalyticsQuery:
             result.append({"week_start": start, "week_end": end, "activity_count": values["activity_count"], "moving_time_seconds": values["total_moving_time_seconds"], "distance_metres": values["total_distance_metres"], "elevation_metres": values["total_elevation_metres"], "active_days": values["active_days"]})
         return result
 
-    def consistency(self, user_id: UUID, weeks: int) -> dict:
-        c = self.context(user_id); trends = self.trends(user_id, weeks); flags = [x["activity_count"] > 0 for x in trends]
+    def consistency(self, athlete_id: UUID, weeks: int) -> dict:
+        c = self.context(athlete_id); trends = self.trends(athlete_id, weeks); flags = [x["activity_count"] > 0 for x in trends]
         longest = run = 0
         for active in flags:
             run = run + 1 if active else 0; longest = max(longest, run)

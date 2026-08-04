@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 from app.api.dependencies.auth import LOCAL_MVP_USER_ID
 from app.db.base import Base
-from app.db.models import AthleteProfile, CompletedActivity, User
+from app.db.models import AthleteProfile, CompletedActivity, User, UserAthleteMembership
 from app.db.session import get_db_session
 from app.main import create_app
 
@@ -17,7 +17,7 @@ def dashboard_client():
     with Session(engine) as s:
         user=User(id=LOCAL_MVP_USER_ID,email="a@example.invalid",normalized_email="a@example.invalid",auth_subject="a",timezone="UTC"); athlete=AthleteProfile(user=user,timezone="UTC",unit_system="metric")
         other=User(email="b@example.invalid",normalized_email="b@example.invalid",auth_subject="b"); other_athlete=AthleteProfile(user=other)
-        s.add_all([user,athlete,other,other_athlete]);s.flush(); now=datetime.now(timezone.utc)
+        s.add_all([user,athlete,other,other_athlete]);s.flush(); s.add(UserAthleteMembership(user=user,athlete_profile=athlete,role="owner",is_active=True,is_default=True)); now=datetime.now(timezone.utc)
         for days,sport,moving,distance in [(0,"running",3600,10000),(1,"cycling",7200,50000),(8,"swimming",1800,1500)]:
             s.add(CompletedActivity(athlete=athlete,source_summary="strava",sport=sport,name=sport,start_at=now-timedelta(days=days),timezone="UTC",elapsed_time_s=moving,moving_time_s=moving,distance_m=distance,elevation_gain_m=100))
         s.add(CompletedActivity(athlete=other_athlete,source_summary="strava",sport="running",name="secret",start_at=now,timezone="UTC",elapsed_time_s=1,moving_time_s=1))

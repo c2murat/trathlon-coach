@@ -1,11 +1,9 @@
 from datetime import date
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import AuthenticatedUser, get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
 from app.api.v1.schemas.training_status import DailyTrainingStatusResponse
 from app.application.training_status import (
     DuplicateTrainingStatusSourceDateError,
@@ -18,7 +16,7 @@ from app.application.training_status import (
     TrainingStatusAthleteNotFoundError,
     TrainingStatusPersistenceError,
 )
-from app.db.models import AthleteDailyTrainingStatus, AthleteProfile
+from app.db.models import AthleteDailyTrainingStatus
 from app.db.session import get_db_session
 from app.domains.manual_strength import ALGORITHM_VERSION as MANUAL_STRENGTH_VERSION
 from app.domains.training_status import ALGORITHM_VERSION as TRAINING_STATUS_VERSION
@@ -27,18 +25,6 @@ from app.domains.training_status import ALGORITHM_VERSION as TRAINING_STATUS_VER
 TRAINING_LOAD_VERSION = "0.7b.1"
 
 router = APIRouter(prefix="/training-status", tags=["Training status"])
-
-
-def _active_athlete_id(
-    session: Session,
-    current_user: AuthenticatedUser,
-) -> UUID:
-    athlete = session.scalar(
-        select(AthleteProfile).where(AthleteProfile.user_id == current_user.id)
-    )
-    if athlete is None:
-        raise HTTPException(status_code=404, detail={"code": "athlete_not_found"})
-    return athlete.id
 
 
 def _response(row: AthleteDailyTrainingStatus) -> DailyTrainingStatusResponse:
@@ -116,10 +102,10 @@ def list_training_status(
     training_status_algorithm_version: str = Query(
         TRAINING_STATUS_VERSION, min_length=1, max_length=32
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete_id = _active_athlete_id(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         rows = TrainingStatusApplication(session).list_training_status(
             athlete_id,
@@ -149,10 +135,10 @@ def latest_training_status(
     training_status_algorithm_version: str = Query(
         TRAINING_STATUS_VERSION, min_length=1, max_length=32
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete_id = _active_athlete_id(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         row = TrainingStatusApplication(session).get_latest_training_status(
             athlete_id,
@@ -186,10 +172,10 @@ def recalculate_training_status(
     training_status_algorithm_version: str = Query(
         TRAINING_STATUS_VERSION, min_length=1, max_length=32
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
-    athlete_id = _active_athlete_id(session, current_user)
+    athlete_id = current_athlete.athlete_id
     try:
         rows = TrainingStatusApplication(session).recalculate_training_status(
             athlete_id,
