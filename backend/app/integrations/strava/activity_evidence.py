@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.base import utc_now
 from app.db.models import ActivityEvidenceState,ActivityLap,ActivityRouteEvidence,ActivityStream,AthleteProfile,CompletedActivity,IntegrationAccount,SyncJob
 from app.integrations.strava.token_service import StravaTokenService
+from app.integrations.strava.account_selection import active_strava_account,compatible_athlete_id,scoped_strava_job
 from app.providers.base import AuthenticationError,InvalidPayloadError,ProviderError,TemporaryProviderError
 from app.providers.strava.activity_client import StravaActivityClient,StravaActivityRateLimitError,StravaActivityUnavailableError
 from app.providers.strava.evidence_mapper import StravaEvidenceMapper,route_polyline
@@ -23,11 +24,11 @@ class EvidenceJobView:
  job_id:UUID;status:str;selected_count:int;laps_imported:int;streams_imported:int;activities_completed:int;skipped_count:int;failed_count:int;last_activity_id:str|None;started_at:datetime|None;updated_at:datetime;completed_at:datetime|None;next_resume_at:datetime|None;error_category:str|None;location_retention_enabled:bool
 class StravaActivityEvidenceManager:
  def __init__(self,*,session_factory:SessionFactory,client:StravaActivityClient,token_service:StravaTokenService,stream_retention_enabled:bool=True,location_retention_enabled:bool=False,max_samples:int=1000,retention_days:int=0,retry_seconds:int=60,clock=utc_now,mapper=None):self._s=session_factory;self._client=client;self._tokens=token_service;self._streams=stream_retention_enabled;self._location=location_retention_enabled;self._max=max_samples;self._retention_days=retention_days;self._retry=retry_seconds;self._clock=clock;self._mapper=mapper or StravaEvidenceMapper();self._tasks=set()
- def create_job(self,user_id:UUID,*,activity_ids:list[UUID]|None,include_laps:bool,include_streams:bool,include_location:bool)->EvidenceJobView:
+ def create_job(self,user_id:UUID,*,athlete_id:UUID|None=None,activity_ids:list[UUID]|None,include_laps:bool,include_streams:bool,include_location:bool)->EvidenceJobView:
   if not include_laps and not include_streams:raise EvidenceSelectionError
   if include_location and (not include_streams or not self._location):raise EvidenceSelectionError
   with self._s() as s:
-   account=self._account(s,user_id)
+   selected=compatible_athlete_id(s,user_id=user_id,athlete_id=athlete_id);account=active_strava_account(s,athlete_id=selected)
    if not account:raise EvidenceConnectionRequiredError
    self._cleanup_location(s,account.athlete_id)
    self._cleanup_expired(s,account.athlete_id)
@@ -48,8 +49,8 @@ class StravaActivityEvidenceManager:
  async def run(self,job_id):
   start=await asyncio.to_thread(self._start,job_id)
   if not start:return
-  account_id,ids,options=start
-  try:token=await self._tokens.access_token(account_id)
+  athlete_id,account_id,ids,options=start
+  try:token=await self._tokens.access_token(athlete_id=athlete_id,integration_account_id=account_id)
   except AuthenticationError:await asyncio.to_thread(self._fail,job_id,"authentication_reconnect_required",True);return
   for aid in ids:
    external=None
@@ -71,14 +72,14 @@ class StravaActivityEvidenceManager:
    except SQLAlchemyError:await asyncio.to_thread(self._activity_failed,job_id,aid,"database_error");continue
    except ProviderError:await asyncio.to_thread(self._activity_failed,job_id,aid,"provider_error");continue
   await asyncio.to_thread(self._finish,job_id)
- def job_for_user(self,user_id,job_id):
+ def job_for_user(self,user_id,job_id,*,athlete_id=None):
   with self._s() as s:
-   j=s.scalar(select(SyncJob).join(AthleteProfile).where(SyncJob.id==job_id,SyncJob.job_type==JOB_TYPE,AthleteProfile.user_id==user_id))
+   selected=compatible_athlete_id(s,user_id=user_id,athlete_id=athlete_id);j=s.scalar(select(SyncJob).where(SyncJob.id==job_id,SyncJob.athlete_id==selected,SyncJob.job_type==JOB_TYPE))
    if not j:raise EvidenceJobNotFoundError
    return self._view(j)
- def cleanup_location_for_user(self,user_id):
+ def cleanup_location_for_user(self,user_id,*,athlete_id=None):
   with self._s() as s:
-   athlete=s.scalar(select(AthleteProfile).where(AthleteProfile.user_id==user_id));count=0 if not athlete else self._cleanup_location(s,athlete.id);s.commit();return count
+   selected=compatible_athlete_id(s,user_id=user_id,athlete_id=athlete_id);count=self._cleanup_location(s,selected);s.commit();return count
  def _cleanup_location(self,s,athlete_id):
   if self._location:return 0
   ids=select(CompletedActivity.id).where(CompletedActivity.athlete_id==athlete_id);a=s.execute(delete(ActivityStream).where(ActivityStream.completed_activity_id.in_(ids),ActivityStream.stream_type=="latlng")).rowcount or 0;b=s.execute(delete(ActivityRouteEvidence).where(ActivityRouteEvidence.completed_activity_id.in_(ids))).rowcount or 0;s.execute(ActivityEvidenceState.__table__.update().where(ActivityEvidenceState.completed_activity_id.in_(ids)).values(location_retained=False));return a+b
@@ -87,17 +88,17 @@ class StravaActivityEvidenceManager:
   cutoff=self._clock()-timedelta(days=self._retention_days);ids=select(CompletedActivity.id).where(CompletedActivity.athlete_id==athlete_id);a=s.execute(delete(ActivityStream).where(ActivityStream.completed_activity_id.in_(ids),ActivityStream.fetched_at<cutoff)).rowcount or 0;b=s.execute(delete(ActivityRouteEvidence).where(ActivityRouteEvidence.completed_activity_id.in_(ids),ActivityRouteEvidence.fetched_at<cutoff)).rowcount or 0;return a+b
  def _start(self,jid):
   with self._s() as s:
-   j=s.get(SyncJob,jid)
+   j=scoped_strava_job(s,job_id=jid)
    if not j or j.status not in {"queued","retry_scheduled"} or j.next_retry_at and j.next_retry_at>self._clock():return None
-   st=self._stats(j);all_ids=[UUID(x) for x in st["activity_ids"]];last=UUID(st["last_activity_id"]) if st.get("last_activity_id") else None;done=(all_ids.index(last)+1) if last in all_ids else 0;ids=all_ids[done:];j.status="running";j.started_at=j.started_at or self._clock();j.next_retry_at=None;j.attempt_count+=1;s.commit();return j.integration_account_id,ids,(bool(st["include_laps"]),bool(st["include_streams"]),bool(st["include_location"]))
+   st=self._stats(j);all_ids=[UUID(x) for x in st["activity_ids"]];last=UUID(st["last_activity_id"]) if st.get("last_activity_id") else None;done=(all_ids.index(last)+1) if last in all_ids else 0;ids=all_ids[done:];j.status="running";j.started_at=j.started_at or self._clock();j.next_retry_at=None;j.attempt_count+=1;s.commit();return j.athlete_id,j.integration_account_id,ids,(bool(st["include_laps"]),bool(st["include_streams"]),bool(st["include_location"]))
  def _identity(self,jid,aid):
   with self._s() as s:
-   j=s.get(SyncJob,jid);a=s.get(CompletedActivity,aid)
+   j=scoped_strava_job(s,job_id=jid);a=s.get(CompletedActivity,aid)
    if not j or not a or a.athlete_id!=j.athlete_id or not a.external_activity_id:raise InvalidPayloadError("Invalid evidence selection")
    return a.external_activity_id
  def _persist(self,jid,aid,laps,streams,polyline,options):
   with self._s() as s:
-   j=s.get(SyncJob,jid);a=s.get(CompletedActivity,aid)
+   j=scoped_strava_job(s,job_id=jid);a=s.get(CompletedActivity,aid)
    if not j or not a:raise SQLAlchemyError("Missing evidence record")
    now=self._clock();st=self._stats(j)
    if options[0]:
@@ -124,7 +125,7 @@ class StravaActivityEvidenceManager:
    j.stats=st;s.commit()
  def _activity_failed(self,jid,aid,cat):
   with self._s() as s:
-   j=s.get(SyncJob,jid)
+   j=scoped_strava_job(s,job_id=jid)
    if not j:return
    state=s.scalar(select(ActivityEvidenceState).where(ActivityEvidenceState.completed_activity_id==aid)) or ActivityEvidenceState(completed_activity_id=aid);s.add(state);state.status="failed";state.error_category=cat;st=self._stats(j);st["failed_count"]=int(st["failed_count"])+1;st["last_activity_id"]=str(aid);j.stats=st;j.error_code=j.error_code or cat;s.commit()
  def _unavailable(self,jid,aid):
@@ -133,16 +134,14 @@ class StravaActivityEvidenceManager:
    if a:a.provider_deleted_at=self._clock();s.commit()
   self._activity_failed(jid,aid,"provider_unavailable")
  def _pause(self,jid,cat,seconds):
-  with self._s() as s:j=s.get(SyncJob,jid);j.status="retry_scheduled";j.error_code=cat;j.next_retry_at=self._clock()+timedelta(seconds=seconds);s.commit()
+  with self._s() as s:j=scoped_strava_job(s,job_id=jid);j.status="retry_scheduled";j.error_code=cat;j.next_retry_at=self._clock()+timedelta(seconds=seconds);s.commit()
  def _fail(self,jid,cat,reconnect=False):
   with self._s() as s:
-   j=s.get(SyncJob,jid);j.status="failed";j.error_code=cat;j.finished_at=self._clock()
+   j=scoped_strava_job(s,job_id=jid);j.status="failed";j.error_code=cat;j.finished_at=self._clock()
    if reconnect:s.get(IntegrationAccount,j.integration_account_id).status="refresh_required"
    s.commit()
  def _finish(self,jid):
-  with self._s() as s:j=s.get(SyncJob,jid);st=self._stats(j);j.status="partially_succeeded" if int(st["failed_count"]) else "succeeded";j.finished_at=self._clock();j.error_code=j.error_code if int(st["failed_count"]) else None;s.commit()
- @staticmethod
- def _account(s,user):return s.scalar(select(IntegrationAccount).join(AthleteProfile).where(AthleteProfile.user_id==user,IntegrationAccount.provider=="strava",IntegrationAccount.status=="active",IntegrationAccount.deleted_at.is_(None)))
+  with self._s() as s:j=scoped_strava_job(s,job_id=jid);st=self._stats(j);j.status="partially_succeeded" if int(st["failed_count"]) else "succeeded";j.finished_at=self._clock();j.error_code=j.error_code if int(st["failed_count"]) else None;s.commit()
  @staticmethod
  def _stats(j):return {**DEFAULT,**(j.stats or {})}
  def _view(self,j):

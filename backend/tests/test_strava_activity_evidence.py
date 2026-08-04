@@ -8,14 +8,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from app.application.queries.activity_evidence import ActivityEvidenceQuery
 from app.db.base import Base,utc_now
-from app.db.models import ActivityEvidenceState,ActivityLap,ActivityRouteEvidence,ActivityStream,AthleteProfile,CompletedActivity,IntegrationAccount,OAuthCredential,User
+from app.db.models import ActivityEvidenceState,ActivityLap,ActivityRouteEvidence,ActivityStream,AthleteProfile,CompletedActivity,IntegrationAccount,OAuthCredential,User,UserAthleteMembership
 from app.integrations.strava.activity_evidence import EvidenceSelectionError,StravaActivityEvidenceManager
 from app.providers.base import AuthenticationError,TemporaryProviderError
 from app.providers.strava.activity_client import StravaActivityDetail,StravaActivityLaps,StravaActivityRateLimitError,StravaActivityStreams,StravaRateLimitSnapshot
 EMPTY=StravaRateLimitSnapshot(None,None,None,None)
 class Tokens:
  def __init__(self,error=None):self.error=error
- async def access_token(self,_):
+ async def access_token(self,**kwargs):
   if self.error:raise self.error
   return SecretStr("stored-secret")
 class Client:
@@ -34,7 +34,7 @@ class Client:
 def db(tmp_path):
  engine=create_engine(f"sqlite+pysqlite:///{tmp_path/'evidence.sqlite3'}",connect_args={"check_same_thread":False});Base.metadata.create_all(engine);factory=sessionmaker(bind=engine,expire_on_commit=False);now=utc_now()
  with factory() as s:
-  user=User(email="a@x.invalid",normalized_email="a@x.invalid",auth_subject="a");athlete=AthleteProfile(user=user);account=IntegrationAccount(athlete=athlete,provider="strava",external_account_id="456",status="active",scopes=[]);credential=OAuthCredential(integration_account=account,access_token="secret",refresh_token="refresh",expires_at=now+timedelta(hours=1),scopes=[]);a1=CompletedActivity(athlete=athlete,source_integration_account=account,external_activity_id="101",source_summary="strava",sport="running",name="Run",start_at=now,timezone="UTC",elapsed_time_s=60,enrichment_status="succeeded",provider_updated_at=now);a2=CompletedActivity(athlete=athlete,source_integration_account=account,external_activity_id="102",source_summary="strava",sport="cycling",name="Ride",start_at=now-timedelta(days=1),timezone="UTC",elapsed_time_s=60,enrichment_status="succeeded",provider_updated_at=now);other=User(email="b@x.invalid",normalized_email="b@x.invalid",auth_subject="b");oa=AthleteProfile(user=other);foreign=CompletedActivity(athlete=oa,external_activity_id="999",source_summary="strava",sport="running",name="Secret",start_at=now,timezone="UTC",elapsed_time_s=1,enrichment_status="succeeded");s.add_all([user,athlete,account,credential,a1,a2,other,oa,foreign]);s.commit();ids=user.id,a1.id,a2.id,foreign.id,account.id
+  user=User(email="a@x.invalid",normalized_email="a@x.invalid",auth_subject="a");athlete=AthleteProfile(user=user);account=IntegrationAccount(athlete=athlete,provider="strava",external_account_id="456",status="active",scopes=[]);credential=OAuthCredential(integration_account=account,access_token="secret",refresh_token="refresh",expires_at=now+timedelta(hours=1),scopes=[]);a1=CompletedActivity(athlete=athlete,source_integration_account=account,external_activity_id="101",source_summary="strava",sport="running",name="Run",start_at=now,timezone="UTC",elapsed_time_s=60,enrichment_status="succeeded",provider_updated_at=now);a2=CompletedActivity(athlete=athlete,source_integration_account=account,external_activity_id="102",source_summary="strava",sport="cycling",name="Ride",start_at=now-timedelta(days=1),timezone="UTC",elapsed_time_s=60,enrichment_status="succeeded",provider_updated_at=now);other=User(email="b@x.invalid",normalized_email="b@x.invalid",auth_subject="b");oa=AthleteProfile(user=other);foreign=CompletedActivity(athlete=oa,external_activity_id="999",source_summary="strava",sport="running",name="Secret",start_at=now,timezone="UTC",elapsed_time_s=1,enrichment_status="succeeded");s.add_all([user,athlete,account,credential,a1,a2,other,oa,foreign]);s.flush();s.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True));s.commit();ids=user.id,a1.id,a2.id,foreign.id,account.id
  yield factory,ids;engine.dispose()
 def manager(db,client=None,**kw):return StravaActivityEvidenceManager(session_factory=db[0],client=client or Client(),token_service=kw.pop("tokens",Tokens()),**kw)
 def test_first_import_and_repeat_upsert_are_idempotent(db):
@@ -70,7 +70,7 @@ def test_location_disabled_rejects_request_and_cleans_existing(db):
 def test_location_enabled_persists_route_and_read_api_hides_when_disabled(db):
  factory,(user,a1,_,_,_)=db;m=manager(db,location_retention_enabled=True);j=m.create_job(user,activity_ids=[a1],include_laps=False,include_streams=True,include_location=True);asyncio.run(m.run(j.job_id))
  with factory() as s:
-  visible=ActivityEvidenceQuery(s,location_enabled=True,max_samples=10).for_user(user,a1);hidden=ActivityEvidenceQuery(s,location_enabled=False,max_samples=10).for_user(user,a1)
+  athlete_id=s.get(CompletedActivity,a1).athlete_id;visible=ActivityEvidenceQuery(s,location_enabled=True,max_samples=10).for_athlete(athlete_id,a1);hidden=ActivityEvidenceQuery(s,location_enabled=False,max_samples=10).for_athlete(athlete_id,a1)
   assert visible["route"]["polyline"]=="encoded-route" and "latlng" not in visible["streams"]
   assert hidden["route"]["polyline"] is None and hidden["location_status"]=="privacy_disabled"
 def test_database_failure_rolls_back_current_activity_only(db):

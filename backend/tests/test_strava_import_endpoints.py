@@ -24,7 +24,7 @@ class FakeManager:
         self.latest_not_started = latest_not_started
         self.scheduled = []
 
-    def create_or_resume_job(self, user_id):
+    def create_or_resume_job(self, user_id, *, athlete_id=None):
         del user_id
         if self.start_error:
             raise self.start_error
@@ -33,13 +33,13 @@ class FakeManager:
     def schedule(self, job_id):
         self.scheduled.append(job_id)
 
-    def job_for_user(self, user_id, job_id):
+    def job_for_user(self, user_id, job_id, *, athlete_id=None):
         del user_id
         if self.status_error or job_id != self.job_id:
             raise self.status_error or ImportJobNotFoundError()
         return self.view("running")
 
-    def latest_job_for_user(self, user_id):
+    def latest_job_for_user(self, user_id, *, athlete_id=None):
         del user_id
         if self.status_error:
             raise self.status_error

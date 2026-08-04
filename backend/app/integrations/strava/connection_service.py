@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.base import utc_now
-from app.db.models import AthleteProfile, AuditEvent, IntegrationAccount, OAuthCredential
+from app.db.models import AuditEvent, IntegrationAccount
+from app.integrations.strava.account_selection import active_strava_account,strava_account_for_status
 
 
 REQUIRED_SCOPES = frozenset({"read", "activity:read_all"})
@@ -54,8 +55,8 @@ class StravaConnectionService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def status_for_user(self, user_id: UUID) -> StravaConnectionStatus:
-        account = self._account_for_user(user_id)
+    def status_for_athlete(self, athlete_id: UUID) -> StravaConnectionStatus:
+        account = strava_account_for_status(self._session, athlete_id=athlete_id)
         if account is None:
             return StravaConnectionStatus(
                 provider=self.provider_name,
@@ -119,8 +120,10 @@ class StravaConnectionService:
             message=messages[connection_status],
         )
 
-    def begin_disconnect(self, user_id: UUID) -> DisconnectTarget | None:
-        account = self._account_for_user(user_id)
+    def begin_disconnect(
+        self, *, athlete_id: UUID, user_id: UUID
+    ) -> DisconnectTarget | None:
+        account = active_strava_account(self._session, athlete_id=athlete_id)
         if account is None:
             return None
         credential = account.oauth_credential
@@ -181,18 +184,6 @@ class StravaConnectionService:
         except Exception:
             self._session.rollback()
             raise
-
-    def _account_for_user(self, user_id: UUID) -> IntegrationAccount | None:
-        return self._session.scalar(
-            select(IntegrationAccount)
-            .join(AthleteProfile, IntegrationAccount.athlete_id == AthleteProfile.id)
-            .where(
-                AthleteProfile.user_id == user_id,
-                IntegrationAccount.provider == self.provider_name,
-                IntegrationAccount.deleted_at.is_(None),
-            )
-            .order_by(IntegrationAccount.updated_at.desc())
-        )
 
     def _commit_audit(
         self,

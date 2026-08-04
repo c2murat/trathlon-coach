@@ -18,6 +18,7 @@ from app.db.models import (
     SyncJob,
 )
 from app.integrations.strava.token_service import SessionFactory, StravaTokenService
+from app.integrations.strava.account_selection import active_strava_account, compatible_athlete_id,scoped_strava_job
 from app.providers.base import (
     AuthenticationError,
     InvalidPayloadError,
@@ -112,7 +113,7 @@ class StravaSummaryImportManager:
         self._tasks: dict[UUID, asyncio.Task[None]] = {}
 
     def create_or_resume_job(
-        self, user_id: UUID, *, full_reimport: bool = False
+        self, user_id: UUID, *, athlete_id: UUID | None = None, full_reimport: bool = False
     ) -> StravaImportJobView:
         """Reuse active work or create a new checkpointed import generation.
 
@@ -121,7 +122,10 @@ class StravaSummaryImportManager:
         """
 
         with self._session_factory() as session:
-            account = self._active_account(session, user_id)
+            selected_id = compatible_athlete_id(
+                session, user_id=user_id, athlete_id=athlete_id
+            )
+            account = active_strava_account(session, athlete_id=selected_id)
             if account is None:
                 raise ActiveStravaConnectionRequiredError
             job = session.scalar(
@@ -230,21 +234,18 @@ class StravaSummaryImportManager:
         )
         return range_start, now, dict(DEFAULT_STATS), previous.id
 
-    def job_for_user(self, user_id: UUID, job_id: UUID) -> StravaImportJobView:
+    def job_for_user(self, user_id: UUID, job_id: UUID, *, athlete_id: UUID | None = None) -> StravaImportJobView:
         with self._session_factory() as session:
+            selected_id = compatible_athlete_id(session, user_id=user_id, athlete_id=athlete_id)
             row = session.execute(
                 select(SyncJob, IntegrationAccount)
                 .join(
                     IntegrationAccount,
                     SyncJob.integration_account_id == IntegrationAccount.id,
                 )
-                .join(
-                    AthleteProfile,
-                    IntegrationAccount.athlete_id == AthleteProfile.id,
-                )
                 .where(
                     SyncJob.id == job_id,
-                    AthleteProfile.user_id == user_id,
+                    SyncJob.athlete_id == selected_id,
                     IntegrationAccount.provider == "strava",
                 )
             ).one_or_none()
@@ -252,20 +253,17 @@ class StravaSummaryImportManager:
                 raise ImportJobNotFoundError
             return self._view(row[0], row[1].provider)
 
-    def latest_job_for_user(self, user_id: UUID) -> StravaImportJobView:
+    def latest_job_for_user(self, user_id: UUID, *, athlete_id: UUID | None = None) -> StravaImportJobView:
         with self._session_factory() as session:
+            selected_id = compatible_athlete_id(session, user_id=user_id, athlete_id=athlete_id)
             row = session.execute(
                 select(SyncJob, IntegrationAccount)
                 .join(
                     IntegrationAccount,
                     SyncJob.integration_account_id == IntegrationAccount.id,
                 )
-                .join(
-                    AthleteProfile,
-                    IntegrationAccount.athlete_id == AthleteProfile.id,
-                )
                 .where(
-                    AthleteProfile.user_id == user_id,
+                    SyncJob.athlete_id == selected_id,
                     IntegrationAccount.provider == "strava",
                 )
                 .order_by(SyncJob.created_at.desc(), SyncJob.id.desc())
@@ -303,9 +301,12 @@ class StravaSummaryImportManager:
             state = await asyncio.to_thread(self._mark_running, job_id)
             if state is None:
                 return
-            account_id, page, after, before = state
+            athlete_id, account_id, page, after, before = state
             while True:
-                token = await self._token_service.access_token(account_id)
+                token = await self._token_service.access_token(
+                    athlete_id=athlete_id,
+                    integration_account_id=account_id,
+                )
                 result = await self._activity_client.fetch_activity_summaries(
                     access_token=token,
                     page=page,
@@ -365,9 +366,9 @@ class StravaSummaryImportManager:
 
     def _mark_running(
         self, job_id: UUID
-    ) -> tuple[UUID, int, int | None, int | None] | None:
+    ) -> tuple[UUID, UUID, int, int | None, int | None] | None:
         with self._session_factory() as session:
-            job = session.get(SyncJob, job_id)
+            job = scoped_strava_job(session,job_id=job_id)
             if job is None or job.status not in {"queued", "retry_scheduled"}:
                 return None
             now = self._clock()
@@ -381,6 +382,7 @@ class StravaSummaryImportManager:
             job.next_retry_at = None
             session.commit()
             return (
+                job.athlete_id,
                 job.integration_account_id,
                 int(stats["page"]) + 1,
                 int(job.range_start.timestamp()) if job.range_start else None,
@@ -395,7 +397,7 @@ class StravaSummaryImportManager:
     ) -> None:
         with self._session_factory() as session:
             try:
-                job = session.get(SyncJob, job_id)
+                job = scoped_strava_job(session,job_id=job_id)
                 if job is None or job.status != "running":
                     raise RuntimeError("Import job is not running")
                 account = session.get(
@@ -469,7 +471,7 @@ class StravaSummaryImportManager:
 
     def _mark_succeeded(self, job_id: UUID) -> None:
         with self._session_factory() as session:
-            job = session.get(SyncJob, job_id)
+            job = scoped_strava_job(session,job_id=job_id)
             if job is None:
                 return
             job.status = "succeeded"
@@ -486,7 +488,7 @@ class StravaSummaryImportManager:
         retry_seconds: int,
     ) -> None:
         with self._session_factory() as session:
-            job = session.get(SyncJob, job_id)
+            job = scoped_strava_job(session,job_id=job_id)
             if job is None:
                 return
             job.status = "retry_scheduled"
@@ -497,7 +499,7 @@ class StravaSummaryImportManager:
 
     def _mark_reconnect_required(self, job_id: UUID) -> None:
         with self._session_factory() as session:
-            job = session.get(SyncJob, job_id)
+            job = scoped_strava_job(session,job_id=job_id)
             if job is None:
                 return
             account = session.get(
@@ -514,7 +516,7 @@ class StravaSummaryImportManager:
 
     def _mark_failed(self, job_id: UUID, category: str) -> None:
         with self._session_factory() as session:
-            job = session.get(SyncJob, job_id)
+            job = scoped_strava_job(session,job_id=job_id)
             if job is None:
                 return
             job.status = "failed"
@@ -522,24 +524,6 @@ class StravaSummaryImportManager:
             job.error_code = category
             job.error_detail = None
             session.commit()
-
-    @staticmethod
-    def _active_account(
-        session: Session, user_id: UUID
-    ) -> IntegrationAccount | None:
-        return session.scalar(
-            select(IntegrationAccount)
-            .join(
-                AthleteProfile,
-                IntegrationAccount.athlete_id == AthleteProfile.id,
-            )
-            .where(
-                AthleteProfile.user_id == user_id,
-                IntegrationAccount.provider == "strava",
-                IntegrationAccount.status == "active",
-                IntegrationAccount.deleted_at.is_(None),
-            )
-        )
 
     @staticmethod
     def _stats(job: SyncJob) -> dict[str, object]:

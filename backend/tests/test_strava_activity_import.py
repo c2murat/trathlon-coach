@@ -19,6 +19,7 @@ from app.db.models import (
     OAuthCredential,
     SyncJob,
     User,
+    UserAthleteMembership,
 )
 from app.integrations.strava.activity_import import (
     ImportJobNotFoundError,
@@ -58,8 +59,8 @@ class FakeTokenService:
         self.error = error
         self.calls = 0
 
-    async def access_token(self, integration_account_id):
-        del integration_account_id
+    async def access_token(self, *, athlete_id, integration_account_id):
+        del athlete_id, integration_account_id
         self.calls += 1
         if self.error:
             raise self.error
@@ -137,6 +138,8 @@ def database(tmp_path):
             scopes=["read", "activity:read_all"],
         )
         session.add_all([user, athlete, account, credential])
+        session.flush()
+        session.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True))
         session.commit()
         ids = (user.id, athlete.id, account.id, credential.id)
     yield factory, ids
@@ -308,7 +311,7 @@ def test_invalid_credentials_require_reconnect(database):
 
 
 def test_token_refresh_rotates_both_tokens_and_temporary_failure_preserves_them(database):
-    factory, (_, _, account_id, credential_id) = database
+    factory, (_, athlete_id, account_id, credential_id) = database
     now = utc_now()
     with factory() as session:
         credential = session.get(OAuthCredential, credential_id)
@@ -323,7 +326,7 @@ def test_token_refresh_rotates_both_tokens_and_temporary_failure_preserves_them(
     )
     oauth = FakeRefreshClient(result=result)
     service = StravaTokenService(session_factory=factory, oauth_client=oauth)
-    token = asyncio.run(service.access_token(account_id))
+    token = asyncio.run(service.access_token(athlete_id=athlete_id,integration_account_id=account_id))
     assert token.get_secret_value() == "rotated-access"
     assert oauth.seen_refresh == "stored-refresh-secret"
     with factory() as session:
@@ -340,11 +343,27 @@ def test_token_refresh_rotates_both_tokens_and_temporary_failure_preserves_them(
         oauth_client=FakeRefreshClient(error=TemporaryProviderError("temporary")),
     )
     with pytest.raises(TemporaryProviderError):
-        asyncio.run(failing.access_token(account_id))
+        asyncio.run(failing.access_token(athlete_id=athlete_id,integration_account_id=account_id))
     with factory() as session:
         credential = session.get(OAuthCredential, credential_id)
         assert credential.access_token == "preserved-access"
         assert credential.refresh_token == "preserved-refresh"
+
+
+def test_token_service_rejects_account_from_another_athlete_without_rotation(database):
+    factory, (_, _, account_id, credential_id) = database
+    service = StravaTokenService(
+        session_factory=factory,
+        oauth_client=FakeRefreshClient(error=AssertionError("refresh must not run")),
+    )
+    with pytest.raises(AuthenticationError):
+        asyncio.run(service.access_token(
+            athlete_id=uuid4(), integration_account_id=account_id
+        ))
+    with factory() as session:
+        credential = session.get(OAuthCredential, credential_id)
+        assert credential.access_token == "stored-access-secret"
+        assert credential.refresh_token == "stored-refresh-secret"
 
 
 @pytest.mark.parametrize("active_status", ["queued", "running", "retry_scheduled"])

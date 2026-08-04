@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import LOCAL_MVP_USER_ID
 from app.db.base import Base
-from app.db.models import AthleteProfile, User
+from app.db.models import AthleteProfile, User,UserAthleteMembership
 
 
 def _available_port() -> int:
@@ -38,7 +38,7 @@ def _seed_local_athlete(database_path: Path) -> None:
         )
         session.add(user)
         session.flush()
-        session.add(AthleteProfile(user_id=user.id, timezone="Europe/Madrid"))
+        athlete=AthleteProfile(user_id=user.id, timezone="Europe/Madrid");session.add(athlete);session.flush();session.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True))
         session.commit()
     engine.dispose()
 

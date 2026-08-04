@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.base import utc_now
 from app.db.models import AthleteProfile, CompletedActivity, IntegrationAccount, SyncJob
 from app.integrations.strava.token_service import StravaTokenService
+from app.integrations.strava.account_selection import active_strava_account,compatible_athlete_id,scoped_strava_job
 from app.providers.base import AuthenticationError, InvalidPayloadError, ProviderError, TemporaryProviderError
 from app.providers.strava.activity_client import StravaActivityClient, StravaActivityRateLimitError, StravaActivityUnavailableError
 from app.providers.strava.activity_mapper import StravaActivityMapper, StravaActivityOwnershipError
@@ -32,11 +33,11 @@ class StravaEnrichmentJobView:
 class StravaActivityEnrichmentManager:
  def __init__(self,*,session_factory:SessionFactory,activity_client:StravaActivityClient,token_service:StravaTokenService,retry_seconds:int=60,clock=utc_now,mapper:StravaActivityMapper|None=None):
   self._sessions=session_factory;self._client=activity_client;self._tokens=token_service;self._retry=retry_seconds;self._clock=clock;self._mapper=mapper or StravaActivityMapper();self._tasks:set[asyncio.Task[None]]=set()
- def create_job(self,user_id:UUID,*,activity_ids:list[UUID]|None=None,limit:int|None=None)->StravaEnrichmentJobView:
+ def create_job(self,user_id:UUID,*,athlete_id:UUID|None=None,activity_ids:list[UUID]|None=None,limit:int|None=None)->StravaEnrichmentJobView:
   batch=DEFAULT_LIMIT if limit is None else limit
   if batch<1 or batch>MAX_LIMIT:raise EnrichmentSelectionError
   with self._sessions() as s:
-   account=self._account(s,user_id)
+   selected=compatible_athlete_id(s,user_id=user_id,athlete_id=athlete_id);account=active_strava_account(s,athlete_id=selected)
    if not account:raise EnrichmentConnectionRequiredError
    active=s.scalar(select(SyncJob).where(SyncJob.integration_account_id==account.id,SyncJob.job_type==JOB_TYPE,SyncJob.status.in_(ACTIVE)).order_by(SyncJob.created_at.desc()))
    if active:return self._view(active)
@@ -55,8 +56,8 @@ class StravaActivityEnrichmentManager:
  async def run(self,job_id:UUID)->None:
   start=await asyncio.to_thread(self._start,job_id)
   if not start:return
-  account_id,ids=start
-  try:token=await self._tokens.access_token(account_id)
+  athlete_id,account_id,ids=start
+  try:token=await self._tokens.access_token(athlete_id=athlete_id,integration_account_id=account_id)
   except AuthenticationError:await asyncio.to_thread(self._fail,job_id,"authentication_reconnect_required",True);return
   for activity_id in ids:
    external_id=None;stage="lifecycle"
@@ -74,24 +75,24 @@ class StravaActivityEnrichmentManager:
    except SQLAlchemyError as e:self._diagnostic(job_id,activity_id,external_id,stage,e,"database_error");await asyncio.to_thread(self._activity_failed,job_id,activity_id,"database_error");continue
    except ProviderError as e:self._diagnostic(job_id,activity_id,external_id,stage,e,"provider_error",getattr(e,"status_code",None));await asyncio.to_thread(self._activity_failed,job_id,activity_id,"provider_error");continue
   await asyncio.to_thread(self._finish,job_id)
- def job_for_user(self,user_id:UUID,job_id:UUID)->StravaEnrichmentJobView:
+ def job_for_user(self,user_id:UUID,job_id:UUID,*,athlete_id:UUID|None=None)->StravaEnrichmentJobView:
   with self._sessions() as s:
-   job=s.scalar(select(SyncJob).join(AthleteProfile,SyncJob.athlete_id==AthleteProfile.id).where(SyncJob.id==job_id,SyncJob.job_type==JOB_TYPE,AthleteProfile.user_id==user_id))
+   selected=compatible_athlete_id(s,user_id=user_id,athlete_id=athlete_id);job=s.scalar(select(SyncJob).where(SyncJob.id==job_id,SyncJob.athlete_id==selected,SyncJob.job_type==JOB_TYPE))
    if not job:raise EnrichmentJobNotFoundError
    return self._view(job)
  def _start(self,job_id):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id)
+   j=scoped_strava_job(s,job_id=job_id)
    if not j or j.status not in {"queued","retry_scheduled"} or (j.next_retry_at and j.next_retry_at>self._clock()):return None
-   st=self._stats(j);done=int(st["enriched_count"])+int(st["failed_count"]);ids=[UUID(x) for x in st["activity_ids"]][done:];j.status="running";j.started_at=j.started_at or self._clock();j.next_retry_at=None;j.attempt_count+=1;s.commit();return j.integration_account_id,ids
+   st=self._stats(j);done=int(st["enriched_count"])+int(st["failed_count"]);ids=[UUID(x) for x in st["activity_ids"]][done:];j.status="running";j.started_at=j.started_at or self._clock();j.next_retry_at=None;j.attempt_count+=1;s.commit();return j.athlete_id,j.integration_account_id,ids
  def _activity_identity(self,job_id,activity_id):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id);a=s.get(CompletedActivity,activity_id);account=s.get(IntegrationAccount,j.integration_account_id) if j else None
+   j=scoped_strava_job(s,job_id=job_id);a=s.get(CompletedActivity,activity_id);account=s.get(IntegrationAccount,j.integration_account_id) if j else None
    if not j or not a or not account or a.athlete_id!=j.athlete_id or a.source_integration_account_id!=account.id or not a.external_activity_id:raise InvalidPayloadError("Activity selection invalid")
    return a.external_activity_id,account.external_account_id
  def _persist(self,job_id,activity_id,fields):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id);a=s.get(CompletedActivity,activity_id)
+   j=scoped_strava_job(s,job_id=job_id);a=s.get(CompletedActivity,activity_id)
    if not j or not a:raise SQLAlchemyError("Missing enrichment record")
    changed=any(getattr(a,k)!=v for k,v in fields.items())
    for k,v in fields.items():setattr(a,k,v)
@@ -99,25 +100,25 @@ class StravaActivityEnrichmentManager:
    st=self._stats(j);st["enriched_count"]=int(st["enriched_count"])+1;st["updated_count" if changed else "skipped_count"]=int(st["updated_count" if changed else "skipped_count"])+1;st["last_activity_id"]=str(a.id);j.stats=st;s.commit()
  def _activity_failed(self,job_id,activity_id,category):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id);a=s.get(CompletedActivity,activity_id)
+   j=scoped_strava_job(s,job_id=job_id);a=s.get(CompletedActivity,activity_id)
    if not j:return
    if a:a.enrichment_status="failed";a.enrichment_error_category=category
    j.error_code=j.error_code or category
    st=self._stats(j);st["failed_count"]=int(st["failed_count"])+1;st["last_activity_id"]=str(activity_id);j.stats=st;s.commit()
  def _unavailable(self,job_id,activity_id):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id);a=s.get(CompletedActivity,activity_id)
+   j=scoped_strava_job(s,job_id=job_id);a=s.get(CompletedActivity,activity_id)
    if not j:return
    if a:a.provider_deleted_at=self._clock();a.enrichment_status="unavailable";a.enrichment_error_category="provider_unavailable"
    j.error_code=j.error_code or "provider_unavailable"
    st=self._stats(j);st["failed_count"]=int(st["failed_count"])+1;st["last_activity_id"]=str(activity_id);j.stats=st;s.commit()
  def _pause(self,job_id,category,seconds):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id)
+   j=scoped_strava_job(s,job_id=job_id)
    if j:j.status="retry_scheduled";j.error_code=category;j.next_retry_at=self._clock()+timedelta(seconds=seconds);s.commit()
  def _fail(self,job_id,category,reconnect=False):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id)
+   j=scoped_strava_job(s,job_id=job_id)
    if not j:return
    j.status="failed";j.finished_at=self._clock();j.error_code=category
    if reconnect:
@@ -126,14 +127,12 @@ class StravaActivityEnrichmentManager:
    s.commit()
  def _finish(self,job_id):
   with self._sessions() as s:
-   j=s.get(SyncJob,job_id)
+   j=scoped_strava_job(s,job_id=job_id)
    if not j:return
    st=self._stats(j);failed=int(st["failed_count"]);j.status="partially_succeeded" if failed else "succeeded";j.finished_at=self._clock();j.error_code=(j.error_code or "activity_failed") if failed else None;s.commit()
  @staticmethod
  def _diagnostic(job_id,activity_id,external_id,stage,exc,category,status_code=None):
   LOGGER.warning("strava_enrichment_failure job_id=%s activity_id=%s external_activity_id=%s stage=%s exception_class=%s provider_status_code=%s error_category=%s",job_id,activity_id,external_id,stage,type(exc).__name__,status_code,category)
- @staticmethod
- def _account(s,user_id):return s.scalar(select(IntegrationAccount).join(AthleteProfile).where(AthleteProfile.user_id==user_id,IntegrationAccount.provider=="strava",IntegrationAccount.status=="active",IntegrationAccount.deleted_at.is_(None)))
  @staticmethod
  def _stats(j):return {**DEFAULT_STATS,**(j.stats or {})}
  @staticmethod

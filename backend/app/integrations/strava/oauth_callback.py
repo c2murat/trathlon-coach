@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.db.base import utc_now
 from app.db.models import (
-    AthleteProfile,
     AuditEvent,
     IntegrationAccount,
     OAuthCredential,
@@ -19,10 +18,6 @@ from app.providers.strava.oauth_types import GrantedScopes, StravaTokenResult
 
 class OAuthOwnershipConflictError(Exception):
     """A local or external athlete is already linked to a different owner."""
-
-
-class LocalAthleteMissingError(Exception):
-    """The authenticated local user has no persisted athlete profile."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,24 +34,16 @@ class StravaOAuthPersistenceService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def athlete_for_user(self, user_id: UUID) -> AthleteProfile:
-        athlete = self._session.scalar(
-            select(AthleteProfile).where(AthleteProfile.user_id == user_id)
-        )
-        if athlete is None:
-            raise LocalAthleteMissingError
-        return athlete
-
     def persist_connection(
         self,
         *,
         user_id: UUID,
+        athlete_id: UUID,
         token_result: StravaTokenResult,
         scopes: GrantedScopes,
     ) -> ConnectionResult:
         now = utc_now()
         try:
-            athlete = self.athlete_for_user(user_id)
             external_id = token_result.athlete.external_id
 
             externally_owned = self._session.scalar(
@@ -65,13 +52,13 @@ class StravaOAuthPersistenceService:
                     IntegrationAccount.external_account_id == external_id,
                 )
             )
-            if externally_owned is not None and externally_owned.athlete_id != athlete.id:
+            if externally_owned is not None and externally_owned.athlete_id != athlete_id:
                 raise OAuthOwnershipConflictError
 
             local_accounts = list(
                 self._session.scalars(
                     select(IntegrationAccount).where(
-                        IntegrationAccount.athlete_id == athlete.id,
+                        IntegrationAccount.athlete_id == athlete_id,
                         IntegrationAccount.provider == self.provider_name,
                     )
                 )
@@ -100,7 +87,7 @@ class StravaOAuthPersistenceService:
 
             if account is None:
                 account = IntegrationAccount(
-                    athlete_id=athlete.id,
+                    athlete_id=athlete_id,
                     provider=self.provider_name,
                     external_account_id=external_id,
                 )
@@ -132,7 +119,7 @@ class StravaOAuthPersistenceService:
                     action=f"strava.connection_{connection_status}",
                     outcome="success",
                     user_id=user_id,
-                    athlete_id=athlete.id,
+                    athlete_id=athlete_id,
                     entity_id=account.id,
                     metadata={
                         "provider": self.provider_name,
@@ -163,16 +150,16 @@ class StravaOAuthPersistenceService:
         action: str,
         outcome: str,
         user_id: UUID,
+        athlete_id: UUID,
         metadata: dict[str, object],
     ) -> None:
         try:
-            athlete = self.athlete_for_user(user_id)
             self._session.add(
                 self._audit_event(
                     action=action,
                     outcome=outcome,
                     user_id=user_id,
-                    athlete_id=athlete.id,
+                    athlete_id=athlete_id,
                     metadata=metadata,
                 )
             )

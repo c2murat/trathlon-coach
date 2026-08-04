@@ -32,8 +32,15 @@ from test_multi_athlete_isolation import multi_athlete_context
 EXPECTED = {
     "owner": set(AthleteCapability),
     "editor": set(AthleteCapability),
-    "coach": set(AthleteCapability) - {AthleteCapability.DELETE_MANUAL_STRENGTH},
-    "viewer": {AthleteCapability.READ_ATHLETE_DATA},
+    "coach": set(AthleteCapability) - {
+        AthleteCapability.DELETE_MANUAL_STRENGTH,
+        AthleteCapability.MANAGE_STRAVA_CONNECTION,
+        AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
+    },
+    "viewer": {
+        AthleteCapability.READ_ATHLETE_DATA,
+        AthleteCapability.READ_STRAVA_INTEGRATION,
+    },
     "unknown": set(),
 }
 

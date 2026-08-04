@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from app.db.base import Base, utc_now
-from app.db.models import AthleteProfile, CompletedActivity, IntegrationAccount, OAuthCredential, User
+from app.db.models import AthleteProfile, CompletedActivity, IntegrationAccount, OAuthCredential, User,UserAthleteMembership
 from app.integrations.strava.activity_enrichment import EnrichmentSelectionError, StravaActivityEnrichmentManager
 from app.providers.base import AuthenticationError, TemporaryProviderError
 from app.providers.strava.activity_client import StravaActivityDetail, StravaActivityRateLimitError, StravaActivityUnavailableError, StravaRateLimitSnapshot
@@ -17,7 +17,7 @@ def payload(external_id="101",**values):
  p={"id":int(external_id),"athlete":{"id":456},"description":"Provider description","calories":500.0,"device_name":"Edge","gear_id":"b1","perceived_exertion":6,"max_watts":350};p.update(values);return p
 class Tokens:
  def __init__(self,error=None):self.error=error;self.calls=0
- async def access_token(self,_):
+ async def access_token(self,**kwargs):
   self.calls+=1
   if self.error:raise self.error
   return SecretStr("stored-secret")
@@ -37,7 +37,7 @@ def enrichment_db(tmp_path):
   a1=CompletedActivity(athlete=athlete,source_integration_account=account,external_activity_id="101",source_summary="strava",sport="cycling",name="Ride",start_at=now,timezone="UTC",elapsed_time_s=1000,description="Local note",rpe=8,provider_updated_at=now)
   a2=CompletedActivity(athlete=athlete,source_integration_account=account,external_activity_id="102",source_summary="strava",sport="running",name="Run",start_at=now-timedelta(days=1),timezone="UTC",elapsed_time_s=500)
   foreign=CompletedActivity(athlete=other_athlete,external_activity_id="999",source_summary="strava",sport="running",name="Secret",start_at=now,timezone="UTC",elapsed_time_s=1)
-  s.add_all([user,athlete,account,credential,other,other_athlete,a1,a2,foreign]);s.commit();ids=(user.id,a1.id,a2.id,foreign.id,account.id)
+  s.add_all([user,athlete,account,credential,other,other_athlete,a1,a2,foreign]);s.flush();s.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True));s.commit();ids=(user.id,a1.id,a2.id,foreign.id,account.id)
  yield factory,ids;engine.dispose()
 def make(db,values=None,error=None,tokens=None):
  factory,_=db;client=Details(values,error);manager=StravaActivityEnrichmentManager(session_factory=factory,activity_client=client,token_service=tokens or Tokens(),retry_seconds=30);return manager,client

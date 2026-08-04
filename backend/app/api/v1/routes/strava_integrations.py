@@ -6,9 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from starlette.concurrency import run_in_threadpool
 
 from app.api.dependencies.auth import AuthenticatedUser, get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext
+from app.api.dependencies.athlete_permissions import (
+    AthleteCapability,
+    athlete_has_capability,
+    require_athlete_capability,
+)
 from app.api.dependencies.providers import (
     StravaCallbackConfiguration,
     StravaConnectConfiguration,
@@ -19,13 +27,13 @@ from app.api.dependencies.providers import (
     get_strava_connect_configuration,
 )
 from app.db.session import get_db_session
+from app.db.models import UserAthleteMembership
 from app.core.settings import Settings, get_settings
 from app.integrations.strava.connection_service import (
     DisconnectTarget,
     StravaConnectionService,
 )
 from app.integrations.strava.oauth_callback import (
-    LocalAthleteMissingError,
     OAuthOwnershipConflictError,
     StravaOAuthPersistenceService,
 )
@@ -44,6 +52,10 @@ from app.providers.base import (
     utc_now,
 )
 from app.providers.strava import GrantedScopes, StravaRevocationCredential
+from app.integrations.strava.account_selection import StravaAccountConfigurationError,active_strava_account
+
+read_strava = require_athlete_capability(AthleteCapability.READ_STRAVA_INTEGRATION)
+manage_strava = require_athlete_capability(AthleteCapability.MANAGE_STRAVA_CONNECTION)
 
 router = APIRouter(prefix="/integrations/strava", tags=["integrations"])
 NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
@@ -51,13 +63,19 @@ NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 
 @router.get("/status")
 def strava_status(
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(read_strava),
     session: Session = Depends(get_db_session),
 ) -> JSONResponse:
     """Return only stored, secret-free connection state for the current user."""
 
     try:
-        connection = StravaConnectionService(session).status_for_user(current_user.id)
+        connection = StravaConnectionService(session).status_for_athlete(
+            current_athlete.athlete_id
+        )
+    except StravaAccountConfigurationError:
+        raise _safe_error(
+            status.HTTP_409_CONFLICT, "strava_account_configuration_invalid"
+        ) from None
     except Exception:
         raise _safe_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "strava_status_unavailable"
@@ -72,6 +90,7 @@ def strava_status(
 @router.delete("/disconnect")
 async def disconnect_strava(
     current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(manage_strava),
     settings: Settings = Depends(get_settings),
     transport: AsyncHttpTransport = Depends(get_strava_http_transport),
     session: Session = Depends(get_db_session),
@@ -80,7 +99,14 @@ async def disconnect_strava(
 
     service = StravaConnectionService(session)
     try:
-        target = service.begin_disconnect(current_user.id)
+        target = service.begin_disconnect(
+            athlete_id=current_athlete.athlete_id,
+            user_id=current_user.id,
+        )
+    except StravaAccountConfigurationError:
+        raise _safe_error(
+            status.HTTP_409_CONFLICT, "strava_account_configuration_invalid"
+        ) from None
     except Exception:
         raise _safe_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "strava_disconnect_failed"
@@ -126,16 +152,23 @@ async def disconnect_strava(
 @router.get("/connect", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 async def connect_strava(
     current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(manage_strava),
     configuration: StravaConnectConfiguration = Depends(
         get_strava_connect_configuration
     ),
     state_store: OAuthStateStore = Depends(get_oauth_state_store),
+    session: Session = Depends(get_db_session),
 ) -> RedirectResponse:
     """Create one OAuth request and redirect the local athlete to Strava."""
 
+    try:
+        active_strava_account(session, athlete_id=current_athlete.athlete_id)
+    except StravaAccountConfigurationError:
+        raise _safe_error(status.HTTP_409_CONFLICT,"strava_account_configuration_invalid") from None
     state = OAuthState(
         value=generate_oauth_state(),
         user_id=current_user.id,
+        athlete_id=current_athlete.athlete_id,
         expires_at=utc_now() + timedelta(seconds=configuration.state_ttl_seconds),
     )
     try:
@@ -176,7 +209,7 @@ async def strava_callback(
         raise _safe_error(status.HTTP_400_BAD_REQUEST, "oauth_state_invalid")
 
     try:
-        await run_in_threadpool(
+        oauth_state = await run_in_threadpool(
             state_store.consume,
             state_value,
             user_id=current_user.id,
@@ -187,6 +220,28 @@ async def strava_callback(
         raise _safe_error(status.HTTP_400_BAD_REQUEST, "oauth_state_invalid") from None
 
     persistence = StravaOAuthPersistenceService(session)
+    membership = session.scalar(
+        select(UserAthleteMembership)
+        .options(joinedload(UserAthleteMembership.athlete_profile))
+        .where(
+            UserAthleteMembership.user_id == current_user.id,
+            UserAthleteMembership.athlete_profile_id == oauth_state.athlete_id,
+            UserAthleteMembership.is_active.is_(True),
+        )
+    )
+    if membership is None:
+        raise _safe_error(status.HTTP_403_FORBIDDEN, "athlete_not_authorized")
+    callback_athlete = CurrentAthleteContext(
+        user_id=current_user.id,
+        athlete_id=membership.athlete_profile_id,
+        role=membership.role,
+        athlete_profile=membership.athlete_profile,
+        membership=membership,
+    )
+    if not athlete_has_capability(
+        callback_athlete, AthleteCapability.MANAGE_STRAVA_CONNECTION
+    ):
+        raise _safe_error(status.HTTP_403_FORBIDDEN, "athlete_permission_denied")
 
     if error is not None:
         if error == "access_denied":
@@ -195,6 +250,7 @@ async def strava_callback(
                 action="strava.authorization_denied",
                 outcome="denied",
                 user_id=current_user.id,
+                athlete_id=oauth_state.athlete_id,
                 metadata={
                     "provider": "strava",
                     "local_user_id": str(current_user.id),
@@ -211,7 +267,9 @@ async def strava_callback(
     if callback_scopes is None or not callback_scopes.has_required_read_only(
         configuration.required_scopes
     ):
-        _record_scope_failure(persistence, current_user.id, callback_scopes)
+        _record_scope_failure(
+            persistence, current_user.id, oauth_state.athlete_id, callback_scopes
+        )
         raise _safe_error(status.HTTP_403_FORBIDDEN, "strava_scope_insufficient")
 
     try:
@@ -220,24 +278,27 @@ async def strava_callback(
             redirect_uri=configuration.redirect_uri,
         )
     except TemporaryProviderError:
-        _record_exchange_failure(persistence, current_user.id)
+        _record_exchange_failure(persistence, current_user.id, oauth_state.athlete_id)
         raise _safe_error(
             status.HTTP_503_SERVICE_UNAVAILABLE, "strava_token_exchange_failed"
         ) from None
     except ProviderError:
-        _record_exchange_failure(persistence, current_user.id)
+        _record_exchange_failure(persistence, current_user.id, oauth_state.athlete_id)
         raise _safe_error(
             status.HTTP_502_BAD_GATEWAY, "strava_token_exchange_failed"
         ) from None
 
     effective_scopes = token_result.granted_scopes or callback_scopes
     if not effective_scopes.has_required_read_only(configuration.required_scopes):
-        _record_scope_failure(persistence, current_user.id, effective_scopes)
+        _record_scope_failure(
+            persistence, current_user.id, oauth_state.athlete_id, effective_scopes
+        )
         raise _safe_error(status.HTTP_403_FORBIDDEN, "strava_scope_insufficient")
 
     try:
         result = persistence.persist_connection(
             user_id=current_user.id,
+            athlete_id=oauth_state.athlete_id,
             token_result=token_result,
             scopes=effective_scopes,
         )
@@ -247,6 +308,7 @@ async def strava_callback(
             action="strava.ownership_conflict",
             outcome="rejected",
             user_id=current_user.id,
+            athlete_id=oauth_state.athlete_id,
             metadata={
                 "provider": "strava",
                 "local_user_id": str(current_user.id),
@@ -255,9 +317,10 @@ async def strava_callback(
                 "outcome": "rejected",
             },
         )
-        raise _safe_error(status.HTTP_409_CONFLICT, "strava_ownership_conflict")
-    except LocalAthleteMissingError:
-        raise _safe_error(status.HTTP_409_CONFLICT, "local_athlete_missing") from None
+        raise _safe_error(
+            status.HTTP_409_CONFLICT,
+            "strava_external_account_already_linked",
+        )
     except Exception:
         raise _safe_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "strava_persistence_failed"
@@ -269,6 +332,7 @@ async def strava_callback(
 def _record_scope_failure(
     persistence: StravaOAuthPersistenceService,
     user_id: UUID,
+    athlete_id: UUID,
     scopes: GrantedScopes | None,
 ) -> None:
     _record_audit(
@@ -276,6 +340,7 @@ def _record_scope_failure(
         action="strava.scope_insufficient",
         outcome="rejected",
         user_id=user_id,
+        athlete_id=athlete_id,
         metadata={
             "provider": "strava",
             "local_user_id": str(user_id),
@@ -286,13 +351,14 @@ def _record_scope_failure(
 
 
 def _record_exchange_failure(
-    persistence: StravaOAuthPersistenceService, user_id: UUID
+    persistence: StravaOAuthPersistenceService, user_id: UUID, athlete_id: UUID
 ) -> None:
     _record_audit(
         persistence,
         action="strava.token_exchange_failed",
         outcome="failure",
         user_id=user_id,
+        athlete_id=athlete_id,
         metadata={
             "provider": "strava",
             "local_user_id": str(user_id),
@@ -307,6 +373,7 @@ def _record_audit(
     action: str,
     outcome: str,
     user_id: UUID,
+    athlete_id: UUID,
     metadata: dict[str, object],
 ) -> None:
     try:
@@ -314,10 +381,9 @@ def _record_audit(
             action=action,
             outcome=outcome,
             user_id=user_id,
+            athlete_id=athlete_id,
             metadata=metadata,
         )
-    except LocalAthleteMissingError:
-        raise _safe_error(status.HTTP_409_CONFLICT, "local_athlete_missing") from None
     except Exception:
         raise _safe_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "strava_audit_failed"

@@ -13,7 +13,7 @@ from app.api.dependencies.auth import LOCAL_MVP_USER_ID
 from app.api.dependencies.providers import get_oauth_state_store, get_strava_http_transport
 from app.core.settings import Settings, get_settings
 from app.db.base import Base
-from app.db.models import AthleteProfile, AuditEvent, IntegrationAccount, OAuthCredential, User
+from app.db.models import AthleteProfile, AuditEvent, IntegrationAccount, OAuthCredential, User, UserAthleteMembership
 from app.db.session import get_db_session
 from app.main import app
 from app.providers.base import AsyncHttpTransport, HttpResponse, OAuthState, SQLiteOAuthStateStore, utc_now
@@ -65,7 +65,10 @@ def callback_context(tmp_path):
         )
         session.add(user)
         session.flush()
-        session.add(AthleteProfile(user_id=user.id, timezone="Europe/Madrid"))
+        athlete = AthleteProfile(id=LOCAL_MVP_USER_ID,user_id=user.id, timezone="Europe/Madrid")
+        session.add(athlete)
+        session.flush()
+        session.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True))
         session.commit()
 
     store = SQLiteOAuthStateStore(tmp_path / "oauth-state.sqlite3")
@@ -95,7 +98,8 @@ def callback_context(tmp_path):
 def save_state(store, *, user_id=LOCAL_MVP_USER_ID, expired=False):
     value = f"state-{uuid4()}"
     expiry = utc_now() + timedelta(minutes=-1 if expired else 10)
-    store.save(OAuthState(value=value, user_id=user_id, expires_at=expiry))
+    athlete_id = LOCAL_MVP_USER_ID
+    store.save(OAuthState(value=value, user_id=user_id, athlete_id=athlete_id, expires_at=expiry))
     return value
 
 
@@ -125,6 +129,41 @@ def test_success_persists_account_credential_and_safe_audit(callback_context) ->
         rendered += repr(credential) + repr(audit.event_metadata)
     assert ACCESS not in rendered
     assert REFRESH not in rendered
+
+
+@pytest.mark.parametrize("with_header_for_other_athlete", [False, True])
+def test_callback_uses_state_athlete_not_current_selection(
+    callback_context, with_header_for_other_athlete
+) -> None:
+    client, factory, store, _ = callback_context
+    headers = {}
+    if with_header_for_other_athlete:
+        with factory() as session:
+            other_owner=User(email="other-owner@example.test",normalized_email="other-owner@example.test",auth_subject="other-owner")
+            other = AthleteProfile(user=other_owner,timezone="UTC")
+            session.add_all([other_owner,other])
+            session.flush()
+            session.add(UserAthleteMembership(user_id=LOCAL_MVP_USER_ID,athlete_profile_id=other.id,role="owner",is_active=True,is_default=False))
+            session.commit()
+            headers["X-TriCoach-Athlete-Id"] = str(other.id)
+    response = client.get(
+        "/integrations/strava/callback",
+        params={"state": save_state(store), "code": "code", "scope": "read,activity:read_all"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    with factory() as session:
+        assert session.scalar(select(IntegrationAccount)).athlete_id == LOCAL_MVP_USER_ID
+
+
+@pytest.mark.parametrize("mutation,expected_code", [("inactive","athlete_not_authorized"),("viewer","athlete_permission_denied")])
+def test_callback_revalidates_membership_and_capability(callback_context,mutation,expected_code) -> None:
+    client,factory,store,transport=callback_context;state=save_state(store)
+    with factory() as session:
+        membership=session.scalar(select(UserAthleteMembership));membership.is_active=mutation!="inactive";membership.role="viewer" if mutation=="viewer" else membership.role;session.commit()
+    response=callback(client,state);assert response.status_code==403;assert response.json()["detail"]["code"]==expected_code;assert transport.calls==0
+    with factory() as session:
+        assert session.scalar(select(IntegrationAccount)) is None;assert session.scalar(select(OAuthCredential)) is None
 
 
 def test_connect_and_callback_share_application_state_store(callback_context) -> None:
@@ -237,7 +276,7 @@ def test_rejects_different_external_account_for_same_local_athlete(callback_cont
     transport.payload = token_payload(athlete_id=123456)
     response = callback(client, save_state(store))
     assert response.status_code == 409
-    assert response.json() == {"detail": {"code": "strava_ownership_conflict"}}
+    assert response.json() == {"detail": {"code": "strava_external_account_already_linked"}}
     with factory() as session:
         assert len(list(session.scalars(select(IntegrationAccount)))) == 1
 
@@ -271,6 +310,7 @@ def test_persistence_rolls_back_all_rows_when_commit_fails(callback_context) -> 
         with pytest.raises(RuntimeError, match="forced commit failure"):
             service.persist_connection(
                 user_id=LOCAL_MVP_USER_ID,
+                athlete_id=LOCAL_MVP_USER_ID,
                 token_result=result,
                 scopes=GrantedScopes.parse("read,activity:read_all"),
             )

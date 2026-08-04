@@ -1,7 +1,7 @@
 import asyncio
 from datetime import timedelta
 from threading import Event, Timer
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -29,6 +29,7 @@ class BlockingConsumeStateStore(OAuthStateStore):
         return OAuthState(
             value=state_value,
             user_id=user_id,
+            athlete_id=uuid4(),
             expires_at=utc_now() + timedelta(minutes=10),
         )
 
@@ -65,7 +66,7 @@ def test_health_remains_responsive_while_async_callback_waits_on_state_store() -
 
                 assert health.status_code == 200
                 assert elapsed < 0.5
-                assert (await callback).status_code == 400
+                assert (await callback).status_code == 403
         finally:
             store.release.set()
             timer.cancel()

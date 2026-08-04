@@ -37,7 +37,9 @@ class StravaTokenService:
         self._clock = clock
         self._locks: dict[UUID, asyncio.Lock] = {}
 
-    async def access_token(self, integration_account_id: UUID) -> SecretStr:
+    async def access_token(
+        self, *, athlete_id: UUID, integration_account_id: UUID
+    ) -> SecretStr:
         lock = self._locks.setdefault(integration_account_id, asyncio.Lock())
         async with lock:
             with self._session_factory() as session:
@@ -49,7 +51,12 @@ class StravaTokenService:
                     )
                     .with_for_update()
                 )
-                account = session.get(IntegrationAccount, integration_account_id)
+                account = session.scalar(
+                    select(IntegrationAccount).where(
+                        IntegrationAccount.id == integration_account_id,
+                        IntegrationAccount.athlete_id == athlete_id,
+                    )
+                )
                 if (
                     account is None
                     or account.status != "active"

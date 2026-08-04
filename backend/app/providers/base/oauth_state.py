@@ -45,6 +45,7 @@ class OAuthState:
 
     value: str
     user_id: UUID
+    athlete_id: UUID
     expires_at: datetime
 
 
@@ -137,12 +138,13 @@ class SQLiteOAuthStateStore(OAuthStateStore):
                 connection.execute(
                     """
                     INSERT INTO oauth_state (
-                        state, user_id, created_at, expires_at, consumed_at
-                    ) VALUES (?, ?, ?, ?, NULL)
+                        state, user_id, athlete_id, created_at, expires_at, consumed_at
+                    ) VALUES (?, ?, ?, ?, ?, NULL)
                     """,
                     (
                         state.value,
                         str(state.user_id),
+                        str(state.athlete_id),
                         now.timestamp(),
                         state.expires_at.astimezone(timezone.utc).timestamp(),
                     ),
@@ -180,7 +182,7 @@ class SQLiteOAuthStateStore(OAuthStateStore):
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 """
-                SELECT state, user_id, created_at, expires_at, consumed_at
+                SELECT state, user_id, athlete_id, created_at, expires_at, consumed_at
                 FROM oauth_state
                 WHERE state = ?
                 """,
@@ -201,8 +203,8 @@ class SQLiteOAuthStateStore(OAuthStateStore):
                 connection.commit()
                 raise OAuthStateMissingError("OAuth state was not found")
 
-            created_at = datetime.fromtimestamp(row[2], tz=timezone.utc)
-            expires_at = datetime.fromtimestamp(row[3], tz=timezone.utc)
+            created_at = datetime.fromtimestamp(row[3], tz=timezone.utc)
+            expires_at = datetime.fromtimestamp(row[4], tz=timezone.utc)
             if expires_at <= now:
                 self._log_lookup(
                     state_value,
@@ -217,7 +219,7 @@ class SQLiteOAuthStateStore(OAuthStateStore):
                 )
                 connection.commit()
                 raise OAuthStateExpiredError("OAuth state expired")
-            if row[4] is not None:
+            if row[5] is not None:
                 self._log_lookup(
                     state_value,
                     stored_count=stored_count,
@@ -279,6 +281,7 @@ class SQLiteOAuthStateStore(OAuthStateStore):
             return OAuthState(
                 value=row[0],
                 user_id=UUID(row[1]),
+                athlete_id=UUID(row[2]),
                 expires_at=expires_at,
             )
         except OAuthStateError:
@@ -292,11 +295,23 @@ class SQLiteOAuthStateStore(OAuthStateStore):
     def _initialize(self) -> None:
         connection = self._connect()
         try:
+            existing = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='oauth_state'"
+            ).fetchone()
+            if existing is not None:
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(oauth_state)")
+                }
+                if "athlete_id" not in columns:
+                    # States are ephemeral and cannot be assigned safely.
+                    connection.execute("DROP TABLE oauth_state")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS oauth_state (
                     state TEXT PRIMARY KEY NOT NULL,
                     user_id TEXT NOT NULL,
+                    athlete_id TEXT NOT NULL,
                     created_at REAL NOT NULL,
                     expires_at REAL NOT NULL,
                     consumed_at REAL NULL

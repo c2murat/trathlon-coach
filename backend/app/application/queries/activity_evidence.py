@@ -2,12 +2,12 @@
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.db.models import ActivityEvidenceState,ActivityLap,ActivityRouteEvidence,ActivityStream,AthleteProfile,CompletedActivity
+from app.db.models import ActivityEvidenceState,ActivityLap,ActivityRouteEvidence,ActivityStream,CompletedActivity
 SUPPORTED=("time","distance","heartrate","watts","cadence","altitude","velocity_smooth")
 class ActivityEvidenceQuery:
  def __init__(self,session:Session,*,location_enabled:bool,max_samples:int):self.s=session;self.location=location_enabled;self.max=max_samples
- def for_user(self,user_id:UUID,activity_id:UUID):
-  activity=self.s.scalar(select(CompletedActivity).join(AthleteProfile).where(CompletedActivity.id==activity_id,AthleteProfile.user_id==user_id,AthleteProfile.deleted_at.is_(None),CompletedActivity.deleted_at.is_(None),CompletedActivity.provider_deleted_at.is_(None)))
+ def for_athlete(self,athlete_id:UUID,activity_id:UUID):
+  activity=self.s.scalar(select(CompletedActivity).where(CompletedActivity.id==activity_id,CompletedActivity.athlete_id==athlete_id,CompletedActivity.deleted_at.is_(None),CompletedActivity.provider_deleted_at.is_(None)))
   if not activity:return None
   laps=list(self.s.scalars(select(ActivityLap).where(ActivityLap.completed_activity_id==activity_id).order_by(ActivityLap.lap_index)).all());allowed=SUPPORTED+(("latlng",) if self.location else ());streams=list(self.s.scalars(select(ActivityStream).where(ActivityStream.completed_activity_id==activity_id,ActivityStream.stream_type.in_(allowed)).order_by(ActivityStream.stream_type)).all());state=self.s.scalar(select(ActivityEvidenceState).where(ActivityEvidenceState.completed_activity_id==activity_id));route=self.s.scalar(select(ActivityRouteEvidence).where(ActivityRouteEvidence.completed_activity_id==activity_id)) if self.location else None
   present={x.stream_type for x in streams};missing=[x for x in SUPPORTED if x not in present];fetched=max((x for x in ((state.laps_fetched_at if state else None),(state.streams_fetched_at if state else None)) if x),default=None)

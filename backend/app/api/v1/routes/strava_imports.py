@@ -9,31 +9,43 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.api.dependencies.auth import AuthenticatedUser, get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext
+from app.api.dependencies.athlete_permissions import AthleteCapability, require_athlete_capability
 from app.api.dependencies.providers import get_strava_import_manager
 from app.integrations.strava.activity_import import (
     ActiveStravaConnectionRequiredError,
     ImportJobNotFoundError,
     StravaSummaryImportManager,
 )
+from app.integrations.strava.account_selection import StravaAccountConfigurationError
 
 
 router = APIRouter(prefix="/integrations/strava/imports", tags=["integrations"])
 NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+read_strava = require_athlete_capability(AthleteCapability.READ_STRAVA_INTEGRATION)
+run_import = require_athlete_capability(AthleteCapability.RUN_STRAVA_IMPORT)
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def start_strava_summary_import(
     current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(run_import),
     manager: StravaSummaryImportManager = Depends(get_strava_import_manager),
 ) -> JSONResponse:
     """Queue or resume the current athlete's summary-only historical import."""
 
     try:
-        job = await run_in_threadpool(manager.create_or_resume_job, current_user.id)
+        job = await run_in_threadpool(
+            manager.create_or_resume_job,
+            current_user.id,
+            athlete_id=current_athlete.athlete_id,
+        )
     except ActiveStravaConnectionRequiredError:
         raise _safe_error(
             status.HTTP_409_CONFLICT, "strava_connection_required"
         ) from None
+    except StravaAccountConfigurationError:
+        raise _safe_error(status.HTTP_409_CONFLICT,"strava_account_configuration_invalid") from None
     except Exception:
         raise _safe_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "strava_import_start_failed"
@@ -49,13 +61,16 @@ async def start_strava_summary_import(
 @router.get("/latest")
 async def latest_strava_summary_import(
     current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(read_strava),
     manager: StravaSummaryImportManager = Depends(get_strava_import_manager),
 ) -> JSONResponse:
     """Return the latest owned import or a safe not-started projection."""
 
     try:
         job = await run_in_threadpool(
-            manager.latest_job_for_user, current_user.id
+            manager.latest_job_for_user,
+            current_user.id,
+            athlete_id=current_athlete.athlete_id,
         )
     except Exception:
         raise _safe_error(
@@ -73,13 +88,17 @@ async def latest_strava_summary_import(
 async def strava_summary_import_status(
     job_id: UUID,
     current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(read_strava),
     manager: StravaSummaryImportManager = Depends(get_strava_import_manager),
 ) -> JSONResponse:
     """Return an allow-listed import checkpoint owned by the current athlete."""
 
     try:
         job = await run_in_threadpool(
-            manager.job_for_user, current_user.id, job_id
+            manager.job_for_user,
+            current_user.id,
+            job_id,
+            athlete_id=current_athlete.athlete_id,
         )
     except ImportJobNotFoundError:
         raise _safe_error(status.HTTP_404_NOT_FOUND, "strava_import_not_found") from None

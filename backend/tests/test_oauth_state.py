@@ -30,6 +30,7 @@ def test_state_is_bound_to_user_and_consumed_once() -> None:
     state = OAuthState(
         value=generate_oauth_state(),
         user_id=user_id,
+        athlete_id=uuid4(),
         expires_at=now + timedelta(minutes=10),
     )
     store = InMemoryOAuthStateStore(clock=lambda: now)
@@ -46,6 +47,7 @@ def test_state_rejects_wrong_user_without_consuming_it() -> None:
     state = OAuthState(
         value=generate_oauth_state(),
         user_id=owner_id,
+        athlete_id=uuid4(),
         expires_at=now + timedelta(minutes=10),
     )
     store = InMemoryOAuthStateStore(clock=lambda: now)
@@ -63,7 +65,8 @@ def test_state_rejects_expired_and_missing_values() -> None:
     store.save(
         OAuthState(
             value="expired-state",
-            user_id=user_id,
+                user_id=user_id,
+                athlete_id=uuid4(),
             expires_at=now - timedelta(seconds=1),
         )
     )
@@ -81,6 +84,7 @@ def test_sqlite_state_persists_across_store_instances(tmp_path) -> None:
     state = OAuthState(
         value=generate_oauth_state(),
         user_id=user_id,
+        athlete_id=uuid4(),
         expires_at=now + timedelta(minutes=10),
     )
 
@@ -101,6 +105,7 @@ def test_sqlite_state_is_user_bound_without_consuming_on_mismatch(tmp_path) -> N
     state = OAuthState(
         value=generate_oauth_state(),
         user_id=owner_id,
+        athlete_id=uuid4(),
         expires_at=now + timedelta(minutes=10),
     )
     store.save(state)
@@ -117,6 +122,7 @@ def test_sqlite_expired_state_is_rejected_and_deleted(tmp_path) -> None:
     state = OAuthState(
         value="expired-sqlite-state",
         user_id=uuid4(),
+        athlete_id=uuid4(),
         expires_at=now - timedelta(seconds=1),
     )
     store.save(state)
@@ -137,6 +143,7 @@ def test_sqlite_consume_is_atomic_across_store_instances(tmp_path) -> None:
     state = OAuthState(
         value=generate_oauth_state(),
         user_id=user_id,
+        athlete_id=uuid4(),
         expires_at=now + timedelta(minutes=10),
     )
     SQLiteOAuthStateStore(database_path, clock=lambda: now).save(state)
@@ -162,6 +169,7 @@ def test_sqlite_save_and_consume_complete_without_deadlock(tmp_path) -> None:
     state = OAuthState(
         value=generate_oauth_state(),
         user_id=uuid4(),
+        athlete_id=uuid4(),
         expires_at=now + timedelta(minutes=10),
     )
 
@@ -188,7 +196,21 @@ def test_sqlite_schema_contains_required_state_fields(tmp_path) -> None:
     assert columns == {
         "state",
         "user_id",
+        "athlete_id",
         "created_at",
         "expires_at",
         "consumed_at",
     }
+
+
+def test_sqlite_upgrade_invalidates_legacy_states_instead_of_guessing_athlete(tmp_path) -> None:
+    database_path = tmp_path / "legacy-state.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("CREATE TABLE oauth_state (state TEXT PRIMARY KEY NOT NULL,user_id TEXT NOT NULL,created_at REAL NOT NULL,expires_at REAL NOT NULL,consumed_at REAL NULL)")
+        connection.execute("INSERT INTO oauth_state VALUES ('legacy', ?, 1, 9999999999, NULL)",(str(uuid4()),))
+        connection.commit()
+    SQLiteOAuthStateStore(database_path)
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0] == 0
+        athlete_column = next(row for row in connection.execute("PRAGMA table_info(oauth_state)") if row[1] == "athlete_id")
+        assert athlete_column[3] == 1

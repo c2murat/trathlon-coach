@@ -6,10 +6,10 @@ from app.integrations.strava.activity_enrichment import EnrichmentJobNotFoundErr
 from app.main import create_app
 class Manager:
  def __init__(self):self.job_id=uuid4();self.scheduled=[];self.selection=None
- def create_job(self,user_id,*,activity_ids=None,limit=None):
+ def create_job(self,user_id,*,athlete_id=None,activity_ids=None,limit=None):
   self.selection=(user_id,activity_ids,limit);now=datetime.now(timezone.utc);return StravaEnrichmentJobView(self.job_id,"queued",len(activity_ids or []),0,0,0,0,None,None,now,None,None,None)
  def schedule(self,job_id):self.scheduled.append(job_id)
- def job_for_user(self,user_id,job_id):
+ def job_for_user(self,user_id,job_id,*,athlete_id=None):
   if job_id!=self.job_id:raise EnrichmentJobNotFoundError
   now=datetime.now(timezone.utc);return StravaEnrichmentJobView(job_id,"succeeded",1,1,1,0,0,str(uuid4()),now,now,now,None,None)
 def test_enrichment_endpoints_return_202_and_allowlisted_owned_progress():

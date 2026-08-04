@@ -19,6 +19,7 @@ from app.db.models import (
     IntegrationAccount,
     OAuthCredential,
     User,
+    UserAthleteMembership,
 )
 from app.db.session import get_db_session
 from app.integrations.strava.connection_service import StravaConnectionService
@@ -72,7 +73,10 @@ def management_context():
         )
         session.add(user)
         session.flush()
-        session.add(AthleteProfile(user_id=user.id, timezone="Europe/Madrid"))
+        athlete = AthleteProfile(user_id=user.id, timezone="Europe/Madrid")
+        session.add(athlete)
+        session.flush()
+        session.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True))
         session.commit()
 
     transport = RevocationTransport()
@@ -319,7 +323,9 @@ def test_local_disconnect_transaction_rolls_back_on_commit_failure(management_co
     account_id, _ = add_connection(factory)
     with factory() as session:
         service = StravaConnectionService(session)
-        target = service.begin_disconnect(LOCAL_MVP_USER_ID)
+        with factory() as lookup:
+            athlete_id = lookup.scalar(select(AthleteProfile.id).where(AthleteProfile.user_id == LOCAL_MVP_USER_ID))
+        target = service.begin_disconnect(athlete_id=athlete_id,user_id=LOCAL_MVP_USER_ID)
 
         def fail_commit() -> None:
             raise RuntimeError("forced commit failure")
