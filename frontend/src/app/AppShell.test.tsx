@@ -1,4 +1,4 @@
-﻿import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
@@ -41,9 +41,27 @@ afterEach(() => {
 });
 
 describe("AppShell", () => {
+  it("uses accessible decorative SVG icons for primary navigation and keeps subsections icon-free", () => {
+    renderShell("/dashboard");
+    const navigation=screen.getByRole("complementary",{name:"Navegación principal"});
+    for(const name of ["Inicio","Actividades","Fuerza","Calendario","Estadísticas","Salud","Configuración"]){
+      const link=screen.getByRole("link",{name});
+      const icon=link.querySelector("svg");
+      expect(icon).toBeInTheDocument();
+      expect(icon).toHaveAttribute("aria-hidden","true");
+      expect(icon).toHaveAttribute("focusable","false");
+    }
+    for(const name of ["Carga de entrenamiento","Estado de forma","Perfil de rendimiento"]){
+      const link=screen.getByRole("link",{name});
+      expect(link).toHaveClass("nav-subitem");
+      expect(link.querySelector("svg")).not.toBeInTheDocument();
+    }
+    expect(navigation).not.toHaveTextContent("?");
+  });
+
   it("shows and activates the training status route without breaking previous accesses", () => {
     renderShell("/statistics/training-status");
-    const statusLink=screen.getByRole("link",{name:"Estado"});
+    const statusLink=screen.getByRole("link",{name:"Estado de forma"});
     expect(statusLink).toHaveAttribute("href","/statistics/training-status");
     expect(statusLink).toHaveClass("nav-link--active");
     expect(screen.getByRole("heading",{name:"Estado de entrenamiento de prueba"})).toBeInTheDocument();
