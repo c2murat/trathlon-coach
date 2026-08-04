@@ -226,3 +226,5 @@ backend/pytest-cache-files-*/
 backend/.pytest_cache/
 frontend/node_modules/
 frontend/dist/
+backend/.tmp_pytest*/
+backend/.pytest_tmp/

@@ -24,13 +24,13 @@ const nav:{path:string;label:string;icon:NavIconName}[]=[
 function greeting(){const hour=new Date().getHours();return hour<12?"Buenos días":hour<20?"Buenas tardes":"Buenas noches"}
 function ActivitySyncButton({client}:{client:ApiClient}){const {hasAthleteCapability}=useAthleteContext();return hasAthleteCapability(ATHLETE_CAPABILITIES.IMPORT_STRAVA)?<RawActivitySyncButton client={client}/>:null}
 function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapability)=>boolean){
- if(path==="/dashboard")return <DashboardPage client={client} showSync={false}/>;
+ if(path==="/dashboard")return <DashboardPage client={client} showSync={false} canManageStrava={has(ATHLETE_CAPABILITIES.MANAGE_STRAVA)}/>;
  if(path==="/activities")return <ActivitiesPage client={client}/>;
  if(path==="/activities/strength")return <ManualStrengthPage client={client} canCreate={has(ATHLETE_CAPABILITIES.CREATE_STRENGTH)} canUpdate={has(ATHLETE_CAPABILITIES.UPDATE_STRENGTH)} canDelete={has(ATHLETE_CAPABILITIES.DELETE_STRENGTH)} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
- if(path==="/settings/performance-profile")return <PerformanceProfilePage client={client}/>;
+ if(path==="/settings/performance-profile"){const profile=has(ATHLETE_CAPABILITIES.CREATE_PROFILE),reference=has(ATHLETE_CAPABILITIES.CREATE_REFERENCE);return <div key={`${profile}-${reference}`} className={`${profile?"":"deny-profile "}${reference?"":"deny-reference"}`}><PerformanceProfilePage client={client}/></div>}
  if(path==="/statistics/training-load")return <TrainingLoadPage client={client}/>;
  if(path==="/statistics/training-status")return <TrainingStatusPage client={client} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
- if(path.startsWith("/activities/"))return <ActivitySummaryPage activityId={path.slice(12)} client={client}/>;
+ if(path.startsWith("/activities/"))return <div className={`${has(ATHLETE_CAPABILITIES.RECALCULATE)?"":"deny-recalculate "}${has(ATHLETE_CAPABILITIES.ENRICH_STRAVA)?"":"deny-enrichment "}${has(ATHLETE_CAPABILITIES.EVIDENCE_STRAVA)?"":"deny-evidence"}`}><ActivitySummaryPage activityId={path.slice(12)} client={client}/></div>;
  return <ComingSoonPage title={nav.find(item=>item.path===path)?.label??"Página"}/>;
 }
 export function AppShell({client=apiClient}:{client?:ApiClient}){

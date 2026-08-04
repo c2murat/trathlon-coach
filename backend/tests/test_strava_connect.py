@@ -89,6 +89,22 @@ def test_connect_redirect_contains_only_required_read_authorization() -> None:
     assert "write" not in query["scope"][0]
 
 
+def test_json_connect_start_returns_only_url_and_binds_selected_athlete() -> None:
+    store = RecordingStateStore()
+    app.dependency_overrides[get_settings] = lambda: configured_settings()
+    app.dependency_overrides[get_oauth_state_store] = lambda: store
+    response = TestClient(app).post("/integrations/strava/connect/start")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert set(response.json()) == {"authorization_url"}
+    location = urlsplit(response.json()["authorization_url"])
+    assert location.scheme == "https" and location.netloc == "www.strava.com"
+    assert parse_qs(location.query)["state"] == [store.saved[0].value]
+    assert store.saved[0].athlete_id is not None
+    assert "athlete_id" not in response.text
+
+
 def test_connect_stores_unique_state_with_user_and_expiry() -> None:
     store = RecordingStateStore()
     settings = configured_settings()

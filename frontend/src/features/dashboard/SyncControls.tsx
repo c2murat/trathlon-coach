@@ -3,7 +3,7 @@
 interface SyncControlsProps {
   connected: boolean;
   backendOnline: boolean;
-  connectUrl: string;
+  onConnect: () => void;
   status: SyncStatus;
   busy: boolean;
   onSynchronize(): void;
@@ -18,7 +18,7 @@ const activeStatuses: SyncStatus[] = [
 export function SyncControls({
   connected,
   backendOnline,
-  connectUrl,
+  onConnect,
   status,
   busy,
   onSynchronize,
@@ -32,9 +32,9 @@ export function SyncControls({
   }
   if (!connected) {
     return (
-      <a className="button button--primary" href={connectUrl}>
+      <button className="button button--primary" type="button" onClick={onConnect}>
         Conectar Strava
-      </a>
+      </button>
     );
   }
   const disabled = busy || activeStatuses.includes(status);

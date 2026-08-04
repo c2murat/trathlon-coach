@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useState } from "react";
 import { StatusCard } from "../../components/StatusCard";
+import { useRef } from "react";
 import type { ApiClient } from "../../services/apiClient";
 import { apiClient } from "../../services/apiClient";
 import type {
@@ -20,6 +21,8 @@ interface DashboardPageProps {
   client?: ApiClient;
   pollDelayMs?: number;
   showSync?: boolean;
+  canManageStrava?: boolean;
+  onExternalNavigate?: (url: string) => void;
 }
 
 const emptyActivities: ActivityPage = {
@@ -33,6 +36,8 @@ export function DashboardPage({
   client = apiClient,
   pollDelayMs = 2000,
   showSync = true,
+  canManageStrava = true,
+  onExternalNavigate = (url) => window.location.assign(url),
 }: DashboardPageProps) {
   const [loading, setLoading] = useState(true);
   const [backendOnline, setBackendOnline] = useState(false);
@@ -45,6 +50,28 @@ export function DashboardPage({
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<WeeklyTrend[]>([]);
   const [consistency, setConsistency] = useState<Consistency | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const connectStrava = async () => {
+    if (connecting) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const { authorization_url: authorizationUrl } = await client.startStravaConnection();
+      if (!/^https:\/\//i.test(authorizationUrl)) throw new Error("invalid_authorization_url");
+      if (mounted.current) onExternalNavigate(authorizationUrl);
+    } catch {
+      if (mounted.current) setError("No se ha podido iniciar la conexión con Strava.");
+    } finally {
+      if (mounted.current) setConnecting(false);
+    }
+  };
 
   const loadContent = useCallback(async () => {
     const [stravaResult, activitiesResult, syncResult] =
@@ -143,7 +170,7 @@ export function DashboardPage({
               icon="S"
               value={stravaLabel}
               tone={strava?.connected ? "positive" : "warning"}
-              detail={<>{strava?.message}{strava&&!strava.connected&&<a className="status-card__link" href="http://127.0.0.1:8000/integrations/strava/connect">Conectar Strava</a>}</>}
+              detail={<>{strava?.message}{canManageStrava&&strava&&!strava.connected&&<button className="status-card__link" type="button" disabled={connecting} onClick={() => void connectStrava()}>{connecting ? "Conectando…" : "Conectar Strava"}</button>}</>}
             />
             <StatusCard
               label="Actividades importadas"

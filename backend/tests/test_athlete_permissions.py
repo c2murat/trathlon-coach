@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,8 @@ from app.api.dependencies.athlete_permissions import (
     require_athlete_capability,
 )
 from app.api.dependencies.auth import LOCAL_MVP_USER_ID
+from app.api.dependencies.providers import get_oauth_state_store
+from app.core.settings import Settings, get_settings
 from app.api.dependencies.current_athlete import CurrentAthleteContext
 from app.db.models import (
     ActivityMetric,
@@ -27,6 +30,7 @@ from app.db.models import (
     UserAthleteMembership,
 )
 from test_multi_athlete_isolation import multi_athlete_context
+from app.providers.base import OAuthState, OAuthStateStore
 
 
 EXPECTED = {
@@ -132,6 +136,51 @@ def _strength_payload(minutes=25):
         "body_regions": ["core"],
         "perceived_exertion": 5,
     }
+
+
+class _RecordingOAuthStateStore(OAuthStateStore):
+    def __init__(self):
+        self.saved: list[OAuthState] = []
+
+    def save(self, state: OAuthState) -> None:
+        self.saved.append(state)
+
+    def consume(self, state_value: str, *, user_id):
+        raise NotImplementedError
+
+
+def _enable_strava_start(client):
+    store = _RecordingOAuthStateStore()
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        environment="test",
+        strava_client_id="12345",
+        strava_client_secret=SecretStr("test-secret"),
+        strava_redirect_uri="http://127.0.0.1:8000/integrations/strava/callback",
+        strava_scopes="read,activity:read_all",
+    )
+    client.app.dependency_overrides[get_oauth_state_store] = lambda: store
+    return store
+
+
+@pytest.mark.parametrize("role", ["owner", "editor"])
+def test_owner_and_editor_start_strava_for_selected_athlete(multi_athlete_context, role):
+    client, engine, ids = multi_athlete_context
+    _set_shared_role(engine, ids, role)
+    store = _enable_strava_start(client)
+    response = client.post("/integrations/strava/connect/start", headers=_headers(ids))
+    assert response.status_code == 200
+    assert set(response.json()) == {"authorization_url"}
+    assert store.saved[0].athlete_id == ids["athlete_b2"]
+
+
+@pytest.mark.parametrize("role", ["coach", "viewer"])
+def test_coach_and_viewer_cannot_start_strava(multi_athlete_context, role):
+    client, engine, ids = multi_athlete_context
+    _set_shared_role(engine, ids, role)
+    _enable_strava_start(client)
+    response = client.post("/integrations/strava/connect/start", headers=_headers(ids))
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "athlete_permission_denied"
 
 
 def _snapshot(session: Session):

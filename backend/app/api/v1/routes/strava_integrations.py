@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -53,6 +53,7 @@ from app.providers.base import (
 )
 from app.providers.strava import GrantedScopes, StravaRevocationCredential
 from app.integrations.strava.account_selection import StravaAccountConfigurationError,active_strava_account
+from app.api.v1.schemas.strava_integration import StravaConnectionStartResponse
 
 read_strava = require_athlete_capability(AthleteCapability.READ_STRAVA_INTEGRATION)
 manage_strava = require_athlete_capability(AthleteCapability.MANAGE_STRAVA_CONNECTION)
@@ -161,32 +162,63 @@ async def connect_strava(
 ) -> RedirectResponse:
     """Create one OAuth request and redirect the local athlete to Strava."""
 
-    try:
-        active_strava_account(session, athlete_id=current_athlete.athlete_id)
-    except StravaAccountConfigurationError:
-        raise _safe_error(status.HTTP_409_CONFLICT,"strava_account_configuration_invalid") from None
-    state = OAuthState(
-        value=generate_oauth_state(),
-        user_id=current_user.id,
-        athlete_id=current_athlete.athlete_id,
-        expires_at=utc_now() + timedelta(seconds=configuration.state_ttl_seconds),
-    )
-    try:
-        await run_in_threadpool(state_store.save, state)
-    except Exception:
-        raise _safe_error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "oauth_state_store_unavailable"
-        ) from None
-
-    authorization_url = configuration.client.build_authorization_url(
-        state=state.value,
-        redirect_uri=configuration.redirect_uri,
-        scopes=configuration.scopes,
+    authorization_url = await _start_strava_connection(
+        current_athlete=current_athlete,
+        configuration=configuration,
+        state_store=state_store,
+        session=session,
     )
     return RedirectResponse(
         authorization_url,
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         headers=NO_STORE_HEADERS,
+    )
+
+
+@router.post("/connect/start", response_model=StravaConnectionStartResponse)
+async def start_strava_connection(
+    response: Response,
+    current_athlete: CurrentAthleteContext = Depends(manage_strava),
+    configuration: StravaConnectConfiguration = Depends(get_strava_connect_configuration),
+    state_store: OAuthStateStore = Depends(get_oauth_state_store),
+    session: Session = Depends(get_db_session),
+) -> StravaConnectionStartResponse:
+    """Create athlete-bound OAuth state and return only the external URL."""
+    response.headers.update(NO_STORE_HEADERS)
+    authorization_url = await _start_strava_connection(
+        current_athlete=current_athlete,
+        configuration=configuration,
+        state_store=state_store,
+        session=session,
+    )
+    return StravaConnectionStartResponse(authorization_url=authorization_url)
+
+
+async def _start_strava_connection(
+    *,
+    current_athlete: CurrentAthleteContext,
+    configuration: StravaConnectConfiguration,
+    state_store: OAuthStateStore,
+    session: Session,
+) -> str:
+    try:
+        active_strava_account(session, athlete_id=current_athlete.athlete_id)
+    except StravaAccountConfigurationError:
+        raise _safe_error(status.HTTP_409_CONFLICT, "strava_account_configuration_invalid") from None
+    oauth_state = OAuthState(
+        value=generate_oauth_state(),
+        user_id=current_athlete.user_id,
+        athlete_id=current_athlete.athlete_id,
+        expires_at=utc_now() + timedelta(seconds=configuration.state_ttl_seconds),
+    )
+    try:
+        await run_in_threadpool(state_store.save, oauth_state)
+    except Exception:
+        raise _safe_error(status.HTTP_503_SERVICE_UNAVAILABLE, "oauth_state_store_unavailable") from None
+    return configuration.client.build_authorization_url(
+        state=oauth_state.value,
+        redirect_uri=configuration.redirect_uri,
+        scopes=configuration.scopes,
     )
 
 

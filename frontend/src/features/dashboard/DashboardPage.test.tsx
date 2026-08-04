@@ -90,9 +90,9 @@ function fakeClient(
     dashboardSummary: vi.fn().mockResolvedValue({ period: "week", period_start: "2026-07-13T00:00:00Z", period_end: "2026-07-20T00:00:00Z", activity_count: 2, total_moving_time_seconds: 3600, total_distance_metres: 10000, total_elevation_metres: 120, active_days: 2, longest_activity_seconds: 2400, longest_activity_distance_metres: 8000, sport_breakdown: [{ sport_type: "running", activity_count: 2, moving_time_seconds: 3600, distance_metres: 10000, elevation_metres: 120 }] }),
     dashboardTrends: vi.fn().mockResolvedValue([]),
     dashboardConsistency: vi.fn().mockResolvedValue({ weeks: 12, active_weeks: 8, current_training_streak_weeks: 3, longest_training_streak_weeks: 5, average_active_days_per_week: 2.5, average_moving_time_seconds_per_week: 2400, last_activity_at: "2026-07-14T06:00:00Z" }),
-    connectUrl: vi.fn().mockReturnValue(
-      "http://127.0.0.1:8000/integrations/strava/connect",
-    ),
+    startStravaConnection: vi.fn().mockResolvedValue({
+      authorization_url: "https://www.strava.com/oauth/authorize?state=opaque",
+    }),
     ...overrides,
   };
 }
@@ -122,7 +122,7 @@ describe("DashboardPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows disconnected status with a direct OAuth link", async () => {
+  it("starts OAuth through the API and navigates only after its response", async () => {
     const client = fakeClient({
       stravaStatus: vi.fn().mockResolvedValue({
         ...connected,
@@ -131,12 +131,41 @@ describe("DashboardPage", () => {
         message: "Strava is not connected.",
       }),
     });
-    render(<DashboardPage client={client} />);
-    const link = await screen.findByRole("link", { name: "Conectar Strava" });
-    expect(link).toHaveAttribute(
-      "href",
-      "http://127.0.0.1:8000/integrations/strava/connect",
-    );
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    render(<DashboardPage client={client} onExternalNavigate={navigate} />);
+    await user.click(await screen.findByRole("button", { name: "Conectar Strava" }));
+    expect(client.startStravaConnection).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith("https://www.strava.com/oauth/authorize?state=opaque");
+  });
+
+  it("prevents duplicate OAuth starts and rejects unsafe URLs", async () => {
+    let resolve!: (value: { authorization_url: string }) => void;
+    const pending = new Promise<{ authorization_url: string }>((done) => { resolve = done; });
+    const client = fakeClient({ stravaStatus: vi.fn().mockResolvedValue({ ...connected, connected: false }), startStravaConnection: vi.fn().mockReturnValue(pending) });
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    render(<DashboardPage client={client} onExternalNavigate={navigate} />);
+    const button = await screen.findByRole("button", { name: "Conectar Strava" });
+    await user.dblClick(button);
+    expect(client.startStravaConnection).toHaveBeenCalledTimes(1);
+    resolve({ authorization_url: "javascript:alert(1)" });
+    expect(await screen.findByText("No se ha podido iniciar la conexión con Strava.")).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("does not navigate after unmounting during OAuth start", async () => {
+    let resolve!: (value: { authorization_url: string }) => void;
+    const pending = new Promise<{ authorization_url: string }>((done) => { resolve = done; });
+    const client = fakeClient({ stravaStatus: vi.fn().mockResolvedValue({ ...connected, connected: false }), startStravaConnection: vi.fn().mockReturnValue(pending) });
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    const view = render(<DashboardPage client={client} onExternalNavigate={navigate} />);
+    await user.click(await screen.findByRole("button", { name: "Conectar Strava" }));
+    view.unmount();
+    resolve({ authorization_url: "https://www.strava.com/oauth/authorize?state=opaque" });
+    await Promise.resolve();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("renders activity summary metrics", async () => {

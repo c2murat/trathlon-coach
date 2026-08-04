@@ -47,7 +47,7 @@ export interface ApiClient {
   dashboardSummary(): Promise<DashboardSummary>;
   dashboardTrends(): Promise<WeeklyTrend[]>;
   dashboardConsistency(): Promise<Consistency>;
-  connectUrl(): string;
+  startStravaConnection():Promise<{authorization_url:string}>;
   performanceProfile?():Promise<{profile:any|null;derived:Record<string,number>}>;
   performanceProfileHistory?():Promise<any[]>;
   createPerformanceProfile?(input:Record<string,unknown>):Promise<any>;
@@ -73,11 +73,13 @@ export class FetchApiClient implements ApiClient {
   private activeAthleteId:string|null=null;
   private generation=0;
   private controllers=new Set<AbortController>();
+  private authorizationHandler:((code:string)=>void)|null=null;
 
   constructor(baseUrl = configuredBaseUrl) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
   setActiveAthlete(athleteId:string|null){if(this.activeAthleteId===athleteId)return;this.activeAthleteId=athleteId;this.generation++;for(const controller of this.controllers)controller.abort();this.controllers.clear()}
+  setAuthorizationErrorHandler(handler:((code:string)=>void)|null){this.authorizationHandler=handler}
   sessionContext(){return this.request<SessionContext>("/session/context",undefined,true)}
 
   health() {
@@ -158,9 +160,7 @@ export class FetchApiClient implements ApiClient {
   async getLatestTrainingStatus(query:LatestTrainingStatusQuery){try{return await this.request<DailyTrainingStatus>("/training-status/latest?"+this.trainingStatusParams(query))}catch(error){if(error instanceof Error&&error.message.includes("(404)")&&error.message.includes("training_status_not_found"))return null;throw error}}
   recalculateTrainingStatus(query:TrainingStatusQuery){return this.request<DailyTrainingStatus[]>("/training-status/recalculate?"+this.trainingStatusParams(query),{method:"POST"})}
 
-  connectUrl() {
-    return this.baseUrl + "/integrations/strava/connect";
-  }
+  startStravaConnection(){return this.request<{authorization_url:string}>("/integrations/strava/connect/start",{method:"POST"})}
 
   private requireArray<T>(value: unknown[]): T[] { if (!Array.isArray(value)) throw new Error("Invalid training load response"); return value as T[]; }
   private trainingStatusParams(query:TrainingStatusQuery|LatestTrainingStatusQuery){const values:Record<string,string>={timezone_name:query.timezoneName,training_load_algorithm_version:query.trainingLoadAlgorithmVersion??"0.7b.1",manual_strength_algorithm_version:query.manualStrengthAlgorithmVersion??"0.7e.1",training_status_algorithm_version:query.trainingStatusAlgorithmVersion??"0.7f.1"};if("startDate" in query){values.start_date=query.startDate;values.end_date=query.endDate}return new URLSearchParams(values).toString()}
@@ -180,8 +180,9 @@ export class FetchApiClient implements ApiClient {
     finally{this.controllers.delete(controller)}
     if(generation!==this.generation)throw new DOMException("Stale athlete response","AbortError");
     if (!response.ok) {
-      let detail = "";
-      try { const body = await response.json(); detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body); } catch { detail = response.statusText; }
+      let detail = "",code="";
+      try { const body = await response.json();const payload=body.detail??body;code=typeof payload==="object"&&payload&&typeof payload.code==="string"?payload.code:"";detail=typeof payload==="string"?payload:JSON.stringify(payload); } catch { detail = response.statusText; }
+      if(response.status===403&&(code==="athlete_not_authorized"||code==="athlete_permission_denied"))this.authorizationHandler?.(code);
       throw new Error(`TriCoach API request failed (${response.status}): ${detail}`);
     }
     return (await response.json()) as T;
