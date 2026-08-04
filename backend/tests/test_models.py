@@ -16,6 +16,7 @@ from app.db.models import (
     OAuthCredential,
     SyncJob,
     User,
+    UserAthleteMembership,
     WebhookEvent,
 )
 
@@ -122,6 +123,7 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
     expected_tables = {
         "users",
         "athlete_profiles",
+        "user_athlete_memberships",
         "integration_accounts",
         "oauth_credentials",
         "completed_activities",
@@ -158,6 +160,43 @@ def test_uuid_primary_keys_are_generated(session: Session) -> None:
     assert isinstance(athlete.id, UUID)
     assert isinstance(account.id, UUID)
     assert len({user.id, athlete.id, account.id}) == 3
+
+
+def test_user_athlete_membership_creation_defaults_and_relationships(session: Session) -> None:
+    user, athlete = make_identity(session)
+    membership = UserAthleteMembership(
+        user=user,
+        athlete_profile=athlete,
+        role="coach",
+        is_default=True,
+    )
+    session.add(membership)
+    session.commit()
+
+    assert membership.is_active is True
+    assert membership.is_default is True
+    assert membership.user is user
+    assert membership.athlete_profile is athlete
+    assert membership in user.athlete_memberships
+    assert membership in athlete.user_memberships
+
+
+def test_user_athlete_membership_is_unique_per_pair(session: Session) -> None:
+    user, athlete = make_identity(session)
+    session.add(UserAthleteMembership(user=user, athlete_profile=athlete, role="owner"))
+    session.commit()
+    session.add(UserAthleteMembership(user=user, athlete_profile=athlete, role="viewer"))
+
+    with pytest.raises(IntegrityError):
+        session.commit()
+
+
+def test_user_athlete_membership_rejects_invalid_role(session: Session) -> None:
+    user, athlete = make_identity(session)
+    session.add(UserAthleteMembership(user=user, athlete_profile=athlete, role="invalid"))
+
+    with pytest.raises(IntegrityError):
+        session.commit()
 
 
 def test_integration_external_identity_is_unique(session: Session) -> None:

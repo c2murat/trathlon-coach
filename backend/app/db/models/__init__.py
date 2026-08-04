@@ -2,6 +2,7 @@
 from app.db.models.activity import CompletedActivity
 from app.db.models.athlete import AthleteProfile
 from app.db.models.integration import IntegrationAccount, OAuthCredential
+from app.db.models.membership import UserAthleteMembership
 from app.db.models.operations import AuditEvent, SyncJob, WebhookEvent
 from app.db.models.user import User
 
@@ -17,6 +18,7 @@ __all__ = [
     "OAuthCredential",
     "SyncJob",
     "User",
+    "UserAthleteMembership",
     "WebhookEvent",
 ]
 

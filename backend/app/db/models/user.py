@@ -10,6 +10,7 @@ from app.db.base import Base, TimestampMixin, UTCDateTime, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.db.models.athlete import AthleteProfile
+    from app.db.models.membership import UserAthleteMembership
     from app.db.models.operations import AuditEvent
 
 
@@ -34,5 +35,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     athlete_profile: Mapped[AthleteProfile | None] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
+    athlete_memberships: Mapped[list[UserAthleteMembership]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     audit_events: Mapped[list[AuditEvent]] = relationship(back_populates="actor")
-

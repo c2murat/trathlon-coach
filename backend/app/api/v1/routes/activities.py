@@ -6,10 +6,10 @@ from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,model_validator
 from sqlalchemy.orm import Session
 from app.api.dependencies.auth import AuthenticatedUser,get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext,get_current_athlete
 from app.application.queries.activity_summaries import ActivitySummaryQuery
 from app.application.training_load import TrainingLoadApplication,ALGORITHM_VERSION
 from app.db.models.training_load import ActivityTrainingLoad
-from app.db.models import AthleteProfile
 from app.db.session import get_db_session
 router=APIRouter(prefix="/activities",tags=["activities"])
 class ActivitySummaryResponse(BaseModel):
@@ -37,16 +37,14 @@ def list_activities(limit:int=Query(20,ge=1,le=100),offset:int=Query(0,ge=0),spo
 def filter_options(current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
  x=ActivitySummaryQuery(session).filter_options(current_user.id);return FilterOptionsResponse(sport_types=list(x.sport_types),visibility_values=list(x.visibility_values),minimum_activity_date=x.minimum_activity_date,maximum_activity_date=x.maximum_activity_date)
 @router.get("/{activity_id}/training-load",response_model=TrainingLoadResponse)
-def training_load_get(activity_id:UUID,algorithm_version:str=Query(ALGORITHM_VERSION,min_length=1,max_length=32),current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
- athlete=session.scalar(__import__("sqlalchemy").select(AthleteProfile).where(AthleteProfile.user_id==current_user.id))
- try: row=TrainingLoadApplication(session).get_persisted(athlete.id if athlete else current_user.id,activity_id,algorithm_version)
+def training_load_get(activity_id:UUID,algorithm_version:str=Query(ALGORITHM_VERSION,min_length=1,max_length=32),current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+ try: row=TrainingLoadApplication(session).get_persisted(current_athlete.athlete_id,activity_id,algorithm_version)
  except LookupError: raise HTTPException(404,detail={"code":"activity_not_found"})
  if not row: raise HTTPException(404,detail={"code":"training_load_not_found"})
  return TrainingLoadResponse(activity_id=activity_id,**{k:getattr(row,k) for k in ("load_value","method","unit","coverage","quality","reason","algorithm_version","duration_seconds","effective_intensity","reference_value","reference_metric","source_metrics","warnings","calculated_at")})
 @router.post("/{activity_id}/training-load/recalculate",response_model=TrainingLoadResponse)
-def training_load_recalculate(activity_id:UUID,current_user:AuthenticatedUser=Depends(get_current_user),session:Session=Depends(get_db_session)):
- athlete=session.scalar(__import__("sqlalchemy").select(AthleteProfile).where(AthleteProfile.user_id==current_user.id))
- try: result=TrainingLoadApplication(session).calculate_for_activity(athlete.id if athlete else current_user.id,activity_id); session.commit(); row=TrainingLoadApplication(session).get_persisted(athlete.id if athlete else current_user.id,activity_id)
+def training_load_recalculate(activity_id:UUID,current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+ try: result=TrainingLoadApplication(session).calculate_for_activity(current_athlete.athlete_id,activity_id); session.commit(); row=TrainingLoadApplication(session).get_persisted(current_athlete.athlete_id,activity_id)
  except LookupError: session.rollback(); raise HTTPException(404,detail={"code":"activity_not_found"})
  return TrainingLoadResponse(activity_id=activity_id,**{k:getattr(row,k) for k in ("load_value","method","unit","coverage","quality","reason","algorithm_version","duration_seconds","effective_intensity","reference_value","reference_metric","source_metrics","warnings","calculated_at")})
 

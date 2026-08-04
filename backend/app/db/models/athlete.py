@@ -12,6 +12,7 @@ from app.db.base import Base, TimestampMixin, UTCDateTime, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.db.models.activity import CompletedActivity
     from app.db.models.integration import IntegrationAccount
+    from app.db.models.membership import UserAthleteMembership
     from app.db.models.operations import AuditEvent, SyncJob
     from app.db.models.user import User
 
@@ -39,6 +40,9 @@ class AthleteProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
     user: Mapped[User] = relationship(back_populates="athlete_profile")
+    user_memberships: Mapped[list[UserAthleteMembership]] = relationship(
+        back_populates="athlete_profile", cascade="all, delete-orphan"
+    )
     integration_accounts: Mapped[list[IntegrationAccount]] = relationship(
         back_populates="athlete", cascade="all, delete-orphan"
     )
@@ -47,4 +51,3 @@ class AthleteProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     sync_jobs: Mapped[list[SyncJob]] = relationship(back_populates="athlete")
     audit_events: Mapped[list[AuditEvent]] = relationship(back_populates="athlete")
-

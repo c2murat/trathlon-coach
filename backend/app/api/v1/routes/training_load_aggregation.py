@@ -5,10 +5,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import AuthenticatedUser, get_current_user
+from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
 from app.application.combined_training_load_aggregation import (
     AGGREGATION_ALGORITHM_VERSION,
     InvalidAggregationRangeError,
@@ -16,7 +15,6 @@ from app.application.combined_training_load_aggregation import (
 )
 from app.application.training_status_sync import sync_training_status_after_load_change
 from app.domains.manual_strength import ALGORITHM_VERSION as MANUAL_STRENGTH_VERSION
-from app.db.models import AthleteProfile
 from app.db.session import get_db_session
 
 
@@ -73,18 +71,6 @@ class WeeklyTrainingLoadResponse(BaseModel):
     calculated_at: datetime
 
 
-def _get_athlete_profile_id(
-    current_user: AuthenticatedUser,
-    session: Session,
-) -> UUID:
-    athlete = session.scalar(
-        select(AthleteProfile).where(
-            AthleteProfile.user_id == current_user.id
-        )
-    )
-    return athlete.id if athlete else current_user.id
-
-
 @router.get("/daily", response_model=list[DailyTrainingLoadResponse])
 def get_daily_training_load(
     start_date: date,
@@ -95,7 +81,7 @@ def get_daily_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
@@ -104,7 +90,7 @@ def get_daily_training_load(
             detail={"code": "invalid_aggregation_range"},
         )
 
-    athlete_profile_id = _get_athlete_profile_id(current_user, session)
+    athlete_profile_id = current_athlete.athlete_id
 
     try:
         rows = TrainingLoadAggregationApplication(
@@ -142,7 +128,7 @@ def get_weekly_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
@@ -151,7 +137,7 @@ def get_weekly_training_load(
             detail={"code": "invalid_aggregation_range"},
         )
 
-    athlete_profile_id = _get_athlete_profile_id(current_user, session)
+    athlete_profile_id = current_athlete.athlete_id
 
     weekly_start = start_date - timedelta(days=start_date.weekday())
     weekly_end = end_date + timedelta(days=6 - end_date.weekday())
@@ -188,7 +174,7 @@ def recalculate_daily_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
@@ -197,7 +183,7 @@ def recalculate_daily_training_load(
             detail={"code": "invalid_aggregation_range"},
         )
 
-    athlete_profile_id = _get_athlete_profile_id(current_user, session)
+    athlete_profile_id = current_athlete.athlete_id
     application = TrainingLoadAggregationApplication(session)
 
     try:
@@ -258,7 +244,7 @@ def recalculate_weekly_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
@@ -267,7 +253,7 @@ def recalculate_weekly_training_load(
             detail={"code": "invalid_aggregation_range"},
         )
 
-    athlete_profile_id = _get_athlete_profile_id(current_user, session)
+    athlete_profile_id = current_athlete.athlete_id
     application = TrainingLoadAggregationApplication(session)
 
     try:
@@ -327,7 +313,7 @@ def recalculate_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
@@ -336,7 +322,7 @@ def recalculate_training_load(
             detail={"code": "invalid_aggregation_range"},
         )
 
-    athlete_profile_id = _get_athlete_profile_id(current_user, session)
+    athlete_profile_id = current_athlete.athlete_id
     application = TrainingLoadAggregationApplication(session)
 
     try:

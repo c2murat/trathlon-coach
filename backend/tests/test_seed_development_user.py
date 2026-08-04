@@ -17,7 +17,7 @@ from app.cli.seed_development_user import (
 )
 from app.cli import seed_development_user as seed_module
 from app.db.base import Base
-from app.db.models import AthleteProfile, User
+from app.db.models import AthleteProfile, User, UserAthleteMembership
 
 
 @pytest.fixture
@@ -48,6 +48,7 @@ def test_first_execution_creates_user_and_profile(session_factory) -> None:
 
     assert result.user_created is True
     assert result.athlete_profile_created is True
+    assert result.membership_created is True
     with session_factory() as verification:
         user = verification.get(User, LOCAL_MVP_USER_ID)
         profile = verification.scalar(
@@ -63,6 +64,13 @@ def test_first_execution_creates_user_and_profile(session_factory) -> None:
         assert profile is not None
         assert profile.timezone == DEVELOPMENT_TIMEZONE
         assert profile.unit_system == "metric"
+        membership = verification.scalar(select(UserAthleteMembership))
+        assert membership is not None
+        assert membership.user_id == user.id
+        assert membership.athlete_profile_id == profile.id
+        assert membership.role == "owner"
+        assert membership.is_active is True
+        assert membership.is_default is True
 
 
 def test_repeated_execution_does_not_create_duplicates(session_factory) -> None:
@@ -74,6 +82,7 @@ def test_repeated_execution_does_not_create_duplicates(session_factory) -> None:
     assert first.athlete_profile_created is True
     assert second.user_created is False
     assert second.athlete_profile_created is False
+    assert second.membership_created is False
     with session_factory() as verification:
         assert verification.scalar(select(func.count()).select_from(User)) == 1
         assert (
@@ -82,6 +91,9 @@ def test_repeated_execution_does_not_create_duplicates(session_factory) -> None:
             )
             == 1
         )
+        assert verification.scalar(
+            select(func.count()).select_from(UserAthleteMembership)
+        ) == 1
 
 
 def test_existing_user_without_profile_creates_only_profile(session_factory) -> None:
@@ -101,6 +113,7 @@ def test_existing_user_without_profile_creates_only_profile(session_factory) -> 
 
     assert result.user_created is False
     assert result.athlete_profile_created is True
+    assert result.membership_created is True
     with session_factory() as verification:
         assert verification.scalar(select(func.count()).select_from(User)) == 1
         profile = verification.scalar(select(AthleteProfile))

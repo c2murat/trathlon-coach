@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies.auth import AuthenticatedUser, get_current_user
 from app.api.v1.routes.manual_strength import router
 from app.db.base import Base
-from app.db.models import AthleteProfile, ManualStrengthSession, ManualStrengthTrainingLoad, User
+from app.db.models import AthleteProfile, ManualStrengthSession, ManualStrengthTrainingLoad, User, UserAthleteMembership
 from app.db.session import get_db_session
 from app.main import create_app
 
@@ -39,6 +39,15 @@ def api_context():
             athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
             session.add(athlete)
             session.flush()
+            session.add(
+                UserAthleteMembership(
+                    user=user,
+                    athlete_profile=athlete,
+                    role="owner",
+                    is_active=True,
+                    is_default=True,
+                )
+            )
             athlete_ids.append(athlete.id)
         session.commit()
 

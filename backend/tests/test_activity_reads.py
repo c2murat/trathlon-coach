@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies.auth import LOCAL_MVP_USER_ID
 from app.db.base import Base, utc_now
-from app.db.models import AthleteProfile, CompletedActivity, User
+from app.db.models import AthleteProfile, CompletedActivity, User, UserAthleteMembership
 from app.db.session import get_db_session
 from app.main import create_app
 
@@ -43,6 +43,15 @@ def activity_client():
         other_athlete = AthleteProfile(user=other_user)
         session.add_all([user, athlete, other_user, other_athlete])
         session.flush()
+        session.add(
+            UserAthleteMembership(
+                user=user,
+                athlete_profile=athlete,
+                role="owner",
+                is_active=True,
+                is_default=True,
+            )
+        )
         for index in range(3):
             session.add(
                 CompletedActivity(
