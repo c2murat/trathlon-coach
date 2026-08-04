@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete,select
 from sqlalchemy.orm import Session,selectinload
 from app.api.dependencies.current_athlete import CurrentAthleteContext,get_current_athlete
+from app.api.dependencies.athlete_permissions import AthleteCapability,require_athlete_capability
 from app.db.session import get_db_session
 from app.db.models import ActivityMetric,CompletedActivity
 from app.application.metrics import ALGORITHM_VERSION,calculate
@@ -23,7 +24,7 @@ def get_metrics(activity_id:UUID,current_athlete:CurrentAthleteContext=Depends(g
  if not a:raise HTTPException(404,detail={"code":"activity_not_found"})
  rows=session.scalars(select(ActivityMetric).where(ActivityMetric.completed_activity_id==a.id,ActivityMetric.algorithm_version==ALGORITHM_VERSION)).all();return response(a,rows)
 @router.post("/{activity_id}/metrics/recalculate",response_model=MetricsOut)
-def recalculate(activity_id:UUID,current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+def recalculate(activity_id:UUID,current_athlete:CurrentAthleteContext=Depends(require_athlete_capability(AthleteCapability.RECALCULATE_ATHLETE_DATA)),session:Session=Depends(get_db_session)):
  a=own(session,current_athlete.athlete_id,activity_id)
  if not a:raise HTTPException(404,detail={"code":"activity_not_found"})
  session.execute(delete(ActivityMetric).where(ActivityMetric.completed_activity_id==a.id,ActivityMetric.algorithm_version==ALGORITHM_VERSION)); now=datetime.now(timezone.utc); rows=[ActivityMetric(completed_activity_id=a.id,metric_key=x.key,algorithm_version=ALGORITHM_VERSION,status=x.status,value=x.value,unit=x.unit,source=x.source,sample_count=x.sample_count,coverage_ratio=x.coverage_ratio,quality_notes=x.quality_notes,unavailable_reason=x.unavailable_reason,calculated_at=now) for x in calculate(a,a.streams)];session.add_all(rows);session.commit();return response(a,rows)

@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -36,6 +36,12 @@ def multi_athlete_context():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(connection, record):
+        del record
+        connection.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(engine)
     now = utc_now()
     today = now.date()
@@ -78,7 +84,7 @@ def multi_athlete_context():
                 UserAthleteMembership(
                     user=user_a,
                     athlete_profile=athlete_b2,
-                    role="viewer",
+                    role="editor",
                     is_active=True,
                     is_default=False,
                 ),

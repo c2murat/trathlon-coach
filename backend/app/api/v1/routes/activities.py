@@ -6,6 +6,7 @@ from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,model_validator
 from sqlalchemy.orm import Session
 from app.api.dependencies.current_athlete import CurrentAthleteContext,get_current_athlete
+from app.api.dependencies.athlete_permissions import AthleteCapability,require_athlete_capability
 from app.application.queries.activity_summaries import ActivitySummaryQuery
 from app.application.training_load import TrainingLoadApplication,ALGORITHM_VERSION
 from app.db.models.training_load import ActivityTrainingLoad
@@ -42,7 +43,7 @@ def training_load_get(activity_id:UUID,algorithm_version:str=Query(ALGORITHM_VER
  if not row: raise HTTPException(404,detail={"code":"training_load_not_found"})
  return TrainingLoadResponse(activity_id=activity_id,**{k:getattr(row,k) for k in ("load_value","method","unit","coverage","quality","reason","algorithm_version","duration_seconds","effective_intensity","reference_value","reference_metric","source_metrics","warnings","calculated_at")})
 @router.post("/{activity_id}/training-load/recalculate",response_model=TrainingLoadResponse)
-def training_load_recalculate(activity_id:UUID,current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+def training_load_recalculate(activity_id:UUID,current_athlete:CurrentAthleteContext=Depends(require_athlete_capability(AthleteCapability.RECALCULATE_ATHLETE_DATA)),session:Session=Depends(get_db_session)):
  try: result=TrainingLoadApplication(session).calculate_for_activity(current_athlete.athlete_id,activity_id); session.commit(); row=TrainingLoadApplication(session).get_persisted(current_athlete.athlete_id,activity_id)
  except LookupError: session.rollback(); raise HTTPException(404,detail={"code":"activity_not_found"})
  return TrainingLoadResponse(activity_id=activity_id,**{k:getattr(row,k) for k in ("load_value","method","unit","coverage","quality","reason","algorithm_version","duration_seconds","effective_intensity","reference_value","reference_metric","source_metrics","warnings","calculated_at")})

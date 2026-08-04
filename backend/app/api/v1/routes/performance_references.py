@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
+from app.api.dependencies.athlete_permissions import AthleteCapability, require_athlete_capability
 from app.application.performance_references import PerformanceReferenceRepository
 from app.db.session import get_db_session
 from app.domains.performance_profile.zones import *
@@ -37,7 +38,7 @@ def detail(reference_id: str, current_athlete: CurrentAthleteContext=Depends(get
     if not r: raise HTTPException(404,"reference_not_found")
     return rowout(r)
 @router.post("", response_model=RefOut, status_code=201)
-def create(data: RefIn, current_athlete: CurrentAthleteContext=Depends(get_current_athlete), session: Session=Depends(get_db_session)):
+def create(data: RefIn, current_athlete: CurrentAthleteContext=Depends(require_athlete_capability(AthleteCapability.CREATE_PERFORMANCE_REFERENCE)), session: Session=Depends(get_db_session)):
     try:
         ref=PerformanceReference(data.sport,data.metric_type,data.value,data.unit,data.data_origin,data.algorithm_version or ALGORITHM_VERSION,data.effective_from,data.calculation_method,data.source_note,data.quality_level,data.measured_at)
         r=PerformanceReferenceRepository(session).add_reference(current_athlete.athlete_id,ref); session.commit(); session.refresh(r); return rowout(r)

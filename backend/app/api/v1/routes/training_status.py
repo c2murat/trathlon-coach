@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
+from app.api.dependencies.athlete_permissions import AthleteCapability, require_athlete_capability
 from app.api.v1.schemas.training_status import DailyTrainingStatusResponse
 from app.application.training_status import (
     DuplicateTrainingStatusSourceDateError,
@@ -172,7 +173,7 @@ def recalculate_training_status(
     training_status_algorithm_version: str = Query(
         TRAINING_STATUS_VERSION, min_length=1, max_length=32
     ),
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.RECALCULATE_ATHLETE_DATA)),
     session: Session = Depends(get_db_session),
 ):
     athlete_id = current_athlete.athlete_id

@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
+from app.api.dependencies.athlete_permissions import AthleteCapability, require_athlete_capability
 from app.api.v1.schemas.manual_strength import (
     ManualStrengthSessionCreateRequest,
     ManualStrengthSessionResponse,
@@ -133,7 +134,7 @@ def _current_load(session: Session, session_id: UUID) -> ManualStrengthTrainingL
 @router.post("", response_model=ManualStrengthSessionResponse, status_code=201)
 def create_session(
     body: ManualStrengthSessionCreateRequest,
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.CREATE_MANUAL_STRENGTH)),
     session: Session = Depends(get_db_session),
 ):
     athlete_id = current_athlete.athlete_id
@@ -208,7 +209,7 @@ def get_session(
 def update_session(
     session_id: UUID,
     body: ManualStrengthSessionUpdateRequest,
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.UPDATE_MANUAL_STRENGTH)),
     session: Session = Depends(get_db_session),
 ):
     if not body.model_fields_set:
@@ -242,7 +243,7 @@ def update_session(
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_session(
     session_id: UUID,
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.DELETE_MANUAL_STRENGTH)),
     session: Session = Depends(get_db_session),
 ):
     athlete_id = current_athlete.athlete_id
@@ -273,7 +274,7 @@ def delete_session(
 )
 def recalculate_load(
     session_id: UUID,
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.RECALCULATE_ATHLETE_DATA)),
     session: Session = Depends(get_db_session),
 ):
     athlete_id = current_athlete.athlete_id

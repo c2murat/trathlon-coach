@@ -3,6 +3,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from sqlalchemy.orm import Session
 from app.api.dependencies.current_athlete import CurrentAthleteContext,get_current_athlete
+from app.api.dependencies.athlete_permissions import AthleteCapability,require_athlete_capability
 from app.application.performance_profiles import PerformanceProfileError,PerformanceProfileRepository
 from app.db.session import get_db_session
 from app.domains.performance_profile.zones import *
@@ -28,7 +29,7 @@ def current(current_athlete:CurrentAthleteContext=Depends(get_current_athlete),s
 def history(current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
  return [serialize(x) for x in PerformanceProfileRepository(session).history(current_athlete.athlete_id)]
 @router.post("/versions",response_model=ProfileOut,status_code=201)
-def create(data:ProfileIn,current_athlete:CurrentAthleteContext=Depends(get_current_athlete),session:Session=Depends(get_db_session)):
+def create(data:ProfileIn,current_athlete:CurrentAthleteContext=Depends(require_athlete_capability(AthleteCapability.CREATE_PERFORMANCE_PROFILE)),session:Session=Depends(get_db_session)):
  try: row=PerformanceProfileRepository(session).add_version(current_athlete.athlete_id,**data.model_dump(),algorithm_version=ALGORITHM_VERSION);session.commit();session.refresh(row);return serialize(row)
  except PerformanceProfileError as e:session.rollback();raise HTTPException(422,str(e))
  except Exception:session.rollback();raise

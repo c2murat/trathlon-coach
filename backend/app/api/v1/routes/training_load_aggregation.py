@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
+from app.api.dependencies.athlete_permissions import AthleteCapability, require_athlete_capability
 from app.application.combined_training_load_aggregation import (
     AGGREGATION_ALGORITHM_VERSION,
     InvalidAggregationRangeError,
@@ -174,7 +175,7 @@ def recalculate_daily_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.RECALCULATE_ATHLETE_DATA)),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
@@ -244,7 +245,7 @@ def recalculate_weekly_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.RECALCULATE_ATHLETE_DATA)),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
@@ -313,7 +314,7 @@ def recalculate_training_load(
         min_length=1,
         max_length=32,
     ),
-    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.RECALCULATE_ATHLETE_DATA)),
     session: Session = Depends(get_db_session),
 ):
     if start_date > end_date:
