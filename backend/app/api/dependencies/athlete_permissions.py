@@ -43,6 +43,9 @@ _ROLE_CAPABILITIES: dict[str, frozenset[AthleteCapability]] = {
     }),
 }
 
+def capabilities_for_role(role: str) -> tuple[AthleteCapability, ...]:
+    return tuple(sorted(_ROLE_CAPABILITIES.get(role, frozenset()), key=lambda item: item.value))
+
 
 def athlete_has_capability(
     current_athlete: CurrentAthleteContext,

@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
 import { ThemeProvider } from "./ThemeProvider";
+import {AthleteContextProvider} from "./AthleteContext";
+import type {ApiClient} from "../services/apiClient";
 
 vi.mock("../features/manualStrength/ManualStrengthPage", () => ({
   ManualStrengthPage: () => <h1>Fuerza manual de prueba</h1>,
@@ -10,13 +12,16 @@ vi.mock("../features/manualStrength/ManualStrengthPage", () => ({
 vi.mock("../features/trainingStatus/TrainingStatusPage", () => ({
   TrainingStatusPage: () => <h1>Estado de entrenamiento de prueba</h1>,
 }));
+vi.mock("../components/ActivitySyncButton",()=>({ActivitySyncButton:()=>null,activitySyncCompletedEvent:"tricoach:activity-sync-completed"}));
 
-function renderShell(path: string) {
+const session={user:{id:"user-1",display_name:"Ana",email:"ana@example.test"},athletes:[{athlete_id:"athlete-a",label:"Mi atleta",role:"owner",is_default:true,capabilities:["read_athlete_data"]}],selected_athlete_id:"athlete-a",selection_required:false} as any;
+function shellClient(context=session):ApiClient{return {sessionContext:vi.fn().mockResolvedValue(context),health:vi.fn().mockResolvedValue({status:"ok"}),stravaStatus:vi.fn().mockResolvedValue({connected:false}),activities:vi.fn().mockResolvedValue({total:0,limit:10,offset:0,items:[]}),browseActivities:vi.fn().mockResolvedValue({total:0,limit:20,offset:0,items:[]}),activityDetail:vi.fn().mockResolvedValue(null),activityFilterOptions:vi.fn().mockResolvedValue({sport_types:[],visibility_values:[],minimum_activity_date:null,maximum_activity_date:null}),latestImport:vi.fn().mockResolvedValue({status:"not_started"}),startImport:vi.fn().mockResolvedValue({job_id:"job",status:"queued"}),importStatus:vi.fn().mockResolvedValue({job_id:"job",status:"succeeded"}),dashboardSummary:vi.fn().mockResolvedValue(null),dashboardTrends:vi.fn().mockResolvedValue([]),dashboardConsistency:vi.fn().mockResolvedValue(null),performanceProfile:vi.fn().mockResolvedValue({profile:null,derived:{}}),performanceProfileHistory:vi.fn().mockResolvedValue([]),performanceReferences:vi.fn().mockResolvedValue([]),performanceZones:vi.fn().mockResolvedValue([]),connectUrl:vi.fn().mockReturnValue("#")} as unknown as ApiClient}
+function renderShell(path: string,context=session) {
   window.history.replaceState({}, "", path);
-
+  const client=shellClient(context);
   return render(
     <ThemeProvider>
-      <AppShell />
+      <AthleteContextProvider client={client}><AppShell client={client}/></AthleteContextProvider>
     </ThemeProvider>,
   );
 }
@@ -59,22 +64,22 @@ describe("AppShell", () => {
     expect(navigation).not.toHaveTextContent("?");
   });
 
-  it("shows and activates the training status route without breaking previous accesses", () => {
+  it("shows and activates the training status route without breaking previous accesses", async () => {
     renderShell("/statistics/training-status");
     const statusLink=screen.getByRole("link",{name:"Estado de forma"});
     expect(statusLink).toHaveAttribute("href","/statistics/training-status");
     expect(statusLink).toHaveClass("nav-link--active");
-    expect(screen.getByRole("heading",{name:"Estado de entrenamiento de prueba"})).toBeInTheDocument();
+    expect(await screen.findByRole("heading",{name:"Estado de entrenamiento de prueba"})).toBeInTheDocument();
     expect(screen.getByRole("link",{name:"Carga de entrenamiento"})).toHaveAttribute("href","/statistics/training-load");
     expect(screen.getByRole("link",{name:"Fuerza"})).toHaveAttribute("href","/activities/strength");
   });
 
-  it("shows the strength access, renders its route and marks it active", () => {
+  it("shows the strength access, renders its route and marks it active", async () => {
     renderShell("/activities/strength");
     const strengthLink = screen.getByRole("link", { name: "Fuerza" });
     expect(strengthLink).toHaveAttribute("href", "/activities/strength");
     expect(strengthLink).toHaveClass("nav-link--active");
-    expect(screen.getByRole("heading", { name: "Fuerza manual de prueba" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Fuerza manual de prueba" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Inicio" })).toHaveAttribute("href", "/dashboard");
     expect(screen.getByRole("link", { name: "Calendario" })).toHaveAttribute("href", "/calendar");
   });
@@ -95,7 +100,7 @@ describe("AppShell", () => {
     renderShell("/calendar");
 
     expect(
-      screen.getByRole("heading", { name: "Calendario" }),
+      await screen.findByRole("heading", { name: "Calendario" }),
     ).toBeInTheDocument();
 
     const versionText = document.querySelector(".coming-soon__version");
@@ -111,16 +116,14 @@ describe("AppShell", () => {
     expect(window.location.pathname).toBe("/dashboard");
   });
 
-  it("shows a time-aware Spanish greeting", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-14T09:00:00"));
-
+  it("shows a time-aware Spanish greeting", async () => {
     renderShell("/settings");
 
-    const greeting = document.querySelector(".topbar__greeting strong");
+    await waitFor(()=>expect(document.querySelector(".topbar__greeting strong")).toHaveTextContent("Ana"));const greeting = document.querySelector(".topbar__greeting strong");
 
     expect(greeting).toBeInTheDocument();
-    expect(greeting?.textContent).toContain("Carlos");
+    expect(greeting?.textContent).toContain("Ana");
+    expect(screen.queryByText("Carlos")).not.toBeInTheDocument();
 expect(greeting?.textContent?.toLowerCase()).toContain("buen");
   });
 

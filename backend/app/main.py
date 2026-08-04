@@ -19,6 +19,7 @@ from app.api.v1.routes.strava_integrations import router as strava_integrations_
 from app.api.v1.routes.strava_imports import router as strava_imports_router
 from app.api.v1.routes.strava_enrichments import router as strava_enrichments_router
 from app.api.v1.routes.strava_evidence import router as strava_evidence_router
+from app.api.v1.routes.session_context import router as session_context_router
 from app.core.settings import get_settings
 from app.providers.base import SQLiteOAuthStateStore
 
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
         return await http_exception_handler(request, exc)
 
     application.include_router(health_router)
+    application.include_router(session_context_router)
     application.include_router(activities_router)
     application.include_router(performance_profiles_router)
     application.include_router(performance_references_router)

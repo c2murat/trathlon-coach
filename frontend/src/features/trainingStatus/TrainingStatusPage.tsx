@@ -9,7 +9,7 @@ import { formatCalculatedAt, formatDailyLoad, formatForm, formatStatusDate, form
 
 const VERSIONS = { trainingLoadAlgorithmVersion:"0.7b.1", manualStrengthAlgorithmVersion:"0.7e.1", trainingStatusAlgorithmVersion:"0.7f.1" };
 
-export function TrainingStatusPage({ client }: { client: ApiClient }) {
+export function TrainingStatusPage({ client, canRecalculate=true }: { client: ApiClient; canRecalculate?:boolean }) {
   const [weeks,setWeeks]=useState<TrainingStatusPeriodWeeks>(4);
   const [rows,setRows]=useState<DailyTrainingStatus[]>([]);
   const [latest,setLatest]=useState<DailyTrainingStatus|null>(null);
@@ -57,13 +57,13 @@ export function TrainingStatusPage({ client }: { client: ApiClient }) {
           {TRAINING_STATUS_PERIODS.map(value=><option key={value} value={value}>Últimas {value} semanas</option>)}
         </select>
         <span>{formatStatusDate(range.startDate)} – {formatStatusDate(range.endDate)}</span>
-        {!globallyEmpty&&<button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>{recalculating?"Recalculando…":"Recalcular el estado"}</button>}
+        {canRecalculate&&!globallyEmpty&&<button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>{recalculating?"Recalculando…":"Recalcular el estado"}</button>}
       </div>
     </header>
     <div className="status-announcement" aria-live="polite">{announcement}</div>
     {loading&&<section className="training-load-state" role="status"><strong>Cargando estado de entrenamiento…</strong></section>}
     {!loading&&queryError&&<section className="training-load-state training-load-state--error" role="alert"><strong>No se ha podido consultar el estado de entrenamiento.</strong></section>}
-    {!loading&&!queryError&&globallyEmpty&&!noSources&&<section className="training-load-state status-empty"><h2>Todavía no hay un estado de entrenamiento calculado</h2><p>Calcula el estado para obtener la evolución del fitness, la fatiga y la forma a partir de tu carga diaria.</p><button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>Calcular estado de entrenamiento</button></section>}
+    {!loading&&!queryError&&globallyEmpty&&!noSources&&<section className="training-load-state status-empty"><h2>Todavía no hay un estado de entrenamiento calculado</h2><p>Calcula el estado para obtener la evolución del fitness, la fatiga y la forma a partir de tu carga diaria.</p>{canRecalculate&&<button className="button button--primary" disabled={recalculating} onClick={()=>void recalculate()}>Calcular estado de entrenamiento</button>}</section>}
     {!loading&&!queryError&&noSources&&<section className="training-load-state status-empty"><h2>No hay carga de entrenamiento disponible</h2><p>Registra o importa entrenamientos antes de calcular el estado.</p></section>}
     {recalculationError&&<p className="status-recalculation-error" role="alert" aria-live="assertive">{recalculationError}</p>}
     {!loading&&!queryError&&latest&&<>

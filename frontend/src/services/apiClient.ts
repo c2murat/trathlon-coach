@@ -19,11 +19,13 @@ import type {
 import type { DailyTrainingLoadAggregate, WeeklyTrainingLoadAggregate, TrainingLoadDateRange } from "../types/trainingLoad";
 import type {ManualStrengthSession,ManualStrengthSessionCreate,ManualStrengthSessionUpdate,ManualStrengthTrainingLoad} from "../types/manualStrength";
 import type {DailyTrainingStatus,LatestTrainingStatusQuery,TrainingStatusQuery} from "../types/trainingStatus";
+import {ATHLETE_HEADER,type SessionContext} from "../types/sessionContext";
 
 const configuredBaseUrl =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export interface ApiClient {
+  sessionContext?():Promise<SessionContext>;
   health(): Promise<HealthResponse>;
   stravaStatus(): Promise<StravaStatus>;
   activities(): Promise<ActivityPage>;
@@ -68,10 +70,15 @@ export interface ApiClient {
 
 export class FetchApiClient implements ApiClient {
   private readonly baseUrl: string;
+  private activeAthleteId:string|null=null;
+  private generation=0;
+  private controllers=new Set<AbortController>();
 
   constructor(baseUrl = configuredBaseUrl) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
+  setActiveAthlete(athleteId:string|null){if(this.activeAthleteId===athleteId)return;this.activeAthleteId=athleteId;this.generation++;for(const controller of this.controllers)controller.abort();this.controllers.clear()}
+  sessionContext(){return this.request<SessionContext>("/session/context",undefined,true)}
 
   health() {
     return this.request<HealthResponse>("/health");
@@ -158,13 +165,20 @@ export class FetchApiClient implements ApiClient {
   private requireArray<T>(value: unknown[]): T[] { if (!Array.isArray(value)) throw new Error("Invalid training load response"); return value as T[]; }
   private trainingStatusParams(query:TrainingStatusQuery|LatestTrainingStatusQuery){const values:Record<string,string>={timezone_name:query.timezoneName,training_load_algorithm_version:query.trainingLoadAlgorithmVersion??"0.7b.1",manual_strength_algorithm_version:query.manualStrengthAlgorithmVersion??"0.7e.1",training_status_algorithm_version:query.trainingStatusAlgorithmVersion??"0.7f.1"};if("startDate" in query){values.start_date=query.startDate;values.end_date=query.endDate}return new URLSearchParams(values).toString()}
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+  private async request<T>(path: string, init?: RequestInit, withoutAthlete=false): Promise<T> {
     const headers = new Headers(init?.headers);
     headers.set("Accept", "application/json");
-    const response = await fetch(this.baseUrl + path, {
-      ...init,
-      headers,
-    });
+    if(!withoutAthlete&&path!=="/health"){
+      if(!this.activeAthleteId)throw new Error("athlete_selection_required");
+      headers.set(ATHLETE_HEADER,this.activeAthleteId);
+    }
+    const controller=new AbortController(),generation=this.generation;
+    this.controllers.add(controller);
+    init?.signal?.addEventListener("abort",()=>controller.abort(),{once:true});
+    let response:Response;
+    try{response=await fetch(this.baseUrl+path,{...init,headers,signal:controller.signal})}
+    finally{this.controllers.delete(controller)}
+    if(generation!==this.generation)throw new DOMException("Stale athlete response","AbortError");
     if (!response.ok) {
       let detail = "";
       try { const body = await response.json(); detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body); } catch { detail = response.statusText; }
