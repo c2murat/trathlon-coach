@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import (
@@ -39,6 +39,14 @@ class IntegrationAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "status IN ('pending', 'active', 'refresh_required', 'error', "
             "'disconnected', 'revoked')",
             name="status_valid",
+        ),
+        Index(
+            "uq_integration_accounts_active_athlete_provider",
+            "athlete_id",
+            "provider",
+            unique=True,
+            postgresql_where=text("status='active' AND deleted_at IS NULL"),
+            sqlite_where=text("status='active' AND deleted_at IS NULL"),
         ),
     )
 
@@ -115,4 +123,3 @@ class OAuthCredential(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             f"integration_account_id={self.integration_account_id!r} "
             f"expires_at={self.expires_at!r}>"
         )
-

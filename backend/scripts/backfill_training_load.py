@@ -28,6 +28,8 @@ from app.db.session import SessionLocal  # noqa: E402
 @dataclass(frozen=True, slots=True)
 class BackfillOptions:
     athlete_id: UUID | None = None
+    all_athletes: bool = False
+    confirm_all_athletes: bool = False
     start_date: date | None = None
     end_date: date | None = None
     batch_size: int = 50
@@ -36,6 +38,10 @@ class BackfillOptions:
     dry_run: bool = False
 
     def __post_init__(self) -> None:
+        if (self.athlete_id is None) == (not self.all_athletes):
+            raise ValueError("select exactly one of athlete_id or all_athletes")
+        if self.all_athletes and not self.dry_run and not self.confirm_all_athletes:
+            raise ValueError("confirm_all_athletes is required for a real global run")
         if self.batch_size < 1:
             raise ValueError("batch_size must be greater than zero")
         if not self.algorithm_version.strip():
@@ -84,6 +90,18 @@ def backfill_training_load(
         TrainingLoadApplication
     ),
 ) -> BackfillResult:
+    reporter("Modo: dry-run" if options.dry_run else "Modo: ejecución real")
+    reporter(f"Alcance: {options.athlete_id or 'todos los atletas'}")
+    reporter(f"Versión: {options.algorithm_version} | rango={options.start_date or '*'}..{options.end_date or '*'} | lote={options.batch_size}")
+    if options.all_athletes:
+        athlete_ids=list(session.scalars(select(CompletedActivity.athlete_id).distinct().order_by(CompletedActivity.athlete_id)).all())
+        results=[]
+        for athlete_id in athlete_ids:
+            try:
+                results.append(backfill_training_load(session,BackfillOptions(athlete_id=athlete_id,start_date=options.start_date,end_date=options.end_date,batch_size=options.batch_size,algorithm_version=options.algorithm_version,recalculate_existing=options.recalculate_existing,dry_run=options.dry_run),reporter=reporter,application_factory=application_factory))
+            except Exception as error:
+                session.rollback();reporter(f"ERROR athlete_id={athlete_id}: {type(error).__name__}: {error}");results.append(BackfillResult(0,0,0,0,1,None))
+        return BackfillResult(sum(x.total_considered for x in results),sum(x.already_existing for x in results),sum(x.calculated for x in results),sum(x.unavailable for x in results),sum(x.errors for x in results),results[-1].last_processed_id if results else None)
     activities = list(session.scalars(_activity_query(options)).all())
     activity_ids = [activity.id for activity in activities]
     existing_ids: set[UUID] = set()
@@ -189,7 +207,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Backfill histÃ³rico de ActivityTrainingLoad.",
     )
-    parser.add_argument("--athlete-id", type=_uuid_argument)
+    scope=parser.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--athlete-id", type=_uuid_argument)
+    scope.add_argument("--all-athletes", action="store_true")
+    parser.add_argument("--confirm-all-athletes", action="store_true")
     parser.add_argument("--start-date", type=_date_argument)
     parser.add_argument("--end-date", type=_date_argument)
     parser.add_argument("--batch-size", type=int, default=50)
@@ -204,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         options = BackfillOptions(
             athlete_id=arguments.athlete_id,
+            all_athletes=arguments.all_athletes,
+            confirm_all_athletes=arguments.confirm_all_athletes,
             start_date=arguments.start_date,
             end_date=arguments.end_date,
             batch_size=arguments.batch_size,

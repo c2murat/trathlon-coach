@@ -8,6 +8,7 @@ from app.db.models.training_load import ActivityTrainingLoad
 from app.db.models.training_load_aggregate import AthleteDailyTrainingLoad, AthleteWeeklyTrainingLoad
 from app.domains.training_load_aggregation import ActivityLoadEntry, aggregate_daily_training_load, aggregate_weekly_training_load
 from app.domains.training_load_aggregation.models import InvalidAggregationInputError
+from app.application.multi_athlete_integrity import validate_activity_ids,validate_aggregate_rows
 AGGREGATION_ALGORITHM_VERSION='0.7c.1'
 @dataclass(frozen=True)
 class TrainingLoadAggregationRecalculationResult:
@@ -30,6 +31,7 @@ class TrainingLoadAggregationApplication:
    if (row.local_date,row.timezone_name,row.source_load_algorithm_version,row.aggregation_algorithm_version) not in keys:self.session.delete(row)
   now=self.clock()
   for x in results:
+   validate_activity_ids(self.session,athlete_id=athlete,activity_ids=x.activity_ids)
    row=self.session.scalar(select(AthleteDailyTrainingLoad).where(AthleteDailyTrainingLoad.athlete_profile_id==athlete,AthleteDailyTrainingLoad.local_date==x.local_date,AthleteDailyTrainingLoad.timezone_name==tz,AthleteDailyTrainingLoad.source_load_algorithm_version==version,AthleteDailyTrainingLoad.aggregation_algorithm_version==AGGREGATION_ALGORITHM_VERSION))
    vals=dict(total_load=x.total_load,activity_count=x.activity_count,loaded_activity_count=x.loaded_activity_count,null_load_activity_count=x.null_load_activity_count,total_duration_seconds=x.total_duration_seconds,coverage=x.coverage.value,quality=x.quality.value,warnings=list(x.warnings),activity_ids=list(x.activity_ids),calculated_at=now)
    if row:
@@ -45,6 +47,7 @@ class TrainingLoadAggregationApplication:
    if (row.iso_year,row.iso_week,row.timezone_name,row.source_load_algorithm_version,row.aggregation_algorithm_version) not in keys:self.session.delete(row)
   now=self.clock()
   for x in results:
+   validate_activity_ids(self.session,athlete_id=athlete,activity_ids=x.activity_ids)
    row=self.session.scalar(select(AthleteWeeklyTrainingLoad).where(AthleteWeeklyTrainingLoad.athlete_profile_id==athlete,AthleteWeeklyTrainingLoad.iso_year==x.iso_year,AthleteWeeklyTrainingLoad.iso_week==x.iso_week,AthleteWeeklyTrainingLoad.timezone_name==tz,AthleteWeeklyTrainingLoad.source_load_algorithm_version==version,AthleteWeeklyTrainingLoad.aggregation_algorithm_version==AGGREGATION_ALGORITHM_VERSION))
    vals=dict(week_end_date=x.week_end_date,total_load=x.total_load,activity_count=x.activity_count,loaded_activity_count=x.loaded_activity_count,null_load_activity_count=x.null_load_activity_count,total_duration_seconds=x.total_duration_seconds,coverage=x.coverage.value,quality=x.quality.value,warnings=list(x.warnings),activity_ids=list(x.activity_ids),calculated_at=now)
    if row:
@@ -53,6 +56,6 @@ class TrainingLoadAggregationApplication:
  def recalculate_all(self,athlete_profile_id,**kwargs):
   d=self.recalculate_daily(athlete_profile_id,**kwargs); w=self.recalculate_weekly(athlete_profile_id,**kwargs); return TrainingLoadAggregationRecalculationResult(d,w)
  def get_daily_aggregates(self,athlete_profile_id,*,start_date,end_date,timezone_name,source_load_algorithm_version='0.7b.1'):
-  return tuple(self.session.scalars(select(AthleteDailyTrainingLoad).where(AthleteDailyTrainingLoad.athlete_profile_id==athlete_profile_id,AthleteDailyTrainingLoad.local_date.between(start_date,end_date),AthleteDailyTrainingLoad.timezone_name==timezone_name,AthleteDailyTrainingLoad.source_load_algorithm_version==source_load_algorithm_version,AthleteDailyTrainingLoad.aggregation_algorithm_version==AGGREGATION_ALGORITHM_VERSION).order_by(AthleteDailyTrainingLoad.local_date)).all())
+  rows=tuple(self.session.scalars(select(AthleteDailyTrainingLoad).where(AthleteDailyTrainingLoad.athlete_profile_id==athlete_profile_id,AthleteDailyTrainingLoad.local_date.between(start_date,end_date),AthleteDailyTrainingLoad.timezone_name==timezone_name,AthleteDailyTrainingLoad.source_load_algorithm_version==source_load_algorithm_version,AthleteDailyTrainingLoad.aggregation_algorithm_version==AGGREGATION_ALGORITHM_VERSION).order_by(AthleteDailyTrainingLoad.local_date)).all());validate_aggregate_rows(self.session,rows);return rows
  def get_weekly_aggregates(self,athlete_profile_id,*,start_date,end_date,timezone_name,source_load_algorithm_version='0.7b.1'):
-  return tuple(self.session.scalars(select(AthleteWeeklyTrainingLoad).where(AthleteWeeklyTrainingLoad.athlete_profile_id==athlete_profile_id,AthleteWeeklyTrainingLoad.week_start_date.between(start_date,end_date),AthleteWeeklyTrainingLoad.timezone_name==timezone_name,AthleteWeeklyTrainingLoad.source_load_algorithm_version==source_load_algorithm_version,AthleteWeeklyTrainingLoad.aggregation_algorithm_version==AGGREGATION_ALGORITHM_VERSION).order_by(AthleteWeeklyTrainingLoad.week_start_date)).all())
+  rows=tuple(self.session.scalars(select(AthleteWeeklyTrainingLoad).where(AthleteWeeklyTrainingLoad.athlete_profile_id==athlete_profile_id,AthleteWeeklyTrainingLoad.week_start_date.between(start_date,end_date),AthleteWeeklyTrainingLoad.timezone_name==timezone_name,AthleteWeeklyTrainingLoad.source_load_algorithm_version==source_load_algorithm_version,AthleteWeeklyTrainingLoad.aggregation_algorithm_version==AGGREGATION_ALGORITHM_VERSION).order_by(AthleteWeeklyTrainingLoad.week_start_date)).all());validate_aggregate_rows(self.session,rows);return rows

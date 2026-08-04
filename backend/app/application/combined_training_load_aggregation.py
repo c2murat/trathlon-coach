@@ -7,6 +7,7 @@ from app.db.models.training_load_aggregate import AthleteDailyTrainingLoad, Athl
 from app.domains.manual_strength import ALGORITHM_VERSION
 from app.domains.training_load_aggregation import aggregate_daily_training_load, aggregate_weekly_training_load
 from app.domains.training_load_aggregation.manual_strength import ManualStrengthLoadEntry, combine_daily_training_load, combine_weekly_training_load
+from app.application.multi_athlete_integrity import validate_activity_ids,validate_aggregate_rows
 
 
 class TrainingLoadAggregationApplication(LegacyApplication):
@@ -33,6 +34,7 @@ class TrainingLoadAggregationApplication(LegacyApplication):
             if row.local_date not in keys: self.session.delete(row)
         now = self.clock()
         for item in results:
+            validate_activity_ids(self.session,athlete_id=athlete_profile_id,activity_ids=item.activity_ids)
             row = self.session.scalar(select(AthleteDailyTrainingLoad).where(AthleteDailyTrainingLoad.athlete_profile_id == athlete_profile_id, AthleteDailyTrainingLoad.local_date == item.local_date, AthleteDailyTrainingLoad.timezone_name == timezone_name, AthleteDailyTrainingLoad.source_load_algorithm_version == source_load_algorithm_version, AthleteDailyTrainingLoad.manual_strength_algorithm_version == manual_strength_algorithm_version, AthleteDailyTrainingLoad.aggregation_algorithm_version == AGGREGATION_ALGORITHM_VERSION))
             values = dict(total_load=item.total_load, endurance_load=item.endurance_load, strength_load=item.strength_load, strength_session_count=item.strength_session_count, activity_count=item.activity_count, loaded_activity_count=item.loaded_activity_count, null_load_activity_count=item.null_load_activity_count, total_duration_seconds=item.total_duration_seconds, coverage=item.coverage.value, quality=item.quality.value, warnings=list(item.warnings), activity_ids=list(item.activity_ids), calculated_at=now)
             if row:
@@ -51,6 +53,7 @@ class TrainingLoadAggregationApplication(LegacyApplication):
             if (row.iso_year, row.iso_week) not in keys: self.session.delete(row)
         now = self.clock()
         for item in results:
+            validate_activity_ids(self.session,athlete_id=athlete_profile_id,activity_ids=item.activity_ids)
             row = self.session.scalar(select(AthleteWeeklyTrainingLoad).where(AthleteWeeklyTrainingLoad.athlete_profile_id == athlete_profile_id, AthleteWeeklyTrainingLoad.iso_year == item.iso_year, AthleteWeeklyTrainingLoad.iso_week == item.iso_week, AthleteWeeklyTrainingLoad.timezone_name == timezone_name, AthleteWeeklyTrainingLoad.source_load_algorithm_version == source_load_algorithm_version, AthleteWeeklyTrainingLoad.manual_strength_algorithm_version == manual_strength_algorithm_version, AthleteWeeklyTrainingLoad.aggregation_algorithm_version == AGGREGATION_ALGORITHM_VERSION))
             values = dict(week_end_date=item.week_end_date, total_load=item.total_load, endurance_load=item.endurance_load, strength_load=item.strength_load, strength_session_count=item.strength_session_count, activity_count=item.activity_count, loaded_activity_count=item.loaded_activity_count, null_load_activity_count=item.null_load_activity_count, total_duration_seconds=item.total_duration_seconds, coverage=item.coverage.value, quality=item.quality.value, warnings=list(item.warnings), activity_ids=list(item.activity_ids), calculated_at=now)
             if row:
@@ -59,7 +62,7 @@ class TrainingLoadAggregationApplication(LegacyApplication):
         self.session.flush(); return results
 
     def get_daily_aggregates(self, athlete_profile_id, *, start_date, end_date, timezone_name, source_load_algorithm_version='0.7b.1', manual_strength_algorithm_version=ALGORITHM_VERSION):
-        return tuple(self.session.scalars(select(AthleteDailyTrainingLoad).where(AthleteDailyTrainingLoad.athlete_profile_id == athlete_profile_id, AthleteDailyTrainingLoad.local_date.between(start_date, end_date), AthleteDailyTrainingLoad.timezone_name == timezone_name, AthleteDailyTrainingLoad.source_load_algorithm_version == source_load_algorithm_version, AthleteDailyTrainingLoad.manual_strength_algorithm_version == manual_strength_algorithm_version, AthleteDailyTrainingLoad.aggregation_algorithm_version == AGGREGATION_ALGORITHM_VERSION).order_by(AthleteDailyTrainingLoad.local_date)).all())
+        rows=tuple(self.session.scalars(select(AthleteDailyTrainingLoad).where(AthleteDailyTrainingLoad.athlete_profile_id == athlete_profile_id, AthleteDailyTrainingLoad.local_date.between(start_date, end_date), AthleteDailyTrainingLoad.timezone_name == timezone_name, AthleteDailyTrainingLoad.source_load_algorithm_version == source_load_algorithm_version, AthleteDailyTrainingLoad.manual_strength_algorithm_version == manual_strength_algorithm_version, AthleteDailyTrainingLoad.aggregation_algorithm_version == AGGREGATION_ALGORITHM_VERSION).order_by(AthleteDailyTrainingLoad.local_date)).all());validate_aggregate_rows(self.session,rows);return rows
 
     def get_weekly_aggregates(self, athlete_profile_id, *, start_date, end_date, timezone_name, source_load_algorithm_version='0.7b.1', manual_strength_algorithm_version=ALGORITHM_VERSION):
-        return tuple(self.session.scalars(select(AthleteWeeklyTrainingLoad).where(AthleteWeeklyTrainingLoad.athlete_profile_id == athlete_profile_id, AthleteWeeklyTrainingLoad.week_start_date.between(start_date, end_date), AthleteWeeklyTrainingLoad.timezone_name == timezone_name, AthleteWeeklyTrainingLoad.source_load_algorithm_version == source_load_algorithm_version, AthleteWeeklyTrainingLoad.manual_strength_algorithm_version == manual_strength_algorithm_version, AthleteWeeklyTrainingLoad.aggregation_algorithm_version == AGGREGATION_ALGORITHM_VERSION).order_by(AthleteWeeklyTrainingLoad.week_start_date)).all())
+        rows=tuple(self.session.scalars(select(AthleteWeeklyTrainingLoad).where(AthleteWeeklyTrainingLoad.athlete_profile_id == athlete_profile_id, AthleteWeeklyTrainingLoad.week_start_date.between(start_date, end_date), AthleteWeeklyTrainingLoad.timezone_name == timezone_name, AthleteWeeklyTrainingLoad.source_load_algorithm_version == source_load_algorithm_version, AthleteWeeklyTrainingLoad.manual_strength_algorithm_version == manual_strength_algorithm_version, AthleteWeeklyTrainingLoad.aggregation_algorithm_version == AGGREGATION_ALGORITHM_VERSION).order_by(AthleteWeeklyTrainingLoad.week_start_date)).all());validate_aggregate_rows(self.session,rows);return rows
