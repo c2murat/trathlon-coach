@@ -473,3 +473,13 @@ python scripts/backfill_training_status.py --athlete-id <UUID>
 ```
 
 Por defecto usa `Europe/Madrid`, carga `0.7b.1`, fuerza manual `0.7e.1` y la versión vigente del estado. Sin fechas, comienza en la primera carga diaria compatible y alcanza el día local actual. Para limitarlo, deben proporcionarse juntas `--start-date YYYY-MM-DD` y `--end-date YYYY-MM-DD`. `--dry-run` ejecuta el cálculo completo y muestra el resumen, pero revierte toda la transacción; la ejecución real realiza un único commit al finalizar. El proceso es idempotente y no modifica las cargas fuente.
+
+## Versión 0.7G — Preparación multiatleta y aislamiento de datos
+
+La versión 0.7G separa la identidad del usuario del perfil deportivo mediante `User`, `UserAthleteMembership` y `AthleteProfile`. Una membresía activa define el rol (`owner`, `editor`, `coach` o `viewer`) y las capacidades centralizadas con las que el usuario puede actuar sobre un atleta. El backend resuelve el atleta activo, valida siempre la membresía y aísla por ese atleta las consultas, los recursos deportivos, las cuentas, los tokens, los estados OAuth y los jobs de Strava. La cabecera `X-TriCoach-Athlete-Id` permite una selección explícita, pero no constituye autorización por sí sola.
+
+El frontend obtiene usuario, atletas, selección, rol y capacidades mediante `GET /session/context`; selecciona automáticamente una membresía única o la predeterminada, muestra un selector cuando corresponde y añade la cabecera a las peticiones posteriores. Sus controles adaptan la experiencia, mientras que el backend sigue siendo la autoridad de seguridad.
+
+Las migraciones `0014_user_athlete_memberships`, `0015_strava_oauth_state_athlete` y `0016_multi_athlete_integrity` introducen membresías, ligan el estado OAuth al atleta y refuerzan la integridad atleta–cuenta. El auditor multiatleta comprueba las invariantes sin modificar datos y los backfills requieren un alcance explícito, sin ejecución global implícita.
+
+Esta preparación no incluye autenticación pública, registro, gestión de miembros o roles desde la interfaz, creación de atletas en el frontend ni despliegue productivo. `AthleteProfile.user_id` continúa temporalmente como propietario legado. Consulta la [guía multiatleta](docs/multi-athlete.md) para los detalles operativos y la matriz exacta de permisos.
