@@ -10,6 +10,7 @@ from app.db.base import Base, TimestampMixin, UTCDateTime, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.db.models.athlete import AthleteProfile
+    from app.db.models.auth_session import UserAuthSession
     from app.db.models.membership import UserAthleteMembership
     from app.db.models.operations import AuditEvent
 
@@ -26,6 +27,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     normalized_email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     auth_subject: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text())
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
     display_name: Mapped[str | None] = mapped_column(String(200))
@@ -39,3 +41,6 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     audit_events: Mapped[list[AuditEvent]] = relationship(back_populates="actor")
+    auth_sessions: Mapped[list[UserAuthSession]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )

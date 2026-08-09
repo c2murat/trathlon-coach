@@ -20,11 +20,24 @@ import type { DailyTrainingLoadAggregate, WeeklyTrainingLoadAggregate, TrainingL
 import type {ManualStrengthSession,ManualStrengthSessionCreate,ManualStrengthSessionUpdate,ManualStrengthTrainingLoad} from "../types/manualStrength";
 import type {DailyTrainingStatus,LatestTrainingStatusQuery,TrainingStatusQuery} from "../types/trainingStatus";
 import {ATHLETE_HEADER,type SessionContext} from "../types/sessionContext";
+import type {AuthenticatedUser,LoginCredentials} from "../types/auth";
+
+export const CSRF_COOKIE_NAME="tricoach_csrf";
+export const CSRF_HEADER_NAME="X-CSRF-Token";
+const UNSAFE_METHODS=new Set(["POST","PUT","PATCH","DELETE"]);
+export function readCookie(name:string,source=typeof document==="undefined"?"":document.cookie){
+ const prefix=encodeURIComponent(name)+"=";
+ const part=source.split(";").map(value=>value.trim()).find(value=>value.startsWith(prefix));
+ return part?decodeURIComponent(part.slice(prefix.length)):null;
+}
 
 const configuredBaseUrl =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export interface ApiClient {
+  authMe(): Promise<AuthenticatedUser>;
+  login(credentials: LoginCredentials): Promise<AuthenticatedUser>;
+  logout(): Promise<void>;
   sessionContext?():Promise<SessionContext>;
   health(): Promise<HealthResponse>;
   stravaStatus(): Promise<StravaStatus>;
@@ -80,6 +93,9 @@ export class FetchApiClient implements ApiClient {
   }
   setActiveAthlete(athleteId:string|null){if(this.activeAthleteId===athleteId)return;this.activeAthleteId=athleteId;this.generation++;for(const controller of this.controllers)controller.abort();this.controllers.clear()}
   setAuthorizationErrorHandler(handler:((code:string)=>void)|null){this.authorizationHandler=handler}
+  authMe(){return this.request<AuthenticatedUser>("/auth/me",undefined,true)}
+  login(credentials:LoginCredentials){return this.request<AuthenticatedUser>("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(credentials)},true)}
+  logout(){return this.request<void>("/auth/logout",{method:"POST"},true)}
   sessionContext(){return this.request<SessionContext>("/session/context",undefined,true)}
 
   health() {
@@ -168,6 +184,8 @@ export class FetchApiClient implements ApiClient {
   private async request<T>(path: string, init?: RequestInit, withoutAthlete=false): Promise<T> {
     const headers = new Headers(init?.headers);
     headers.set("Accept", "application/json");
+    const method=(init?.method??"GET").toUpperCase();
+    if(UNSAFE_METHODS.has(method)&&path!=="/auth/login"){const csrfToken=readCookie(CSRF_COOKIE_NAME);if(csrfToken)headers.set(CSRF_HEADER_NAME,csrfToken)}
     if(!withoutAthlete&&path!=="/health"){
       if(!this.activeAthleteId)throw new Error("athlete_selection_required");
       headers.set(ATHLETE_HEADER,this.activeAthleteId);
@@ -176,7 +194,7 @@ export class FetchApiClient implements ApiClient {
     this.controllers.add(controller);
     init?.signal?.addEventListener("abort",()=>controller.abort(),{once:true});
     let response:Response;
-    try{response=await fetch(this.baseUrl+path,{...init,headers,signal:controller.signal})}
+    try{response=await fetch(this.baseUrl+path,{...init,headers,credentials:"include",signal:controller.signal})}
     finally{this.controllers.delete(controller)}
     if(generation!==this.generation)throw new DOMException("Stale athlete response","AbortError");
     if (!response.ok) {
@@ -185,6 +203,7 @@ export class FetchApiClient implements ApiClient {
       if(response.status===403&&(code==="athlete_not_authorized"||code==="athlete_permission_denied"))this.authorizationHandler?.(code);
       throw new Error(`TriCoach API request failed (${response.status}): ${detail}`);
     }
+    if(response.status===204)return undefined as T;
     return (await response.json()) as T;
   }
 }

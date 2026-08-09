@@ -122,6 +122,7 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
 
     expected_tables = {
         "users",
+        "user_auth_sessions",
         "athlete_profiles",
         "user_athlete_memberships",
         "integration_accounts",

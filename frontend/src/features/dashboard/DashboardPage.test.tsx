@@ -1,4 +1,4 @@
-﻿import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../../services/apiClient";
@@ -70,6 +70,9 @@ function fakeClient(
   activities: ActivityPage = activityPage,
 ): ApiClient {
   return {
+    authMe: vi.fn(),
+    login: vi.fn(),
+    logout: vi.fn(),
     health: vi.fn().mockResolvedValue({ status: "ok", service: "triathlon-coach" }),
     stravaStatus: vi.fn().mockResolvedValue(connected),
     activities: vi.fn().mockResolvedValue(activities),

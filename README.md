@@ -483,3 +483,15 @@ El frontend obtiene usuario, atletas, selección, rol y capacidades mediante `GE
 Las migraciones `0014_user_athlete_memberships`, `0015_strava_oauth_state_athlete` y `0016_multi_athlete_integrity` introducen membresías, ligan el estado OAuth al atleta y refuerzan la integridad atleta–cuenta. El auditor multiatleta comprueba las invariantes sin modificar datos y los backfills requieren un alcance explícito, sin ejecución global implícita.
 
 Esta preparación no incluye autenticación pública, registro, gestión de miembros o roles desde la interfaz, creación de atletas en el frontend ni despliegue productivo. `AthleteProfile.user_id` continúa temporalmente como propietario legado. Consulta la [guía multiatleta](docs/multi-athlete.md) para los detalles operativos y la matriz exacta de permisos.
+
+## Versión 0.8A.1 — Base de autenticación real
+
+Se añadió una base de autenticación mediante sesiones opacas server-side y futura cookie HttpOnly, sin implementar todavía login, logout ni interfaz React. Las contraseñas usan Argon2; la base de datos conserva únicamente hashes SHA-256 de tokens de sesión y CSRF independientes. `AUTH_MODE=development` encapsula la identidad local y `AUTH_MODE=session` rechaza toda sesión ausente o inválida con 401, sin fallback.
+
+La sesión identifica solo al `User`: no contiene `athlete_id`. `CurrentAthleteContext`, `X-TriCoach-Athlete-Id`, memberships, roles y capacidades continúan resolviendo selección y autorización en capas posteriores. Consulta [la guía de autenticación](docs/authentication.md).
+
+## Versión 0.8A.2 — Login, logout y sesión HTTP real
+
+TriCoach AI dispone ahora de login web mediante sesión opaca server-side, restauración con `GET /auth/me`, protección CSRF central y cierre de sesión revocable. El cliente comparte `credentials: include` y añade el token de la cookie CSRF únicamente a mutaciones; la credencial de sesión permanece en una cookie HttpOnly y nunca entra en almacenamiento web.
+
+La autenticación sigue identificando solo al `User`. La selección `X-TriCoach-Athlete-Id` y la autorización mediante memberships, roles y capacidades permanecen separadas. Para asignar una contraseña inicial, ejecuta desde `backend`: `.venv\Scripts\python.exe scripts\set_user_password.py --email usuario@ejemplo.com`. Consulta [la guía de autenticación](docs/authentication.md).

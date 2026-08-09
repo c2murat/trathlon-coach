@@ -1,4 +1,38 @@
-﻿# Changelog
+# Changelog
+
+## 0.8A.2 — Login, logout y sesión HTTP real
+
+### Añadido
+
+- `POST /auth/login`, `GET /auth/me` y `POST /auth/logout` con cookies de sesión HttpOnly.
+- Cookie CSRF legible y validación central para métodos inseguros autenticados.
+- Bootstrap administrativo de contraseñas y flujo React de login, restauración y logout.
+
+### Seguridad
+
+- Errores de credenciales uniformes y verificación Argon2 ficticia cuando no existe un hash usable.
+- `credentials: include` y `X-CSRF-Token` centralizados en el cliente HTTP.
+- Sin JWT, secretos en JSON o almacenamiento web; la sesión continúa sin `athlete_id`.
+## 0.8A.1 — Base de autenticación real
+
+### Añadido
+
+- Hash y verificación de contraseñas con Argon2.
+- Sesiones opacas server-side con tokens de sesión y CSRF hasheados.
+- Configuración explícita `development`/`session`, cookie y TTL.
+- Resolución de usuario desde cookie, expiración y revocación idempotente.
+- Migración `0017_authentication_base` y pruebas de seguridad y aislamiento.
+
+### Seguridad
+
+- Sin JWT, tokens en almacenamiento web ni secretos raw en base de datos.
+- Sin fallback a identidad de desarrollo en modo sesión.
+- La sesión identifica solo al usuario; selección de atleta y autorización permanecen separadas.
+
+### No incluido
+
+- Endpoints o interfaz de login/logout, registro, recuperación de contraseña y OAuth de usuario.
+
 
 ## 0.7G — 2026-08-08
 

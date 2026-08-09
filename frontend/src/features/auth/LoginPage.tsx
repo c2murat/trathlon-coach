@@ -1,0 +1,8 @@
+import {useState,type FormEvent} from "react";
+import {useAuth} from "../../app/AuthContext";
+
+export function LoginPage(){
+ const {login}=useAuth();const [email,setEmail]=useState(""),[password,setPassword]=useState(""),[submitting,setSubmitting]=useState(false),[error,setError]=useState("");
+ const submit=async(event:FormEvent)=>{event.preventDefault();setSubmitting(true);setError("");try{await login({email,password})}catch{setError("El correo electrónico o la contraseña no son correctos.")}finally{setSubmitting(false)}};
+ return <main className="login-page"><section className="login-card" aria-labelledby="login-title"><div className="brand login-brand"><span className="brand__mark" aria-hidden="true">T</span><span>TriCoach AI</span></div><p className="eyebrow">Acceso seguro</p><h1 id="login-title">Iniciar sesión</h1><p>Accede a tu espacio de entrenamiento.</p>{error&&<p className="error-banner" role="alert">{error}</p>}<form onSubmit={event=>void submit(event)}><label htmlFor="login-email">Correo electrónico</label><input id="login-email" type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)}/><label htmlFor="login-password">Contraseña</label><input id="login-password" type="password" autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)}/><button className="button button--primary" type="submit" disabled={submitting}>{submitting?"Iniciando sesión…":"Iniciar sesión"}</button></form></section></main>
+}

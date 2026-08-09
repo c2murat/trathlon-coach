@@ -1,5 +1,6 @@
-﻿from functools import lru_cache
+from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator
@@ -36,6 +37,21 @@ class Settings(BaseSettings):
             "triathlon_coach"
         ),
         validation_alias=AliasChoices("TC_DATABASE_URL", "sqlalchemy.url"),
+    )
+
+    auth_mode: Literal["development", "session"] = "development"
+    session_cookie_name: str = Field(
+        default="tricoach_session", min_length=1, max_length=128
+    )
+    session_ttl_seconds: int = Field(default=14 * 24 * 60 * 60, ge=60)
+    session_cookie_secure: bool = False
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    session_cookie_path: str = "/"
+    csrf_cookie_name: str = Field(
+        default="tricoach_csrf", min_length=1, max_length=128
+    )
+    csrf_header_name: str = Field(
+        default="X-CSRF-Token", min_length=1, max_length=128
     )
 
     strava_client_id: str | None = Field(
@@ -106,6 +122,20 @@ class Settings(BaseSettings):
             raise ValueError("FRONTEND_ORIGIN must be one explicit HTTP origin")
         return value.rstrip("/")
 
+
+    @field_validator("session_cookie_path")
+    @classmethod
+    def validate_session_cookie_path(cls, value: str) -> str:
+        if not value.startswith("/"):
+            raise ValueError("SESSION_COOKIE_PATH must start with /")
+        return value
+
+    @field_validator("session_cookie_name", "csrf_cookie_name", "csrf_header_name")
+    @classmethod
+    def validate_http_name(cls, value: str) -> str:
+        if value.strip() != value or any(character.isspace() for character in value):
+            raise ValueError("Cookie and header names cannot contain whitespace")
+        return value
 
 @lru_cache
 def get_settings() -> Settings:

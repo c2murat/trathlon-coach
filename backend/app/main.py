@@ -6,6 +6,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.activities import router as activities_router
 from app.api.v1.routes.performance_profiles import router as performance_profiles_router
 from app.api.v1.routes.performance_references import router as performance_references_router
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
         return await http_exception_handler(request, exc)
 
     application.include_router(health_router)
+    application.include_router(auth_router)
     application.include_router(session_context_router)
     application.include_router(activities_router)
     application.include_router(performance_profiles_router)
