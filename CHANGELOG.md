@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8B.2 — Perfil de cuenta backend
+
+- Añadidos `GET /account` y `PATCH /account` para autoservicio del usuario autenticado.
+- La respuesta expone únicamente identidad y timestamps seguros; solo `display_name` es editable.
+- Whitelist estricta, normalización de nombre, protección CSRF/Origin e independencia total del atleta.
 ## 0.8A.3 — Hardening de autenticación y sesiones
 
 - Rate limiting configurable de login por IP y correo normalizado, con estado in-memory acotado.

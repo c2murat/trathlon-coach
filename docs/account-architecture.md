@@ -1,6 +1,11 @@
 # Arquitectura de cuenta de usuario — 0.8B.1
 
-Estado: diseño aprobado para implementación posterior. Este documento no describe endpoints de cuenta ya disponibles.
+Estado del roadmap:
+
+- 0.8B.1: auditoría y diseño completados.
+- 0.8B.2: perfil de cuenta backend implementado.
+- 0.8B.3: cambio seguro de contraseña planificado.
+- 0.8B.4: frontend de Cuenta planificado.
 
 ## Implementado actualmente
 
@@ -60,7 +65,7 @@ Coexiste `AthleteProfile.user_id`, único y no nullable, que representa el propi
 - La unicidad de un único default activo por usuario no está garantizada por constraint parcial; se detecta en runtime/auditor. Es deuda multiatleta, no de cuenta.
 - `User.timezone` y `AthleteProfile.timezone` requieren una política de precedencia antes de exponer una preferencia editable.
 
-## Diseño decidido para 0.8B.2 — Perfil de cuenta
+## Implementado en 0.8B.2 — Perfil de cuenta
 
 ### API
 
@@ -91,10 +96,13 @@ Respuesta prevista:
 {"display_name":"Nuevo nombre"}
 ```
 
+`display_name` se normaliza colapsando whitespace. El resultado admite hasta 200 caracteres.
+ull`, una cadena vacía o solo whitespace eliminan el nombre visible y persisten `NULL`; el shell puede continuar usando el email como fallback. El payload debe incluir explícitamente el campo y cualquier propiedad adicional produce 422.
+
 Schema previsto:
 
-- `AccountResponse`: campos seguros explícitos anteriores.
-- `AccountUpdateRequest`: `display_name` opcional para PATCH, longitud máxima 200, whitespace normalizado y `extra="forbid"`.
+- `AccountResponse`: `id`, `email`, `display_name`, `created_at`, `last_login_at`.
+- `AccountUpdateRequest`: únicamente `display_name`, nullable, longitud normalizada máxima 200 y `extra="forbid"`.
 - Debe rechazarse payload vacío si no produce cambio y cualquier `id`, `email`, `password_hash`, `status`, `deleted_at`, `last_login_at`, `user_id`, `athlete_id` o relación.
 
 El cambio de email queda fuera de 0.8B: requiere reautenticación, normalización/unicidad, verificación y notificación propias.
