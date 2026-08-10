@@ -23,10 +23,18 @@ def hash_password(password: str) -> str:
     return _password_hash.hash(password)
 
 
-def verify_password(password: str, password_hash: str) -> bool:
+def verify_and_update_password(password: str, password_hash: str) -> tuple[bool, str | None]:
     if not password or not password_hash:
-        return False
+        return False, None
     try:
-        return _password_hash.verify(password, password_hash)
+        return _password_hash.verify_and_update(password, password_hash)
     except (PwdlibError, TypeError, ValueError):
-        return False
+        return False, None
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return verify_and_update_password(password, password_hash)[0]
+
+
+def password_hash_has_expected_format(password_hash: str) -> bool:
+    return password_hash.startswith("$argon2")

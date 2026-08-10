@@ -28,7 +28,7 @@ class UserAuthSessionService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create_session(self, user_id: UUID, *, ttl: timedelta, now: datetime | None = None) -> CreatedAuthSession:
+    def create_session(self, user_id: UUID, *, ttl: timedelta, now: datetime | None = None, max_active_sessions: int | None = None) -> CreatedAuthSession:
         if ttl <= timedelta(0):
             raise ValueError("Session TTL must be positive")
         user = self._session.get(User, user_id)
@@ -46,6 +46,19 @@ class UserAuthSessionService:
         )
         self._session.add(auth_session)
         self._session.flush()
+        if max_active_sessions is not None:
+            if max_active_sessions < 1:
+                raise ValueError("Active session limit must be positive")
+            active_sessions = list(self._session.scalars(
+                select(UserAuthSession).where(
+                    UserAuthSession.user_id == user_id,
+                    UserAuthSession.revoked_at.is_(None),
+                    UserAuthSession.expires_at > created_at,
+                ).order_by(UserAuthSession.created_at.asc(), UserAuthSession.id.asc())
+            ).all())
+            for oldest in active_sessions[:-max_active_sessions]:
+                oldest.revoked_at = created_at
+            self._session.flush()
         return CreatedAuthSession(
             session_id=auth_session.id,
             session_token=session_token,

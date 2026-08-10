@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8A.3 — Hardening de autenticación y sesiones
+
+- Rate limiting configurable de login por IP y correo normalizado, con estado in-memory acotado.
+- Máximo configurable de sesiones activas y revocación de las más antiguas.
+- Cleanup administrativo y auditor determinista de autenticación.
+- Validación productiva de cookies seguras y defensa Origin complementaria a CSRF.
+- Rehash Argon2 oportunista y mensaje frontend específico para HTTP 429.
 ## 0.8A.2 — Login, logout y sesión HTTP real
 
 ### Añadido

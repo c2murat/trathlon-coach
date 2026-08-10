@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Lock
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -6,6 +7,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.application.login_rate_limit import InMemoryLoginRateLimiter, LoginRateLimitPolicy
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.activities import router as activities_router
 from app.api.v1.routes.performance_profiles import router as performance_profiles_router
@@ -28,9 +30,11 @@ from app.providers.base import SQLiteOAuthStateStore
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(title=settings.service_name, version="0.1.0")
+    application.state.login_rate_limiter_lock = Lock()
+    application.state.login_rate_limiter = InMemoryLoginRateLimiter(LoginRateLimitPolicy(settings.login_rate_limit_failures, settings.login_rate_limit_window_seconds, settings.login_rate_limit_max_keys))
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[x.strip().rstrip("/") for x in (settings.frontend_origins or (settings.frontend_origin + ",http://localhost:5173")).split(",") if x.strip()],
+        allow_origins=list(settings.allowed_frontend_origins()),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

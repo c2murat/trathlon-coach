@@ -46,6 +46,9 @@ def get_current_user(
     except (SessionAuthenticationError, ValueError):
         raise authentication_required() from None
     if request.method.upper() not in SAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin is not None and origin.rstrip("/") not in settings.allowed_frontend_origins():
+            raise origin_validation_failed()
         csrf_token = request.headers.get(settings.csrf_header_name)
         if not csrf_token or not service.verify_csrf(auth_session, csrf_token):
             raise csrf_validation_failed()
@@ -64,4 +67,10 @@ def csrf_validation_failed() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail={"code": "csrf_validation_failed"},
+    )
+
+def origin_validation_failed() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "origin_validation_failed"},
     )

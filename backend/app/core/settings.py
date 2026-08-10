@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,6 +54,11 @@ class Settings(BaseSettings):
         default="X-CSRF-Token", min_length=1, max_length=128
     )
 
+    login_rate_limit_failures: int = Field(default=5, ge=1, le=100)
+    login_rate_limit_window_seconds: int = Field(default=15 * 60, ge=1, le=86400)
+    login_rate_limit_max_keys: int = Field(default=10000, ge=100, le=1000000)
+    max_active_sessions_per_user: int = Field(default=10, ge=1, le=1000)
+    revoked_session_retention_days: int = Field(default=30, ge=0, le=3650)
     strava_client_id: str | None = Field(
         default=None, validation_alias="STRAVA_CLIENT_ID"
     )
@@ -123,6 +128,30 @@ class Settings(BaseSettings):
         return value.rstrip("/")
 
 
+    def allowed_frontend_origins(self) -> tuple[str, ...]:
+        configured = self.frontend_origins or (self.frontend_origin + ",http://localhost:5173")
+        return tuple(dict.fromkeys(value.strip().rstrip("/") for value in configured.split(",") if value.strip()))
+
+    @model_validator(mode="after")
+    def validate_auth_security(self):
+        if self.environment.casefold() in {"production", "prod"} and self.auth_mode == "session" and not self.session_cookie_secure:
+            raise ValueError("SESSION_COOKIE_SECURE must be true for session authentication in production")
+        if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
+            raise ValueError("SameSite=None requires SESSION_COOKIE_SECURE=true")
+        if self.session_cookie_name == self.csrf_cookie_name:
+            raise ValueError("Session and CSRF cookie names must differ")
+        return self
+    @field_validator("frontend_origins")
+    @classmethod
+    def validate_frontend_origins(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        origins = [item.strip() for item in value.split(",") if item.strip()]
+        if not origins:
+            raise ValueError("FRONTEND_ORIGINS must contain explicit HTTP origins")
+        for origin in origins:
+            cls.validate_frontend_origin(origin)
+        return ",".join(origins)
     @field_validator("session_cookie_path")
     @classmethod
     def validate_session_cookie_path(cls, value: str) -> str:

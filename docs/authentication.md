@@ -59,3 +59,39 @@ La migración `0017_authentication_base` contiene todo el esquema necesario. `us
 ## Fuera de alcance
 
 No se incluyen registro público, recuperación o cambio de contraseña en UI, OAuth de usuario, invitaciones, gestión de memberships, JWT, refresh tokens, “recordarme”, cierre global de sesiones ni despliegue.
+## Hardening 0.8A.3
+
+`POST /auth/login` limita por proceso los fallos de cada combinación `request.client.host + email normalizado`: 5 fallos en 900 segundos por defecto. El siguiente intento dentro de la ventana devuelve `429 too_many_login_attempts` y `Retry-After: 900`. Un éxito elimina la clave. El backend in-memory tiene limpieza temporal y un máximo de 10.000 claves; su interfaz permite sustituirlo por almacenamiento compartido cuando exista despliegue con múltiples procesos.
+
+Cada usuario conserva como máximo 10 sesiones activas (`revoked_at IS NULL` y `expires_at > now`). Al crear una nueva se conserva y se revocan, por fecha de creación, las activas más antiguas que excedan el límite. Las expiradas y revocadas no cuentan.
+
+Para mutaciones autenticadas, el token CSRF se complementa con validación de `Origin`: si el navegador lo envía, debe coincidir exactamente con uno de los orígenes explícitos usados por CORS. Las solicitudes sin `Origin` se aceptan para mantener clientes no navegador y scripts, pero siguen exigiendo CSRF. Login, métodos seguros y endpoints sin autenticación de usuario quedan fuera de esta defensa.
+
+En `production`/`prod`, `TC_AUTH_MODE=session` exige `TC_SESSION_COOKIE_SECURE=true`. `SameSite=None` también exige cookie segura, los nombres de cookies deben diferir y el path debe ser seguro. Tras un login válido, `pwdlib.verify_and_update` renueva hashes Argon2 obsoletos dentro de la misma transacción; los fallos nunca rehash ni cambian `last_login_at`.
+
+Configuración adicional:
+
+```dotenv
+TC_LOGIN_RATE_LIMIT_FAILURES=5
+TC_LOGIN_RATE_LIMIT_WINDOW_SECONDS=900
+TC_LOGIN_RATE_LIMIT_MAX_KEYS=10000
+TC_MAX_ACTIVE_SESSIONS_PER_USER=10
+TC_REVOKED_SESSION_RETENTION_DAYS=30
+```
+
+Cleanup administrativo, siempre con intención explícita:
+
+```powershell
+.venv\Scripts\python.exe scripts\cleanup_auth_sessions.py --dry-run --format json
+.venv\Scripts\python.exe scripts\cleanup_auth_sessions.py --execute --format json
+```
+
+Elimina sesiones expiradas y sesiones revocadas hace al menos el periodo de retención. El dry-run no modifica datos.
+
+Auditor de solo lectura:
+
+```powershell
+.venv\Scripts\python.exe scripts\audit_authentication.py --format json
+```
+
+Comprueba vidas temporales inválidas, sesiones activas de usuarios deshabilitados/eliminados, formato y duplicados de hashes de tokens/CSRF, formato Argon2 esperado y configuración insegura comprobable.

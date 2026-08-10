@@ -451,15 +451,15 @@ El rec�lculo diario usa un intervalo local inclusivo convertido a UTC mediante
 
 La versi�n 0.7C.2 no a�ade API ni frontend, y quedan fuera CTL, ATL, TSB, series continuas, recomendaciones y entrenador IA.
 
-## Versi�n 0.7D.1
+## Versi�n 0.7D.1
 
-Se a�adi� una capa TypeScript para consultar agregados diarios y semanales de carga mediante `GET /training-load/daily` y `GET /training-load/weekly`. Incluye DTOs tipados, validaci�n de respuestas en arrays y formateadores puros en espa�ol para carga, duraci�n, fechas, semanas ISO, cobertura y calidad.
+Se a�adi� una capa TypeScript para consultar agregados diarios y semanales de carga mediante `GET /training-load/daily` y `GET /training-load/weekly`. Incluye DTOs tipados, validaci�n de respuestas en arrays y formateadores puros en espa�ol para carga, duraci�n, fechas, semanas ISO, cobertura y calidad.
 
-Esta fase no incorpora una pantalla visual, rec�lculos autom�ticos, CTL, ATL ni TSB, y no modifica el backend.
+Esta fase no incorpora una pantalla visual, rec�lculos autom�ticos, CTL, ATL ni TSB, y no modifica el backend.
 
-## Versi�n 0.7D.2A
+## Versi�n 0.7D.2A
 
-Estabilizaci�n de AppShell y pruebas accesibles para saludo horario y navegaci�n m�vil, sin cambios de backend ni nuevas funcionalidades.
+Estabilizaci�n de AppShell y pruebas accesibles para saludo horario y navegaci�n m�vil, sin cambios de backend ni nuevas funcionalidades.
 
 ## Versión 0.7F.5 — Backfill y sincronización del estado de entrenamiento
 
@@ -495,3 +495,7 @@ La sesión identifica solo al `User`: no contiene `athlete_id`. `CurrentAthleteC
 TriCoach AI dispone ahora de login web mediante sesión opaca server-side, restauración con `GET /auth/me`, protección CSRF central y cierre de sesión revocable. El cliente comparte `credentials: include` y añade el token de la cookie CSRF únicamente a mutaciones; la credencial de sesión permanece en una cookie HttpOnly y nunca entra en almacenamiento web.
 
 La autenticación sigue identificando solo al `User`. La selección `X-TriCoach-Athlete-Id` y la autorización mediante memberships, roles y capacidades permanecen separadas. Para asignar una contraseña inicial, ejecuta desde `backend`: `.venv\Scripts\python.exe scripts\set_user_password.py --email usuario@ejemplo.com`. Consulta [la guía de autenticación](docs/authentication.md).
+
+## Versión 0.8A.3 — Hardening de autenticación y sesiones
+
+La autenticación incorpora rate limiting acotado, límite de sesiones activas, validaciones seguras de producción, Origin además de CSRF, rehash Argon2 oportunista y herramientas administrativas de cleanup y auditoría. Consulta [la guía de autenticación](docs/authentication.md).
