@@ -1,9 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import AuthenticatedUser, get_current_user
-from app.api.v1.schemas.account import AccountResponse, AccountUpdateRequest
-from app.application.account import AccountApplication, AccountUnavailableError
+from app.api.dependencies.auth import (
+    AuthenticatedSession,
+    AuthenticatedUser,
+    authentication_required,
+    get_current_auth_session,
+    get_current_user,
+)
+from app.api.v1.schemas.account import (
+    AccountResponse,
+    AccountUpdateRequest,
+    PasswordChangeRequest,
+)
+from app.application.account import (
+    AccountApplication,
+    AccountUnavailableError,
+    CurrentPasswordInvalidError,
+    PasswordUnchangedError,
+)
 from app.db.models import User
 from app.db.session import get_db_session
 
@@ -60,3 +75,39 @@ def update_account(
         session.rollback()
         raise
     return _response(user)
+
+@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+def change_password(
+    payload: PasswordChangeRequest,
+    authenticated_session: AuthenticatedSession = Depends(get_current_auth_session),
+    session: Session = Depends(get_db_session),
+) -> None:
+    if authenticated_session.auth_session_id is None:
+        raise authentication_required()
+    application = AccountApplication(session)
+    try:
+        application.change_password(
+            authenticated_session.user_id,
+            current_session_id=authenticated_session.auth_session_id,
+            current_password=payload.current_password.get_secret_value(),
+            new_password=payload.new_password.get_secret_value(),
+        )
+        session.commit()
+    except AccountUnavailableError:
+        session.rollback()
+        raise authentication_required() from None
+    except CurrentPasswordInvalidError:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "current_password_invalid"},
+        ) from None
+    except PasswordUnchangedError:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "new_password_unchanged"},
+        ) from None
+    except Exception:
+        session.rollback()
+        raise

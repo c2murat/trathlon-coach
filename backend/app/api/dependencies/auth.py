@@ -19,6 +19,14 @@ class AuthenticatedUser:
     id: UUID
 
 
+@dataclass(frozen=True, slots=True)
+class AuthenticatedSession:
+    """Internal authentication context; session identifiers never cross the API."""
+
+    user_id: UUID
+    auth_session_id: UUID | None
+
+
 LOCAL_MVP_USER_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
@@ -28,15 +36,16 @@ def get_development_current_user(settings: Settings) -> AuthenticatedUser:
     return AuthenticatedUser(id=LOCAL_MVP_USER_ID)
 
 
-def get_current_user(
+def get_current_auth_session(
     request: Request,
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_db_session),
-) -> AuthenticatedUser:
+) -> AuthenticatedSession:
     """Resolve the user and centrally enforce CSRF for cookie-authenticated writes."""
 
     if settings.auth_mode == "development":
-        return get_development_current_user(settings)
+        user = get_development_current_user(settings)
+        return AuthenticatedSession(user_id=user.id, auth_session_id=None)
     raw_token = request.cookies.get(settings.session_cookie_name)
     if not raw_token:
         raise authentication_required()
@@ -52,7 +61,16 @@ def get_current_user(
         csrf_token = request.headers.get(settings.csrf_header_name)
         if not csrf_token or not service.verify_csrf(auth_session, csrf_token):
             raise csrf_validation_failed()
-    return AuthenticatedUser(id=auth_session.user_id)
+    return AuthenticatedSession(
+        user_id=auth_session.user_id,
+        auth_session_id=auth_session.id,
+    )
+
+
+def get_current_user(
+    authenticated_session: AuthenticatedSession = Depends(get_current_auth_session),
+) -> AuthenticatedUser:
+    return AuthenticatedUser(id=authenticated_session.user_id)
 
 
 def authentication_required() -> HTTPException:

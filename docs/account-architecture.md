@@ -4,7 +4,7 @@ Estado del roadmap:
 
 - 0.8B.1: auditoría y diseño completados.
 - 0.8B.2: perfil de cuenta backend implementado.
-- 0.8B.3: cambio seguro de contraseña planificado.
+- 0.8B.3: cambio seguro de contraseña implementado.
 - 0.8B.4: frontend de Cuenta planificado.
 
 ## Implementado actualmente
@@ -97,7 +97,7 @@ Respuesta prevista:
 ```
 
 `display_name` se normaliza colapsando whitespace. El resultado admite hasta 200 caracteres.
-ull`, una cadena vacía o solo whitespace eliminan el nombre visible y persisten `NULL`; el shell puede continuar usando el email como fallback. El payload debe incluir explícitamente el campo y cualquier propiedad adicional produce 422.
+`null`, una cadena vacía o solo whitespace eliminan el nombre visible y persisten `NULL`; el shell puede continuar usando el email como fallback. El payload debe incluir explícitamente el campo y cualquier propiedad adicional produce 422.
 
 Schema previsto:
 
@@ -116,7 +116,7 @@ Crear `AccountApplication` en vez de ampliar el servicio de sesiones:
 
 El router traduce HTTP y dependencias; schemas validan el contrato; `AccountApplication` contiene casos de uso; SQLAlchemy conserva persistencia. `AuthenticationApplication`/`UserAuthSessionService` continúa gestionando sesiones y credenciales.
 
-## Diseño decidido para 0.8B.3 — Cambio de contraseña
+## Implementado en 0.8B.3 — Cambio de contraseña
 
 ### Contrato
 
@@ -135,16 +135,18 @@ POST /account/password
 
 ### Flujo transaccional
 
-1. Resolver sesión y User mediante la cookie y `get_current_user`.
+1. Resolver internamente sesión y User mediante la cookie y `get_current_auth_session`; el cliente no aporta identificadores de sesión.
 2. Exigir CSRF y Origin con la protección central ya existente.
 3. Cargar User por el id autenticado; exigir `status == active`, `deleted_at IS NULL` y `password_hash` presente.
-4. Verificar `current_password` con pwdlib usando un error público estable y no sensible.
+4. Verificar `current_password` con `verify_and_update_password` de pwdlib usando `400 current_password_invalid`; cualquier rehash intermedio se descarta.
 5. Validar `new_password` con `validate_password`; no crear una política paralela.
-6. Generar Argon2 con `hash_password` y asignarlo solo después de todas las validaciones.
+6. Rechazar con `400 new_password_unchanged` una contraseña nueva igual a la actual; generar Argon2 con `hash_password` solo después de todas las validaciones.
 7. Revocar todas las demás sesiones activas del mismo User dentro de la misma transacción.
-8. Commit único; ante cualquier fallo, rollback y hash/sesiones sin cambios.
+8. Commit único y respuesta `204 No Content`; ante cualquier fallo, rollback y hash/sesiones sin cambios.
 
 `last_login_at` no cambia porque cambiar contraseña no es un login.
+
+El endpoint utiliza la protección central de CSRF y Origin, no crea ni renueva cookies, no registra secretos y no depende de atletas, memberships o selección deportiva.
 
 ### Política de sesiones elegida
 

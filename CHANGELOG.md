@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8B.3 — Cambio seguro de contraseña
+
+- Añadido `POST /account/password` con verificación de la contraseña actual y política Argon2/pwdlib 12–1024.
+- La sesión actual se conserva y las demás sesiones activas del usuario se revocan en la misma transacción.
+- Respuesta `204`, whitelist estricta, CSRF/Origin centralizados y ausencia de dependencia del atleta.
+
 ## 0.8B.2 — Perfil de cuenta backend
 
 - Añadidos `GET /account` y `PATCH /account` para autoservicio del usuario autenticado.
