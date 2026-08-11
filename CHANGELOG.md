@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8B.4 — Frontend de Cuenta
+
+- Añadida `/settings/account` bajo Configuración con datos seguros y edición de `display_name`.
+- Añadido cambio de contraseña accesible, feedback en español y cliente central con CSRF/cookies.
+- AppShell refresca nombre e inicial desde AuthContext sin mezclar estado deportivo.
+
 ## 0.8B.3 — Cambio seguro de contraseña
 
 - Añadido `POST /account/password` con verificación de la contraseña actual y política Argon2/pwdlib 12–1024.

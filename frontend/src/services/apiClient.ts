@@ -21,6 +21,7 @@ import type {ManualStrengthSession,ManualStrengthSessionCreate,ManualStrengthSes
 import type {DailyTrainingStatus,LatestTrainingStatusQuery,TrainingStatusQuery} from "../types/trainingStatus";
 import {ATHLETE_HEADER,type SessionContext} from "../types/sessionContext";
 import type {AuthenticatedUser,LoginCredentials} from "../types/auth";
+import type {Account,AccountUpdateRequest,PasswordChangeRequest} from "../features/account/accountTypes";
 
 export const CSRF_COOKIE_NAME="tricoach_csrf";
 export const CSRF_HEADER_NAME="X-CSRF-Token";
@@ -38,6 +39,9 @@ export interface ApiClient {
   authMe(): Promise<AuthenticatedUser>;
   login(credentials: LoginCredentials): Promise<AuthenticatedUser>;
   logout(): Promise<void>;
+  getAccount?():Promise<Account>;
+  updateAccount?(input:AccountUpdateRequest):Promise<Account>;
+  changePassword?(input:PasswordChangeRequest):Promise<void>;
   sessionContext?():Promise<SessionContext>;
   health(): Promise<HealthResponse>;
   stravaStatus(): Promise<StravaStatus>;
@@ -97,6 +101,9 @@ export class FetchApiClient implements ApiClient {
   login(credentials:LoginCredentials){return this.request<AuthenticatedUser>("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(credentials)},true)}
   logout(){return this.request<void>("/auth/logout",{method:"POST"},true)}
   sessionContext(){return this.request<SessionContext>("/session/context",undefined,true)}
+  getAccount(){return this.request<Account>("/account",undefined,true)}
+  updateAccount(input:AccountUpdateRequest){return this.request<Account>("/account",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
+  changePassword(input:PasswordChangeRequest){return this.request<void>("/account/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
 
   health() {
     return this.request<HealthResponse>("/health");

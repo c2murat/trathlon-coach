@@ -5,7 +5,7 @@ Estado del roadmap:
 - 0.8B.1: auditoría y diseño completados.
 - 0.8B.2: perfil de cuenta backend implementado.
 - 0.8B.3: cambio seguro de contraseña implementado.
-- 0.8B.4: frontend de Cuenta planificado.
+- 0.8B.4: frontend de Cuenta implementado.
 
 ## Implementado actualmente
 
@@ -157,6 +157,12 @@ Si no se puede resolver inequívocamente la sesión actual, la operación debe f
 Errores previstos: `401 authentication_required` para sesión/cuenta inválida; `400 current_password_invalid` o equivalente genérico para contraseña actual incorrecta; `422` para nueva contraseña que incumpla política; `403` para CSRF/Origin. Nunca se devuelven contraseñas, hashes o recuentos sensibles de sesiones.
 
 ## Diseño frontend para 0.8B.4
+
+Implementado en `/settings/account`: muestra nombre visible, email de solo lectura, fecha de creación y último acceso; permite editar exclusivamente `display_name` y cambiar la contraseña con confirmación local. El cliente central conserva cookies y CSRF.
+
+Tras actualizar el nombre, `AccountPage` usa la respuesta normalizada y `AuthContext.refreshUser()` consulta `/auth/me`; AppShell toma nombre e inicial de AuthContext. Los detalles de cuenta siguen siendo estado local y AthleteContext permanece separado.
+
+El cambio de contraseña limpia los tres campos tras el `204`, conserva la sesión actual y no ofrece gestión/listado de otras sesiones. No existe cambio de email, timezone ni datos deportivos.
 
 La navegación prevista es:
 
