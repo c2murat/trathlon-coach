@@ -42,6 +42,7 @@ def resolve_current_athlete(
         .where(
             UserAthleteMembership.user_id == current_user.id,
             UserAthleteMembership.is_active.is_(True),
+            UserAthleteMembership.athlete_profile.has(AthleteProfile.deleted_at.is_(None)),
         )
         .order_by(
             UserAthleteMembership.is_default.desc(),

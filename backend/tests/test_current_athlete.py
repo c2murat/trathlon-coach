@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -48,7 +49,7 @@ def _identity(session: Session, suffix: str, *, user_id=None, athlete_id=None):
         normalized_email=f"{suffix}@example.invalid",
         auth_subject=f"auth-{suffix}",
     )
-    athlete = AthleteProfile(id=athlete_id or uuid4(), user=user)
+    athlete = AthleteProfile(id=athlete_id or uuid4(), display_name="Test athlete")
     session.add_all([user, athlete])
     session.flush()
     return user, athlete
@@ -110,15 +111,12 @@ def test_multiple_memberships_without_default_require_selection(session):
     assert error.detail == {"code": "athlete_selection_required"}
 
 
-def test_multiple_default_memberships_report_inconsistent_configuration(session):
+def test_database_rejects_multiple_active_default_memberships(session):
     user, first = _identity(session, "invalid-default-user")
     _, second = _identity(session, "invalid-default-shared")
     _membership(session, user, first, default=True)
-    _membership(session, user, second, default=True)
-    error = _error(session, user)
-    assert error.status_code == 409
-    assert error.detail == {"code": "athlete_default_configuration_invalid"}
-
+    with pytest.raises(IntegrityError):
+        _membership(session, user, second, default=True)
 
 def test_explicit_owned_and_shared_memberships_are_allowed(session):
     user, owned = _identity(session, "header-user")
@@ -201,7 +199,7 @@ def test_user_id_collision_never_grants_access_or_mutates_foreign_rows():
             normalized_email="collision-owner@example.invalid",
             auth_subject="collision-owner",
         )
-        foreign_athlete = AthleteProfile(id=LOCAL_MVP_USER_ID, user=foreign_user)
+        foreign_athlete = AthleteProfile(id=LOCAL_MVP_USER_ID, display_name="Test athlete")
         activity = CompletedActivity(
             athlete=foreign_athlete,
             source_summary="manual",

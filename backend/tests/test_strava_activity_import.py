@@ -121,7 +121,7 @@ def database(tmp_path):
             timezone="Europe/Madrid",
         )
         athlete = AthleteProfile(
-            user=user, timezone="Europe/Madrid", unit_system="metric"
+            display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric"
         )
         account = IntegrationAccount(
             athlete=athlete,

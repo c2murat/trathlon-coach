@@ -72,7 +72,7 @@ def api_context():
                 normalized_email=f"status-api-{number}@example.com",
                 auth_subject=f"status-api-{number}",
             )
-            athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
+            athlete = AthleteProfile(display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric")
             session.add(athlete)
             session.flush()
             session.add(UserAthleteMembership(user=user, athlete_profile=athlete, role="owner", is_active=True, is_default=True))

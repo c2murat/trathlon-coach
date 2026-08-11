@@ -73,7 +73,7 @@ def management_context():
         )
         session.add(user)
         session.flush()
-        athlete = AthleteProfile(user_id=user.id, timezone="Europe/Madrid")
+        athlete = AthleteProfile(display_name="Test athlete", timezone="Europe/Madrid")
         session.add(athlete)
         session.flush()
         session.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True))
@@ -104,7 +104,7 @@ def add_connection(
 ):
     with factory() as session:
         athlete = session.scalar(
-            select(AthleteProfile).where(AthleteProfile.user_id == LOCAL_MVP_USER_ID)
+            select(AthleteProfile).join(UserAthleteMembership).where(UserAthleteMembership.user_id == LOCAL_MVP_USER_ID)
         )
         account = IntegrationAccount(
             athlete_id=athlete.id,
@@ -192,7 +192,7 @@ def test_status_and_disconnect_are_isolated_to_current_owner(management_context)
     client, factory, transport = management_context
     with factory() as session:
         other_user = User(email="other@test", normalized_email="other@test", auth_subject="other-owner")
-        other_athlete = AthleteProfile(user=other_user)
+        other_athlete = AthleteProfile(display_name="Test athlete")
         account = IntegrationAccount(
             athlete=other_athlete,
             provider="strava",
@@ -324,7 +324,7 @@ def test_local_disconnect_transaction_rolls_back_on_commit_failure(management_co
     with factory() as session:
         service = StravaConnectionService(session)
         with factory() as lookup:
-            athlete_id = lookup.scalar(select(AthleteProfile.id).where(AthleteProfile.user_id == LOCAL_MVP_USER_ID))
+            athlete_id = lookup.scalar(select(AthleteProfile.id).join(UserAthleteMembership).where(UserAthleteMembership.user_id == LOCAL_MVP_USER_ID))
         target = service.begin_disconnect(athlete_id=athlete_id,user_id=LOCAL_MVP_USER_ID)
 
         def fail_commit() -> None:

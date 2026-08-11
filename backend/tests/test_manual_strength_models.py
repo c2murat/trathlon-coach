@@ -24,7 +24,7 @@ def database_session():
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         user = User(email="model@example.com", normalized_email="model@example.com", auth_subject="model")
-        athlete = AthleteProfile(user=user, timezone="UTC", unit_system="metric")
+        athlete = AthleteProfile(display_name="Test athlete", timezone="UTC", unit_system="metric")
         session.add(athlete)
         session.flush()
         yield session, athlete

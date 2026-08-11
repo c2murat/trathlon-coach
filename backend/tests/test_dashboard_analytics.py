@@ -15,8 +15,8 @@ from app.main import create_app
 def dashboard_client():
     engine=create_engine("sqlite+pysqlite:///:memory:",connect_args={"check_same_thread":False},poolclass=StaticPool);Base.metadata.create_all(engine)
     with Session(engine) as s:
-        user=User(id=LOCAL_MVP_USER_ID,email="a@example.invalid",normalized_email="a@example.invalid",auth_subject="a",timezone="UTC"); athlete=AthleteProfile(user=user,timezone="UTC",unit_system="metric")
-        other=User(email="b@example.invalid",normalized_email="b@example.invalid",auth_subject="b"); other_athlete=AthleteProfile(user=other)
+        user=User(id=LOCAL_MVP_USER_ID,email="a@example.invalid",normalized_email="a@example.invalid",auth_subject="a",timezone="UTC"); athlete=AthleteProfile(display_name="Test athlete",timezone="UTC",unit_system="metric")
+        other=User(email="b@example.invalid",normalized_email="b@example.invalid",auth_subject="b"); other_athlete=AthleteProfile(display_name="Test athlete")
         s.add_all([user,athlete,other,other_athlete]);s.flush(); s.add(UserAthleteMembership(user=user,athlete_profile=athlete,role="owner",is_active=True,is_default=True)); now=datetime.now(timezone.utc)
         for days,sport,moving,distance in [(0,"running",3600,10000),(1,"cycling",7200,50000),(8,"swimming",1800,1500)]:
             s.add(CompletedActivity(athlete=athlete,source_summary="strava",sport=sport,name=sport,start_at=now-timedelta(days=days),timezone="UTC",elapsed_time_s=moving,moving_time_s=moving,distance_m=distance,elevation_gain_m=100))

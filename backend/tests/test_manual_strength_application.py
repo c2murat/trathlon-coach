@@ -35,7 +35,7 @@ def app_context():
         athletes = []
         for number in (1, 2):
             user = User(email=f"app{number}@example.com", normalized_email=f"app{number}@example.com", auth_subject=f"app-{number}")
-            athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
+            athlete = AthleteProfile(display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric")
             session.add(athlete)
             athletes.append(athlete)
         session.flush()

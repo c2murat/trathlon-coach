@@ -4,10 +4,15 @@ from threading import Event, Timer
 from uuid import UUID, uuid4
 
 import httpx
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies.providers import get_oauth_state_store
 from app.core.settings import get_settings
 from app.main import app
+from app.db.base import Base
+from app.db.session import get_db_session
 from app.providers.base import OAuthState, OAuthStateStore, utc_now
 from tests.test_strava_connect import configured_settings
 
@@ -39,6 +44,12 @@ def test_health_remains_responsive_while_async_callback_waits_on_state_store() -
         store = BlockingConsumeStateStore()
         app.dependency_overrides[get_settings] = lambda: configured_settings()
         app.dependency_overrides[get_oauth_state_store] = lambda: store
+        engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        Base.metadata.create_all(engine)
+        def test_session():
+            with Session(engine) as session:
+                yield session
+        app.dependency_overrides[get_db_session] = test_session
         transport = httpx.ASGITransport(app=app)
         timer = Timer(1.0, store.release.set)
         timer.start()
@@ -71,5 +82,7 @@ def test_health_remains_responsive_while_async_callback_waits_on_state_store() -
             store.release.set()
             timer.cancel()
             app.dependency_overrides.clear()
+            Base.metadata.drop_all(engine)
+            engine.dispose()
 
     asyncio.run(exercise())

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
-from uuid import UUID
-
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Uuid
+from sqlalchemy import CheckConstraint, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UTCDateTime, UUIDPrimaryKeyMixin
@@ -14,7 +12,6 @@ if TYPE_CHECKING:
     from app.db.models.integration import IntegrationAccount
     from app.db.models.membership import UserAthleteMembership
     from app.db.models.operations import AuditEvent, SyncJob
-    from app.db.models.user import User
 
 
 class AthleteProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -25,11 +22,10 @@ class AthleteProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("height_m IS NULL OR height_m > 0", name="height_positive"),
         CheckConstraint("weight_kg IS NULL OR weight_kg > 0", name="weight_positive"),
+        CheckConstraint("length(trim(display_name)) BETWEEN 1 AND 200", name="display_name_valid"),
     )
 
-    user_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True
-    )
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
     unit_system: Mapped[str] = mapped_column(String(16), nullable=False, default="metric")
     birth_year: Mapped[int | None]
@@ -39,7 +35,6 @@ class AthleteProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     experience_level: Mapped[str | None] = mapped_column(String(32))
     deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
-    user: Mapped[User] = relationship(back_populates="athlete_profile")
     user_memberships: Mapped[list[UserAthleteMembership]] = relationship(
         back_populates="athlete_profile", cascade="all, delete-orphan"
     )

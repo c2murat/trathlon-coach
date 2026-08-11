@@ -58,8 +58,8 @@ def multi_athlete_context():
             normalized_email="multi-b@example.invalid",
             auth_subject="multi-b",
         )
-        athlete_a1 = AthleteProfile(user=user_a, timezone="UTC")
-        athlete_b1 = AthleteProfile(user=user_b, timezone="UTC")
+        athlete_a1 = AthleteProfile(display_name="Test athlete", timezone="UTC")
+        athlete_b1 = AthleteProfile(display_name="Test athlete", timezone="UTC")
         session.add_all([athlete_a1, athlete_b1])
         session.flush()
 
@@ -69,7 +69,7 @@ def multi_athlete_context():
             normalized_email="multi-b2-owner@example.invalid",
             auth_subject="multi-b2-owner",
         )
-        athlete_b2 = AthleteProfile(user=user_b2, timezone="UTC")
+        athlete_b2 = AthleteProfile(display_name="Test athlete", timezone="UTC")
         session.add(athlete_b2)
         session.flush()
         session.add_all(

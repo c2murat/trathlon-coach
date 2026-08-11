@@ -30,7 +30,7 @@ def context():
         athletes=[]
         for number in (1,2):
             user=User(email=f"sync{number}@example.com",normalized_email=f"sync{number}@example.com",auth_subject=f"sync-{number}")
-            athlete=AthleteProfile(user=user,timezone="Europe/Madrid",unit_system="metric");session.add(athlete);athletes.append(athlete)
+            athlete=AthleteProfile(display_name="Test athlete",timezone="Europe/Madrid",unit_system="metric");session.add(athlete);athletes.append(athlete)
         session.commit()
         yield session,athletes
     engine.dispose()

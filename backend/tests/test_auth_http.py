@@ -197,7 +197,7 @@ def test_real_login_preserves_multi_athlete_authorization(http_auth) -> None:
     session, _, application = http_auth
     user = add_user(session, "user")
     other = add_user(session, "other")
-    owned, foreign = AthleteProfile(user=user), AthleteProfile(user=other)
+    owned, foreign = AthleteProfile(display_name="Test athlete"), AthleteProfile(display_name="Test athlete")
     session.add_all([owned, foreign]); session.flush()
     session.add(UserAthleteMembership(user=user, athlete_profile=owned, role="owner", is_default=True)); session.commit()
     client = TestClient(application); login(client)

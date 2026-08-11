@@ -52,8 +52,8 @@ def test_first_execution_creates_user_and_profile(session_factory) -> None:
     with session_factory() as verification:
         user = verification.get(User, LOCAL_MVP_USER_ID)
         profile = verification.scalar(
-            select(AthleteProfile).where(
-                AthleteProfile.user_id == LOCAL_MVP_USER_ID
+            select(AthleteProfile).join(UserAthleteMembership).where(
+                UserAthleteMembership.user_id == LOCAL_MVP_USER_ID
             )
         )
         assert user is not None
@@ -118,7 +118,9 @@ def test_existing_user_without_profile_creates_only_profile(session_factory) -> 
         assert verification.scalar(select(func.count()).select_from(User)) == 1
         profile = verification.scalar(select(AthleteProfile))
         assert profile is not None
-        assert profile.user_id == LOCAL_MVP_USER_ID
+        membership = verification.scalar(select(UserAthleteMembership).where(UserAthleteMembership.athlete_profile_id == profile.id))
+        assert membership is not None
+        assert membership.user_id == LOCAL_MVP_USER_ID
 
 
 def test_seed_uses_fixed_local_mvp_uuid(session_factory) -> None:
@@ -133,7 +135,9 @@ def test_seed_uses_fixed_local_mvp_uuid(session_factory) -> None:
         assert user is not None
         assert profile is not None
         assert user.id == LOCAL_MVP_USER_ID
-        assert profile.user_id == LOCAL_MVP_USER_ID
+        membership = verification.scalar(select(UserAthleteMembership).where(UserAthleteMembership.athlete_profile_id == profile.id))
+        assert membership is not None
+        assert membership.user_id == LOCAL_MVP_USER_ID
 
 
 def test_seed_rolls_back_entire_transaction_on_failure(session_factory) -> None:

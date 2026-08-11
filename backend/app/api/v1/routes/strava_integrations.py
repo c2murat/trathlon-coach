@@ -27,7 +27,7 @@ from app.api.dependencies.providers import (
     get_strava_connect_configuration,
 )
 from app.db.session import get_db_session
-from app.db.models import UserAthleteMembership
+from app.db.models import AthleteProfile, UserAthleteMembership
 from app.core.settings import Settings, get_settings
 from app.integrations.strava.connection_service import (
     DisconnectTarget,
@@ -259,6 +259,7 @@ async def strava_callback(
             UserAthleteMembership.user_id == current_user.id,
             UserAthleteMembership.athlete_profile_id == oauth_state.athlete_id,
             UserAthleteMembership.is_active.is_(True),
+            UserAthleteMembership.athlete_profile.has(AthleteProfile.deleted_at.is_(None)),
         )
     )
     if membership is None:

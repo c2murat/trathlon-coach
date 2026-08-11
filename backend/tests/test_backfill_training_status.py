@@ -22,7 +22,7 @@ def context():
     Base.metadata.create_all(engine)
     with Session(engine,expire_on_commit=False) as session:
         user=User(email="backfill-status@example.com",normalized_email="backfill-status@example.com",auth_subject="backfill-status")
-        athlete=AthleteProfile(user=user,timezone="Europe/Madrid",unit_system="metric");session.add(athlete);session.commit()
+        athlete=AthleteProfile(display_name="Test athlete",timezone="Europe/Madrid",unit_system="metric");session.add(athlete);session.commit()
         yield session,athlete
     engine.dispose()
 

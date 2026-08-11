@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 from datetime import timedelta
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from app.integrations.strava.activity_import import (
     StravaImportJobView,
 )
 from app.main import create_app
+from app.api.v1.routes.strava_imports import read_strava,run_import
 
 
 class FakeManager:
@@ -79,6 +81,7 @@ class FakeManager:
 
 def client_with(manager):
     app = create_app()
+    context=SimpleNamespace(athlete_id=uuid4());app.dependency_overrides[read_strava]=lambda:context;app.dependency_overrides[run_import]=lambda:context
     app.dependency_overrides[get_strava_import_manager] = lambda: manager
     return TestClient(app)
 

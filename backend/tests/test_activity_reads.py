@@ -33,14 +33,14 @@ def activity_client():
             timezone="Europe/Madrid",
         )
         athlete = AthleteProfile(
-            user=user, timezone="Europe/Madrid", unit_system="metric"
+            display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric"
         )
         other_user = User(
             email="other@example.invalid",
             normalized_email="other@example.invalid",
             auth_subject="other",
         )
-        other_athlete = AthleteProfile(user=other_user)
+        other_athlete = AthleteProfile(display_name="Test athlete")
         session.add_all([user, athlete, other_user, other_athlete])
         session.flush()
         session.add(

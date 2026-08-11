@@ -24,7 +24,7 @@ def database_session():
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         user = User(email="status@example.com", normalized_email="status@example.com", auth_subject="status")
-        athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
+        athlete = AthleteProfile(display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric")
         session.add(athlete)
         session.flush()
         yield session, athlete

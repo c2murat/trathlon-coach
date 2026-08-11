@@ -54,7 +54,7 @@ def app_context():
                 normalized_email=f"status-app-{number}@example.com",
                 auth_subject=f"status-app-{number}",
             )
-            athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
+            athlete = AthleteProfile(display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric")
             session.add(athlete)
             athletes.append(athlete)
         session.flush()

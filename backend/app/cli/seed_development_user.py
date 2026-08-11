@@ -46,14 +46,23 @@ def seed_development_user(session: Session) -> DevelopmentSeedResult:
             session.add(user)
             user_created = True
 
-        athlete_profile = session.scalar(
-            select(AthleteProfile).where(
-                AthleteProfile.user_id == LOCAL_MVP_USER_ID
+        membership = session.scalar(
+            select(UserAthleteMembership)
+            .where(
+                UserAthleteMembership.user_id == LOCAL_MVP_USER_ID,
+                UserAthleteMembership.role == "owner",
+                UserAthleteMembership.is_active.is_(True),
+            )
+            .order_by(
+                UserAthleteMembership.is_default.desc(),
+                UserAthleteMembership.created_at,
+                UserAthleteMembership.id,
             )
         )
+        athlete_profile = membership.athlete_profile if membership is not None else None
         if athlete_profile is None:
             athlete_profile = AthleteProfile(
-                user_id=LOCAL_MVP_USER_ID,
+                display_name="Atleta de desarrollo",
                 timezone=DEVELOPMENT_TIMEZONE,
                 unit_system="metric",
             )
@@ -61,12 +70,6 @@ def seed_development_user(session: Session) -> DevelopmentSeedResult:
             athlete_profile_created = True
 
         session.flush()
-        membership = session.scalar(
-            select(UserAthleteMembership).where(
-                UserAthleteMembership.user_id == LOCAL_MVP_USER_ID,
-                UserAthleteMembership.athlete_profile_id == athlete_profile.id,
-            )
-        )
         if membership is None:
             session.add(
                 UserAthleteMembership(

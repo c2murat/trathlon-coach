@@ -19,7 +19,7 @@ from scripts.backfill_training_load import BackfillOptions
 def integrity_session():
     engine=create_engine("sqlite+pysqlite:///:memory:",connect_args={"check_same_thread":False},poolclass=StaticPool);Base.metadata.create_all(engine)
     with Session(engine) as session:
-        u1=User(email="a@x.invalid",normalized_email="a@x.invalid",auth_subject="a");u2=User(email="b@x.invalid",normalized_email="b@x.invalid",auth_subject="b");a1=AthleteProfile(user=u1);a2=AthleteProfile(user=u2);activity=CompletedActivity(athlete=a1,source_summary="manual",sport="running",name="Run",start_at=utc_now(),timezone="UTC",elapsed_time_s=1);session.add_all([u1,u2,a1,a2,activity]);session.commit();yield session,a1.id,a2.id,activity.id
+        u1=User(email="a@x.invalid",normalized_email="a@x.invalid",auth_subject="a");u2=User(email="b@x.invalid",normalized_email="b@x.invalid",auth_subject="b");a1=AthleteProfile(display_name="Test athlete");a2=AthleteProfile(display_name="Test athlete");activity=CompletedActivity(athlete=a1,source_summary="manual",sport="running",name="Run",start_at=utc_now(),timezone="UTC",elapsed_time_s=1);session.add_all([u1,u2,a1,a2,activity]);session.commit();yield session,a1.id,a2.id,activity.id
     engine.dispose()
 
 

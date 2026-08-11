@@ -65,7 +65,7 @@ def callback_context(tmp_path):
         )
         session.add(user)
         session.flush()
-        athlete = AthleteProfile(id=LOCAL_MVP_USER_ID,user_id=user.id, timezone="Europe/Madrid")
+        athlete = AthleteProfile(id=LOCAL_MVP_USER_ID, display_name="Test athlete", timezone="Europe/Madrid")
         session.add(athlete)
         session.flush()
         session.add(UserAthleteMembership(user_id=user.id,athlete_profile_id=athlete.id,role="owner",is_active=True,is_default=True))
@@ -140,7 +140,7 @@ def test_callback_uses_state_athlete_not_current_selection(
     if with_header_for_other_athlete:
         with factory() as session:
             other_owner=User(email="other-owner@example.test",normalized_email="other-owner@example.test",auth_subject="other-owner")
-            other = AthleteProfile(user=other_owner,timezone="UTC")
+            other = AthleteProfile(display_name="Test athlete",timezone="UTC")
             session.add_all([other_owner,other])
             session.flush()
             session.add(UserAthleteMembership(user_id=LOCAL_MVP_USER_ID,athlete_profile_id=other.id,role="owner",is_active=True,is_default=False))
@@ -285,7 +285,7 @@ def test_rejects_external_account_owned_by_another_local_athlete(callback_contex
     client, factory, store, _, = callback_context
     with factory() as session:
         other_user = User(email="other@test", normalized_email="other@test", auth_subject="other")
-        other_athlete = AthleteProfile(user=other_user)
+        other_athlete = AthleteProfile(display_name="Test athlete")
         session.add(IntegrationAccount(athlete=other_athlete, provider="strava", external_account_id="98765"))
         session.commit()
     response = callback(client, save_state(store))

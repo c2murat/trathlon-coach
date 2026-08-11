@@ -50,7 +50,7 @@ def make_identity(session: Session, suffix: str = "1") -> tuple[User, AthletePro
         auth_subject=f"auth-{suffix}",
         timezone="Europe/Madrid",
     )
-    athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
+    athlete = AthleteProfile(display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric")
     session.add_all([user, athlete])
     session.flush()
     return user, athlete

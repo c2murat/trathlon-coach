@@ -185,8 +185,8 @@ def test_get_current_user_session_mode_never_falls_back(auth_session: Session, c
 def test_session_identity_cannot_select_foreign_athlete(auth_session: Session) -> None:
     user = add_user(auth_session, "owner")
     other = add_user(auth_session, "other")
-    owned = AthleteProfile(user=user)
-    foreign = AthleteProfile(user=other)
+    owned = AthleteProfile(display_name="Test athlete")
+    foreign = AthleteProfile(display_name="Test athlete")
     auth_session.add_all([owned, foreign])
     auth_session.flush()
     auth_session.add(UserAthleteMembership(user=user, athlete_profile=owned, role="owner", is_default=True))

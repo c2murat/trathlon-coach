@@ -36,7 +36,7 @@ def api_context():
     with factory() as session:
         for number, user_id in enumerate(user_ids):
             user = User(id=user_id, email=f"api{number}@example.com", normalized_email=f"api{number}@example.com", auth_subject=f"api-{number}")
-            athlete = AthleteProfile(user=user, timezone="Europe/Madrid", unit_system="metric")
+            athlete = AthleteProfile(display_name="Test athlete", timezone="Europe/Madrid", unit_system="metric")
             session.add(athlete)
             session.flush()
             session.add(

@@ -4,6 +4,8 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.providers import get_strava_enrichment_manager
 from app.integrations.strava.activity_enrichment import EnrichmentJobNotFoundError,StravaEnrichmentJobView
 from app.main import create_app
+from types import SimpleNamespace
+from app.api.v1.routes.strava_enrichments import read_strava,run_enrichment
 class Manager:
  def __init__(self):self.job_id=uuid4();self.scheduled=[];self.selection=None
  def create_job(self,user_id,*,athlete_id=None,activity_ids=None,limit=None):
@@ -13,10 +15,10 @@ class Manager:
   if job_id!=self.job_id:raise EnrichmentJobNotFoundError
   now=datetime.now(timezone.utc);return StravaEnrichmentJobView(job_id,"succeeded",1,1,1,0,0,str(uuid4()),now,now,now,None,None)
 def test_enrichment_endpoints_return_202_and_allowlisted_owned_progress():
- app=create_app();manager=Manager();app.dependency_overrides[get_strava_enrichment_manager]=lambda:manager
+ app=create_app();manager=Manager();app.dependency_overrides[get_strava_enrichment_manager]=lambda:manager;context=SimpleNamespace(athlete_id=uuid4());app.dependency_overrides[read_strava]=lambda:context;app.dependency_overrides[run_enrichment]=lambda:context
  with TestClient(app) as client:
   activity_id=uuid4();started=client.post("/integrations/strava/enrichments",json={"activity_ids":[str(activity_id)],"limit":1});assert started.status_code==202 and started.json()=={"job_id":str(manager.job_id),"status":"queued"};assert manager.scheduled==[manager.job_id]
   response=client.get(f"/integrations/strava/enrichments/{manager.job_id}");assert response.status_code==200;assert set(response.json())=={"job_id","status","selected_count","enriched_count","updated_count","skipped_count","failed_count","last_activity_id","started_at","updated_at","completed_at","next_resume_at","error_category"};assert "no-store" in response.headers["cache-control"]
 def test_enrichment_status_hides_unowned_or_unknown_jobs():
- app=create_app();manager=Manager();app.dependency_overrides[get_strava_enrichment_manager]=lambda:manager
+ app=create_app();manager=Manager();app.dependency_overrides[get_strava_enrichment_manager]=lambda:manager;context=SimpleNamespace(athlete_id=uuid4());app.dependency_overrides[read_strava]=lambda:context;app.dependency_overrides[run_enrichment]=lambda:context
  with TestClient(app) as client:assert client.get(f"/integrations/strava/enrichments/{uuid4()}").status_code==404

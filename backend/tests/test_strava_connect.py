@@ -5,10 +5,17 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies.providers import get_oauth_state_store
 from app.core.settings import Settings, get_settings
 from app.main import app
+from app.api.dependencies.auth import LOCAL_MVP_USER_ID
+from app.db.base import Base
+from app.db.models import AthleteProfile, User, UserAthleteMembership
+from app.db.session import get_db_session
 from app.providers.base import (
     OAuthState,
     OAuthStateStorageError,
@@ -50,9 +57,15 @@ def configured_settings(**overrides: object) -> Settings:
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides():
-    app.dependency_overrides.clear()
+    engine=create_engine("sqlite+pysqlite:///:memory:",connect_args={"check_same_thread":False},poolclass=StaticPool);Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        user=User(id=LOCAL_MVP_USER_ID,email="local@test.invalid",normalized_email="local@test.invalid",auth_subject="local")
+        athlete=AthleteProfile(display_name="Test athlete");session.add_all([user,athlete]);session.flush();session.add(UserAthleteMembership(user=user,athlete_profile=athlete,role="owner",is_active=True,is_default=True));session.commit()
+    def override():
+        with Session(engine) as session: yield session
+    app.dependency_overrides[get_db_session]=override
     yield
-    app.dependency_overrides.clear()
+    app.dependency_overrides.clear();Base.metadata.drop_all(engine);engine.dispose()
 
 
 def connect_with(

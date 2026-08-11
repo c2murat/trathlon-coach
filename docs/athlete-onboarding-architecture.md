@@ -255,3 +255,13 @@ Acción en selector y empty state, formulario mínimo, cliente tipado, refresh c
 Crear B en la cuenta real únicamente después de cerrar 0.8C.2/3; ejecutar la matriz A/B, conservar baseline y documentar resultados.
 
 No se propone 0.8C.5 ahora. Un onboarding amplio puede planificarse después de validar el MVP real; 0.8C.3 sólo necesita un empty state con siguientes pasos.
+
+## Estado de implementación
+
+- 0.8C.1 — designed.
+- 0.8C.2A — migration/hardening implemented, pending real DB application.
+- 0.8C.2B — planned.
+- 0.8C.3 — planned.
+- 0.8C.4 — planned.
+
+La retirada de la FK legacy `AthleteProfile.user_id -> users.id ON DELETE CASCADE` elimina el borrado físico implícito de Athlete al borrar User. En el producto las cuentas usan estados y `deleted_at`; autenticación bloquea usuarios no utilizables. No se introduce una política nueva de borrado físico. Tras 0018, borrar User elimina sus memberships, pero el Athlete sobrevive para otros owners/coaches y sus datos deportivos no quedan bajo `delete-orphan` desde User. El auditor exige al menos un owner activo por Athlete.

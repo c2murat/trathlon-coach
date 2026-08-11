@@ -90,3 +90,10 @@
 
 - Autenticación pública, registro o gestión de miembros.
 - Despliegue productivo.
+
+## 0.8C.2A — Base persistente multiatleta
+
+- Añadida la migración segura 0018 con `display_name`, ownership exclusivo por memberships y un único default activo por User.
+- Endurecida la exclusión de atletas eliminados en contexto, selección y OAuth Strava.
+- Añadidos preflight, auditoría compatible 0017/0018, pruebas PostgreSQL temporales y runbook.
+- La migración PostgreSQL real queda pendiente de revisión y aplicación manual; no se creó un segundo Athlete.
