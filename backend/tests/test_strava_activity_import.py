@@ -366,6 +366,17 @@ def test_token_service_rejects_account_from_another_athlete_without_rotation(dat
         assert credential.refresh_token == "stored-refresh-secret"
 
 
+def test_token_service_selects_credential_for_account_b_with_two_athletes(database):
+    factory,(_,athlete_a,account_a,_)=database
+    with factory() as session:
+        athlete_b=AthleteProfile(display_name="Athlete B",timezone="UTC",unit_system="metric");account_b=IntegrationAccount(athlete=athlete_b,provider="strava",external_account_id="external-b",status="active",scopes=["read"]);credential_b=OAuthCredential(integration_account=account_b,access_token="access-b",refresh_token="refresh-b",expires_at=utc_now()+timedelta(hours=1),scopes=["read"]);session.add_all([athlete_b,account_b,credential_b]);session.commit();athlete_b_id,account_b_id=athlete_b.id,account_b.id
+    service=StravaTokenService(session_factory=factory,oauth_client=FakeRefreshClient(error=AssertionError("fresh credentials must not refresh")))
+    token=asyncio.run(service.access_token(athlete_id=athlete_b_id,integration_account_id=account_b_id))
+    assert token.get_secret_value()=="access-b"
+    with pytest.raises(AuthenticationError):asyncio.run(service.access_token(athlete_id=athlete_a,integration_account_id=account_b_id))
+    assert account_a!=account_b_id
+
+
 @pytest.mark.parametrize("active_status", ["queued", "running", "retry_scheduled"])
 def test_active_job_reuse_and_ownership_isolation(database, active_status):
     importer, _, _ = manager(database)

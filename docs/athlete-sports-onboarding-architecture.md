@@ -2,6 +2,12 @@
 
 Estado: auditoría cerrada y contrato propuesto; sin cambios de runtime ni migraciones.
 
+## Preparación 0.8D.5
+
+0.8D.5 está `prepared / awaiting real second-Strava validation`. El baseline real previo se captura con `scripts/audit_multi_athlete_strava_state.py`, que devuelve contadores athlete-scoped y comprueba credenciales huérfanas, mismatches job/account y activity/account, agregados incompatibles, cuentas hacia Athlete eliminado e identidades Strava duplicadas, sin mostrar tokens ni external IDs. El procedimiento manual y sus condiciones de parada están en `docs/strava-second-athlete-validation-runbook.md`.
+
+OAuth no dispara import automáticamente. El primer sync no admite rango, límite ni dry-run y puede recorrer todo el histórico disponible hasta el momento de crear el job. CONNECT y FIRST-SYNC de Jenny siguen pendientes del usuario; la fase no está cerrada.
+
 ## Implementación 0.8D.4
 
 `/settings/connections` es la única superficie de gestión de Strava; Inicio conserva el resumen y enlaza a ella. Las rutas reales son `GET /integrations/strava/status`, `POST /integrations/strava/connect/start`, `GET /integrations/strava/callback`, `DELETE /integrations/strava/disconnect` y `/integrations/strava/imports`. Las operaciones iniciadas en la SPA usan el Athlete activo mediante `X-TriCoach-Athlete-Id` y capabilities.
