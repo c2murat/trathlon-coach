@@ -96,6 +96,7 @@ function fakeClient(
     startStravaConnection: vi.fn().mockResolvedValue({
       authorization_url: "https://www.strava.com/oauth/authorize?state=opaque",
     }),
+    disconnectStrava: vi.fn().mockResolvedValue({provider:"strava",status:"disconnected"}),
     getAthleteProfile:vi.fn().mockResolvedValue({id:"a",display_name:"Carlos",timezone:"Europe/Madrid",unit_system:"metric",birth_year:1985,sex_for_training_context:"context",height_m:1.78,weight_kg:73.5,updated_at:"2026-08-12T10:00:00Z",completeness:{status:"contextual",missing_recommended_fields:[]}}),
     ...overrides,
   };

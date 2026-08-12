@@ -20,6 +20,14 @@
 - Evita dobles envíos, conserva los datos ante fallos y permite recuperar una creación cuyo refresh todavía no la muestre sin repetir el POST.
 # Changelog
 
+## 0.8D.4 — Strava multiatleta athlete-scoped
+
+- Añadida `Configuración → Conexiones` como gestión única y contextual de conexión, reconexión, desconexión y sync de Strava.
+- El estado se limpia y recarga por Athlete con protección frente a respuestas stale; Inicio queda como resumen enlazado.
+- Ampliadas las pruebas A/B y la cobertura del binding OAuth, conflicto de identidad externa y aislamiento de importación existentes.
+- Ampliado el auditor read-only con cuentas de integración ligadas a Athlete eliminado y providers no normalizados.
+- No se conectó una segunda cuenta Strava real ni se modificó la base real.
+
 ## 0.8C.2B — API backend de alta de Athlete
 
 - Añadido `POST /athletes` como operación autenticada de cuenta, independiente del Athlete activo.

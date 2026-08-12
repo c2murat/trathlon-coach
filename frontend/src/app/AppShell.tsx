@@ -1,5 +1,4 @@
 import {useEffect,useRef,useState} from "react";
-import {ActivitySyncButton as RawActivitySyncButton} from "../components/ActivitySyncButton";
 import {ActivitiesPage} from "../features/activities/ActivitiesPage";
 import {ActivitySummaryPage} from "../features/activities/ActivitySummaryPage";
 import {DashboardPage} from "../features/dashboard/DashboardPage";
@@ -7,6 +6,7 @@ import {ManualStrengthPage} from "../features/manualStrength/ManualStrengthPage"
 import {PerformanceProfilePage} from "../features/profile/PerformanceProfilePage";
 import {AccountPage} from "../features/account/AccountPage";
 import {AthleteProfilePage} from "../features/athleteProfile/AthleteProfilePage";
+import {ConnectionsPage} from "../features/connections/ConnectionsPage";
 import {TrainingLoadPage} from "../features/trainingLoad/TrainingLoadPage";
 import {TrainingStatusPage} from "../features/trainingStatus/TrainingStatusPage";
 import {apiClient,type ApiClient} from "../services/apiClient";
@@ -23,16 +23,18 @@ import {useAuth} from "./AuthContext";
 const nav:{path:string;label:string;icon:NavIconName}[]=[
  {path:"/dashboard",label:"Inicio",icon:"home"},{path:"/activities",label:"Actividades",icon:"activities"},
  {path:"/calendar",label:"Calendario",icon:"calendar"},{path:"/statistics",label:"Estadísticas",icon:"statistics"},
+ {path:"/settings/connections",label:"Conexiones",icon:"settings"},
  {path:"/health",label:"Salud",icon:"health"},{path:"/settings",label:"Configuración",icon:"settings"},
 ];
+function ActivitySyncButton(_: {client:ApiClient}){return null}
 function greeting(){const hour=new Date().getHours();return hour<12?"Buenos días":hour<20?"Buenas tardes":"Buenas noches"}
-function ActivitySyncButton({client}:{client:ApiClient}){const {hasAthleteCapability}=useAthleteContext();return hasAthleteCapability(ATHLETE_CAPABILITIES.IMPORT_STRAVA)?<RawActivitySyncButton client={client}/>:null}
 function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapability)=>boolean){
- if(path==="/dashboard")return <DashboardPage client={client} showSync={false} canManageStrava={has(ATHLETE_CAPABILITIES.MANAGE_STRAVA)}/>;
+ if(path==="/dashboard")return <DashboardPage client={client} showSync canManageStrava={has(ATHLETE_CAPABILITIES.MANAGE_STRAVA)}/>;
  if(path==="/activities")return <ActivitiesPage client={client}/>;
  if(path==="/activities/strength")return <ManualStrengthPage client={client} canCreate={has(ATHLETE_CAPABILITIES.CREATE_STRENGTH)} canUpdate={has(ATHLETE_CAPABILITIES.UPDATE_STRENGTH)} canDelete={has(ATHLETE_CAPABILITIES.DELETE_STRENGTH)} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
  if(path==="/settings/account")return <AccountPage client={client}/>;
  if(path==="/settings/athlete-profile")return <AthleteProfilePage client={client}/>;
+ if(path==="/settings/connections")return <ConnectionsPage client={client}/>;
  if(path==="/settings/performance-profile"){const profile=has(ATHLETE_CAPABILITIES.CREATE_PROFILE),reference=has(ATHLETE_CAPABILITIES.CREATE_REFERENCE);return <div key={`${profile}-${reference}`} className={`${profile?"":"deny-profile "}${reference?"":"deny-reference"}`}><PerformanceProfilePage client={client}/></div>}
  if(path==="/statistics/training-load")return <TrainingLoadPage client={client}/>;
  if(path==="/statistics/training-status")return <TrainingStatusPage client={client} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;

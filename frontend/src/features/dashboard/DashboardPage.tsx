@@ -39,7 +39,7 @@ export function DashboardPage({
   pollDelayMs = 2000,
   showSync = true,
   canManageStrava = true,
-  onExternalNavigate = (url) => window.location.assign(url),
+  onExternalNavigate,
 }: DashboardPageProps) {
   const [loading, setLoading] = useState(true);
   const [backendOnline, setBackendOnline] = useState(false);
@@ -52,10 +52,12 @@ export function DashboardPage({
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<WeeklyTrend[]>([]);
   const [consistency, setConsistency] = useState<Consistency | null>(null);
-  const [connecting, setConnecting] = useState(false);
+  const [connecting,setConnecting]=useState(false);
   const [profileCompleteness,setProfileCompleteness]=useState<AthleteProfileCompleteness|null>(null);
   const mounted = useRef(true);
   const profileGeneration=useRef(0);
+
+  const connectStrava=async()=>{if(connecting||!onExternalNavigate)return;setConnecting(true);setError(null);try{const {authorization_url}=await client.startStravaConnection();if(!/^https:\/\//i.test(authorization_url))throw new Error("invalid_authorization_url");if(mounted.current)onExternalNavigate(authorization_url)}catch{if(mounted.current)setError("No se ha podido iniciar la conexión con Strava.")}finally{if(mounted.current)setConnecting(false)}};
 
   useEffect(() => {
     mounted.current = true;
@@ -63,20 +65,6 @@ export function DashboardPage({
   }, []);
   useEffect(()=>{const generation=++profileGeneration.current;setProfileCompleteness(null);if(!client.getAthleteProfile)return;void Promise.resolve(client.getAthleteProfile()).then(value=>{if(value&&mounted.current&&generation===profileGeneration.current)setProfileCompleteness(value.completeness)}).catch(()=>undefined);return()=>{profileGeneration.current++}},[client]);
 
-  const connectStrava = async () => {
-    if (connecting) return;
-    setConnecting(true);
-    setError(null);
-    try {
-      const { authorization_url: authorizationUrl } = await client.startStravaConnection();
-      if (!/^https:\/\//i.test(authorizationUrl)) throw new Error("invalid_authorization_url");
-      if (mounted.current) onExternalNavigate(authorizationUrl);
-    } catch {
-      if (mounted.current) setError("No se ha podido iniciar la conexión con Strava.");
-    } finally {
-      if (mounted.current) setConnecting(false);
-    }
-  };
 
   const loadContent = useCallback(async () => {
     const [stravaResult, activitiesResult, syncResult] =
@@ -144,7 +132,7 @@ export function DashboardPage({
           : "Desconectado";
 
   return (
-    <div className="dashboard-page">{showSync&&<ActivitySyncButton client={client} pollDelayMs={pollDelayMs}/>}
+    <div className="dashboard-page">{showSync&&strava?.connected&&<ActivitySyncButton client={client} pollDelayMs={pollDelayMs}/>}
       <header className="page-header"><div><p className="eyebrow">PANEL PERSONAL</p><h1>Inicio</h1><p>Tu espacio personal de entrenamiento de resistencia</p></div><span className="version-badge">Versión 0.5A.1</span></header>
 
       {profileCompleteness?.status==="minimal"&&<aside className="athlete-profile-banner" aria-labelledby="complete-profile-title"><div><h2 id="complete-profile-title">Completa tu perfil deportivo</h2><p>Puedes añadir información opcional para mejorar el contexto de entrenamiento.</p></div><AppLink className="button button--primary" to="/settings/athlete-profile">Completar perfil</AppLink></aside>}
@@ -177,7 +165,7 @@ export function DashboardPage({
               icon="S"
               value={stravaLabel}
               tone={strava?.connected ? "positive" : "warning"}
-              detail={<>{strava?.message}{canManageStrava&&strava&&!strava.connected&&<button className="status-card__link" type="button" disabled={connecting} onClick={() => void connectStrava()}>{connecting ? "Conectando…" : "Conectar Strava"}</button>}</>}
+              detail={<>{strava?.message}{canManageStrava&&strava&&<AppLink className="status-card__link" to="/settings/connections">Gestionar Strava</AppLink>}{canManageStrava&&strava&&!strava.connected&&onExternalNavigate&&<button className="status-card__link" type="button" disabled={connecting} onClick={()=>void connectStrava()}>{connecting?"Conectando…":"Conectar Strava"}</button>}</>}
             />
             <StatusCard
               label="Actividades importadas"

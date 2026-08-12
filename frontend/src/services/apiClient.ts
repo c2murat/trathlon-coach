@@ -70,6 +70,7 @@ export interface ApiClient {
   dashboardTrends(): Promise<WeeklyTrend[]>;
   dashboardConsistency(): Promise<Consistency>;
   startStravaConnection():Promise<{authorization_url:string}>;
+  disconnectStrava():Promise<{provider:"strava";status:string}>;
   performanceProfile?():Promise<{profile:any|null;derived:Record<string,number>}>;
   performanceProfileHistory?():Promise<any[]>;
   createPerformanceProfile?(input:Record<string,unknown>):Promise<any>;
@@ -192,6 +193,7 @@ export class FetchApiClient implements ApiClient {
   recalculateTrainingStatus(query:TrainingStatusQuery){return this.request<DailyTrainingStatus[]>("/training-status/recalculate?"+this.trainingStatusParams(query),{method:"POST"})}
 
   startStravaConnection(){return this.request<{authorization_url:string}>("/integrations/strava/connect/start",{method:"POST"})}
+  disconnectStrava(){return this.request<{provider:"strava";status:string}>("/integrations/strava/disconnect",{method:"DELETE"})}
 
   private requireArray<T>(value: unknown[]): T[] { if (!Array.isArray(value)) throw new Error("Invalid training load response"); return value as T[]; }
   private trainingStatusParams(query:TrainingStatusQuery|LatestTrainingStatusQuery){const values:Record<string,string>={timezone_name:query.timezoneName,training_load_algorithm_version:query.trainingLoadAlgorithmVersion??"0.7b.1",manual_strength_algorithm_version:query.manualStrengthAlgorithmVersion??"0.7e.1",training_status_algorithm_version:query.trainingStatusAlgorithmVersion??"0.7f.1"};if("startDate" in query){values.start_date=query.startDate;values.end_date=query.endDate}return new URLSearchParams(values).toString()}

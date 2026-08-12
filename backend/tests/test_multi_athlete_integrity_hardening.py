@@ -40,6 +40,10 @@ def test_auditor_is_read_only_and_reports_clean_scope(integrity_session):
     session,a1,_,_=integrity_session;before=session.new.copy();result=audit(session,athlete_id=a1);assert result["issue_count"]==0;assert session.new==before and not session.dirty and not session.deleted
 
 
+def test_auditor_reports_integration_linked_to_deleted_athlete(integrity_session):
+    session,a1,_,_=integrity_session;athlete=session.get(AthleteProfile,a1);athlete.deleted_at=utc_now();account=IntegrationAccount(athlete_id=a1,provider="strava",external_account_id="deleted-athlete",status="active");session.add(account);session.commit();result=audit(session,athlete_id=a1);assert result["checks"]["integration_accounts_deleted_athlete"]==[{"account_id":str(account.id),"athlete_id":str(a1)}]
+
+
 def test_backfill_scope_and_global_confirmation_are_mandatory():
     with pytest.raises(ValueError,match="exactly one"):BackfillOptions()
     with pytest.raises(ValueError,match="exactly one"):BackfillOptions(athlete_id=uuid4(),all_athletes=True)

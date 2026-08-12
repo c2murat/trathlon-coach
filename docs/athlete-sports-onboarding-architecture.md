@@ -2,6 +2,14 @@
 
 Estado: auditoría cerrada y contrato propuesto; sin cambios de runtime ni migraciones.
 
+## Implementación 0.8D.4
+
+`/settings/connections` es la única superficie de gestión de Strava; Inicio conserva el resumen y enlaza a ella. Las rutas reales son `GET /integrations/strava/status`, `POST /integrations/strava/connect/start`, `GET /integrations/strava/callback`, `DELETE /integrations/strava/disconnect` y `/integrations/strava/imports`. Las operaciones iniciadas en la SPA usan el Athlete activo mediante `X-TriCoach-Athlete-Id` y capabilities.
+
+La UI limpia el estado al cambiar de Athlete y aplica guardas mounted/generation. OAuth start captura User, Athlete y expiry en el store; callback consume ese state y revalida User, membership, Athlete no eliminado y `manage_strava_connection`, sin depender del selector actual. Owner/editor gestionan; coach/viewer solo leen. La misma identidad externa en otro Athlete devuelve `409 strava_external_account_already_linked`; no existe transferencia. Reconectar el mismo external account rota credenciales sin duplicar cuenta. Desconectar conserva actividades e histórico. Sync solo se ofrece para una conexión activa del Athlete seleccionado.
+
+Estado: 0.8D.1 closed; 0.8D.2 closed; 0.8D.3 closed; 0.8D.4 implemented; 0.8D.5 planned; 0.8D.6 planned.
+
 ## 1. Estado actual
 
 Evidencia: rama `sprint-0.8a-authentication`, HEAD `65a2026 fix(athlete): clarify athlete selector role labels`, árbol inicialmente limpio. PostgreSQL está en `0018_athlete_onboarding` (current=head). Preflight: schema `0018`, issue_count 0, 2 AthleteProfiles, 2 memberships activas/owner y 1 default. Carlos Murat y Jenny Ruiz están aislados; solo Carlos tiene IntegrationAccount Strava.

@@ -16,7 +16,7 @@ from app.db.models import (AthleteDailyTrainingLoad,AthleteProfile,AthleteWeekly
 from app.db.session import SessionLocal
 
 
-CHECK_NAMES=("duplicate_active_accounts","activity_tenant_mismatch","job_tenant_mismatch","orphan_credentials","orphan_activity_accounts","orphan_job_accounts","aggregate_missing_activity","aggregate_tenant_mismatch","aggregate_duplicate_activity","users_without_memberships","athletes_without_memberships","athletes_without_active_owner","multiple_active_defaults","inactive_defaults","deleted_athlete_defaults","active_memberships_deleted_athlete","invalid_athlete_display_names","legacy_athlete_user_id_present","active_strava_without_credential","invalid_job_minimums")
+CHECK_NAMES=("duplicate_active_accounts","integration_accounts_deleted_athlete","invalid_integration_providers","activity_tenant_mismatch","job_tenant_mismatch","orphan_credentials","orphan_activity_accounts","orphan_job_accounts","aggregate_missing_activity","aggregate_tenant_mismatch","aggregate_duplicate_activity","users_without_memberships","athletes_without_memberships","athletes_without_active_owner","multiple_active_defaults","inactive_defaults","deleted_athlete_defaults","active_memberships_deleted_athlete","invalid_athlete_display_names","legacy_athlete_user_id_present","active_strava_without_credential","invalid_job_minimums")
 
 
 def audit(session,*,athlete_id:UUID|None=None)->dict:
@@ -24,6 +24,8 @@ def audit(session,*,athlete_id:UUID|None=None)->dict:
     accounts=list(session.scalars(select(IntegrationAccount).where(IntegrationAccount.athlete_id==athlete_id) if athlete_id else select(IntegrationAccount)).all());account_by_id={x.id:x for x in accounts}
     active=Counter((x.athlete_id,x.provider) for x in accounts if x.status=="active" and x.deleted_at is None)
     issues["duplicate_active_accounts"]=[{"athlete_id":str(a),"provider":p,"count":n} for (a,p),n in active.items() if n>1]
+    issues["integration_accounts_deleted_athlete"]=[{"account_id":str(UUID(str(row[0]))),"athlete_id":str(UUID(str(row[1])))} for row in session.execute(text("SELECT i.id,i.athlete_id FROM integration_accounts i JOIN athlete_profiles a ON a.id=i.athlete_id WHERE a.deleted_at IS NOT NULL ORDER BY i.id")) if athlete_id is None or UUID(str(row[1]))==athlete_id]
+    issues["invalid_integration_providers"]=[{"account_id":str(x.id)} for x in accounts if not x.provider or x.provider!=x.provider.strip().lower()]
     activities=list(session.scalars(select(CompletedActivity).where(CompletedActivity.athlete_id==athlete_id) if athlete_id else select(CompletedActivity)).all());activity_by_id={x.id:x for x in activities}
     for row in activities:
         if row.source_integration_account_id is not None:
