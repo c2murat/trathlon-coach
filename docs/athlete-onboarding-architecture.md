@@ -259,8 +259,8 @@ No se propone 0.8C.5 ahora. Un onboarding amplio puede planificarse después de 
 ## Estado de implementación
 
 - 0.8C.1 — designed.
-- 0.8C.2A — migration/hardening implemented, pending real DB application.
-- 0.8C.2B — planned.
+- 0.8C.2A — implemented and validated on the real DB.
+- 0.8C.2B — backend creation API implemented.
 - 0.8C.3 — planned.
 - 0.8C.4 — planned.
 

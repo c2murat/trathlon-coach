@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8C.2B — API backend de alta de Athlete
+
+- Añadido `POST /athletes` como operación autenticada de cuenta, independiente del Athlete activo.
+- Creación atómica de `AthleteProfile` y membership owner, con primer Athlete como default y preservación del default existente.
+- Añadidas validación estricta, protección CSRF/Origin, bloqueo por User y pruebas de aislamiento, rollback y concurrencia.
+- No se creó un segundo Athlete real ni se añadió frontend de onboarding.
+
 ## 0.8B.4 — Frontend de Cuenta
 
 - Añadida `/settings/account` bajo Configuración con datos seguros y edición de `display_name`.
