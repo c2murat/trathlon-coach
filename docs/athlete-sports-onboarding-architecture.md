@@ -234,10 +234,12 @@ DECISIÓN final: secuencia 0.8D.2 backend básico → 0.8D.3 frontend progresivo
 ## Estado de implementación 0.8D
 
 - 0.8D.1 — closed.
-- 0.8D.2 — implemented: `GET/PATCH /athlete/profile`, completitud derivada y `edit_athlete_profile` para owner/editor.
-- 0.8D.3 — planned.
+- 0.8D.2 — closed: `GET/PATCH /athlete/profile`, completitud derivada y `edit_athlete_profile` para owner/editor.
+- 0.8D.3 — implemented: `/settings/athlete-profile`, editor athlete-scoped, unidades visuales, completitud y banner progresivo en Inicio.
 - 0.8D.4 — planned.
 - 0.8D.5 — planned.
 - 0.8D.6 — planned.
 
 Contrato efectivo 0.8D.2: birth year admite 1900..año natural actual; `sex_for_training_context` conserva compatibilidad estructural nullable, trim, no blank y máximo 32 porque no existe vocabulario canónico; altura y peso aceptan valores positivos compatibles con `Numeric(5,3)` y `Numeric(6,3)`. La lista recomendada estable contiene birth year, sex context, height y weight. El PATCH vacío devuelve `422 athlete_profile_update_empty`. Cambiar timezone no reagrega históricos y cambiar unidades no convierte valores canónicos. La edición no sincroniza el snapshot de peso de PerformanceProfileVersion.
+
+UX efectiva 0.8D.3: Cuenta sigue editando al User; Perfil deportivo edita solo el Athlete activo; Perfil de rendimiento conserva referencias y umbrales. El formulario descarta cambios locales sin guardar al cambiar de Athlete, nunca hace autosave y refresca SessionContext tras cambiar nombre, timezone o unidades. El campo de sexo se mantiene como texto opcional explicado, sin inventar vocabulario. En imperial la altura usa pies+pulgadas y el peso libras; el PATCH persiste exclusivamente metros/kg. Inicio consulta el perfil del Athlete activo y muestra el aviso solo para estado `minimal`.

@@ -96,11 +96,14 @@ function fakeClient(
     startStravaConnection: vi.fn().mockResolvedValue({
       authorization_url: "https://www.strava.com/oauth/authorize?state=opaque",
     }),
+    getAthleteProfile:vi.fn().mockResolvedValue({id:"a",display_name:"Carlos",timezone:"Europe/Madrid",unit_system:"metric",birth_year:1985,sex_for_training_context:"context",height_m:1.78,weight_kg:73.5,updated_at:"2026-08-12T10:00:00Z",completeness:{status:"contextual",missing_recommended_fields:[]}}),
     ...overrides,
   };
 }
 
 describe("DashboardPage", () => {
+  it("shows the progressive banner only for a minimal active athlete and navigates to its profile",async()=>{const minimal=fakeClient({getAthleteProfile:vi.fn().mockResolvedValue({id:"b",display_name:"Jenny",timezone:"Europe/Madrid",unit_system:"metric",birth_year:null,sex_for_training_context:null,height_m:null,weight_kg:null,updated_at:"2026-08-12T10:00:00Z",completeness:{status:"minimal",missing_recommended_fields:["birth_year","sex_for_training_context","height_m","weight_kg"]}})});window.history.replaceState({},"","/dashboard");render(<DashboardPage client={minimal}/>);const link=await screen.findByRole("link",{name:"Completar perfil"});expect(screen.getByText("Completa tu perfil deportivo")).toBeInTheDocument();await userEvent.click(link);expect(window.location.pathname).toBe("/settings/athlete-profile")});
+  it("hides the banner for a contextual athlete and updates when the athlete client changes",async()=>{const contextual=fakeClient(),minimal=fakeClient({getAthleteProfile:vi.fn().mockResolvedValue({id:"b",display_name:"Jenny",timezone:"UTC",unit_system:"metric",birth_year:null,sex_for_training_context:null,height_m:null,weight_kg:null,updated_at:"2026-08-12T10:00:00Z",completeness:{status:"minimal",missing_recommended_fields:["birth_year"]}})});const view=render(<DashboardPage client={contextual}/>);await waitFor(()=>expect(contextual.getAthleteProfile).toHaveBeenCalled());expect(screen.queryByText("Completa tu perfil deportivo")).not.toBeInTheDocument();view.rerender(<DashboardPage client={minimal}/>);expect(await screen.findByText("Completa tu perfil deportivo")).toBeInTheDocument()});
   it("shows a loading state while requests are pending", () => {
     const pending = new Promise<never>(() => undefined);
     render(<DashboardPage client={fakeClient({ health: () => pending })} />);

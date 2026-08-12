@@ -23,6 +23,7 @@ import {ATHLETE_HEADER,type SessionContext} from "../types/sessionContext";
 import type {AuthenticatedUser,LoginCredentials} from "../types/auth";
 import type {Account,AccountUpdateRequest,PasswordChangeRequest} from "../features/account/accountTypes";
 import type {AthleteCreateRequest,AthleteCreateResponse} from "../types/athlete";
+import type {AthleteProfile,AthleteProfileUpdateRequest} from "../features/athleteProfile/athleteProfileTypes";
 
 export const CSRF_COOKIE_NAME="tricoach_csrf";
 export const CSRF_HEADER_NAME="X-CSRF-Token";
@@ -45,6 +46,8 @@ export interface ApiClient {
   changePassword?(input:PasswordChangeRequest):Promise<void>;
   sessionContext?():Promise<SessionContext>;
   createAthlete?(input:AthleteCreateRequest):Promise<AthleteCreateResponse>;
+  getAthleteProfile?():Promise<AthleteProfile>;
+  updateAthleteProfile?(input:AthleteProfileUpdateRequest):Promise<AthleteProfile>;
   health(): Promise<HealthResponse>;
   stravaStatus(): Promise<StravaStatus>;
   activities(): Promise<ActivityPage>;
@@ -104,6 +107,8 @@ export class FetchApiClient implements ApiClient {
   logout(){return this.request<void>("/auth/logout",{method:"POST"},true)}
   sessionContext(){return this.request<SessionContext>("/session/context",undefined,true)}
   createAthlete(input:AthleteCreateRequest){return this.request<AthleteCreateResponse>("/athletes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
+  getAthleteProfile(){return this.request<AthleteProfile>("/athlete/profile")}
+  updateAthleteProfile(input:AthleteProfileUpdateRequest){return this.request<AthleteProfile>("/athlete/profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   getAccount(){return this.request<Account>("/account",undefined,true)}
   updateAccount(input:AccountUpdateRequest){return this.request<Account>("/account",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
   changePassword(input:PasswordChangeRequest){return this.request<void>("/account/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}

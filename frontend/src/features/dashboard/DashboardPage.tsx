@@ -16,6 +16,8 @@ import { displayStatus, formatDate, formatRelativeDate } from "../../utils/forma
 import { AthleteOverview } from "./AthleteOverview";
 import { RecentActivityList } from "./RecentActivityList";
 import {ActivitySyncButton,activitySyncCompletedEvent} from "../../components/ActivitySyncButton";
+import {AppLink} from "../../app/usePathname";
+import type {AthleteProfileCompleteness} from "../athleteProfile/athleteProfileTypes";
 
 interface DashboardPageProps {
   client?: ApiClient;
@@ -51,12 +53,15 @@ export function DashboardPage({
   const [trends, setTrends] = useState<WeeklyTrend[]>([]);
   const [consistency, setConsistency] = useState<Consistency | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [profileCompleteness,setProfileCompleteness]=useState<AthleteProfileCompleteness|null>(null);
   const mounted = useRef(true);
+  const profileGeneration=useRef(0);
 
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
+  useEffect(()=>{const generation=++profileGeneration.current;setProfileCompleteness(null);if(!client.getAthleteProfile)return;void Promise.resolve(client.getAthleteProfile()).then(value=>{if(value&&mounted.current&&generation===profileGeneration.current)setProfileCompleteness(value.completeness)}).catch(()=>undefined);return()=>{profileGeneration.current++}},[client]);
 
   const connectStrava = async () => {
     if (connecting) return;
@@ -141,6 +146,8 @@ export function DashboardPage({
   return (
     <div className="dashboard-page">{showSync&&<ActivitySyncButton client={client} pollDelayMs={pollDelayMs}/>}
       <header className="page-header"><div><p className="eyebrow">PANEL PERSONAL</p><h1>Inicio</h1><p>Tu espacio personal de entrenamiento de resistencia</p></div><span className="version-badge">Versión 0.5A.1</span></header>
+
+      {profileCompleteness?.status==="minimal"&&<aside className="athlete-profile-banner" aria-labelledby="complete-profile-title"><div><h2 id="complete-profile-title">Completa tu perfil deportivo</h2><p>Puedes añadir información opcional para mejorar el contexto de entrenamiento.</p></div><AppLink className="button button--primary" to="/settings/athlete-profile">Completar perfil</AppLink></aside>}
 
       {loading ? (
         <section className="loading-state" aria-live="polite">

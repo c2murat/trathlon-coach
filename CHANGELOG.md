@@ -1,3 +1,11 @@
+## 0.8D.3 — Frontend del perfil deportivo
+
+- Añade `Configuración → Perfil deportivo` con formulario athlete-scoped, PATCH parcial y semántica null explícita.
+- Presenta altura y peso en unidades métricas o imperiales conservando metros/kg como valores canónicos.
+- Muestra la completitud derivada y un banner progresivo no bloqueante en Inicio.
+- Protege el cambio A/B frente a datos dirty y respuestas stale, respeta capabilities y mantiene Cuenta y Perfil de rendimiento independientes.
+- Incorpora estados accesibles, diseño responsive y pruebas bajo React StrictMode.
+
 ## 0.8D.2 — Backend del perfil deportivo básico
 
 - Añade `GET/PATCH /athlete/profile` con scope del Athlete activo y aislamiento multiatleta.
