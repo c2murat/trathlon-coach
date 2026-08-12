@@ -272,4 +272,7 @@ La retirada de la FK legacy `AthleteProfile.user_id -> users.id ON DELETE CASCAD
 - 0.8C.2A — closed + DB real validated.
 - 0.8C.2B — closed.
 - 0.8C.3 — frontend implemented: formulario accesible, creación account-scoped, refresh determinista y selección persistida.
-- 0.8C.4 — pending real Athlete B validation. El segundo atleta real no se ha creado durante 0.8C.3.
+- 0.8C.4 — closed; Athlete A/B real validation completed.
+## Continuación 0.8D
+
+La auditoría y el contrato del onboarding deportivo progresivo, perfil básico, Strava por atleta y preparación de roles self/coach se documentan en [athlete-sports-onboarding-architecture.md](athlete-sports-onboarding-architecture.md). 0.8D.1 es exclusivamente arquitectura y no modifica runtime.
