@@ -1,3 +1,9 @@
+## 0.8C.3 — Frontend Nuevo atleta
+
+- Añade “Nuevo atleta” al selector y “Crear mi primer atleta” al estado sin perfiles.
+- Incorpora un formulario accesible y responsive con nombre, zona horaria y unidades.
+- Crea mediante la API account-scoped, refresca el contexto y selecciona/persiste inmediatamente el nuevo atleta.
+- Evita dobles envíos, conserva los datos ante fallos y permite recuperar una creación cuyo refresh todavía no la muestre sin repetir el POST.
 # Changelog
 
 ## 0.8C.2B — API backend de alta de Athlete

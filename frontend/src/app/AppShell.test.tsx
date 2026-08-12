@@ -188,4 +188,5 @@ await user.click(closeButton);
       await screen.findByRole("button", { name: "Activar tema claro" }),
     ).toBeInTheDocument();
   });
-});
+  it("opens the shared accessible new-athlete form from the selector",async()=>{renderShell("/dashboard");const trigger=await screen.findByRole("button",{name:/Nuevo atleta/});await userEvent.click(trigger);expect(screen.getByRole("dialog",{name:"Nuevo atleta"})).toBeInTheDocument();await userEvent.click(screen.getByRole("button",{name:"Cancelar"}));await waitFor(()=>expect(trigger).toHaveFocus())});
+  it("lets a user without athletes create the first one",async()=>{renderShell("/dashboard",{...session,athletes:[],selected_athlete_id:null,selection_required:false});const trigger=await screen.findByRole("button",{name:"Crear mi primer atleta"});await userEvent.click(trigger);expect(screen.getByRole("dialog",{name:"Nuevo atleta"})).toBeInTheDocument()});});

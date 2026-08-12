@@ -265,3 +265,11 @@ No se propone 0.8C.5 ahora. Un onboarding amplio puede planificarse después de 
 - 0.8C.4 — planned.
 
 La retirada de la FK legacy `AthleteProfile.user_id -> users.id ON DELETE CASCADE` elimina el borrado físico implícito de Athlete al borrar User. En el producto las cuentas usan estados y `deleted_at`; autenticación bloquea usuarios no utilizables. No se introduce una política nueva de borrado físico. Tras 0018, borrar User elimina sus memberships, pero el Athlete sobrevive para otros owners/coaches y sus datos deportivos no quedan bajo `delete-orphan` desde User. El auditor exige al menos un owner activo por Athlete.
+
+## Estado de implementación
+
+- 0.8C.1 — closed.
+- 0.8C.2A — closed + DB real validated.
+- 0.8C.2B — closed.
+- 0.8C.3 — frontend implemented: formulario accesible, creación account-scoped, refresh determinista y selección persistida.
+- 0.8C.4 — pending real Athlete B validation. El segundo atleta real no se ha creado durante 0.8C.3.
