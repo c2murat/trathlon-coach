@@ -14,6 +14,7 @@ from app.api.dependencies.current_athlete import (
 class AthleteCapability(str, Enum):
     READ_ATHLETE_DATA = "read_athlete_data"
     RECALCULATE_ATHLETE_DATA = "recalculate_athlete_data"
+    EDIT_ATHLETE_PROFILE = "edit_athlete_profile"
     CREATE_MANUAL_STRENGTH = "create_manual_strength"
     UPDATE_MANUAL_STRENGTH = "update_manual_strength"
     DELETE_MANUAL_STRENGTH = "delete_manual_strength"
@@ -30,6 +31,7 @@ class AthleteCapability(str, Enum):
 _ALL_SPORT_CAPABILITIES = frozenset(AthleteCapability)
 _COACH_CAPABILITIES = _ALL_SPORT_CAPABILITIES - {
     AthleteCapability.DELETE_MANUAL_STRENGTH,
+    AthleteCapability.EDIT_ATHLETE_PROFILE,
     AthleteCapability.MANAGE_STRAVA_CONNECTION,
     AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
 }

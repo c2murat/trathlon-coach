@@ -1,3 +1,9 @@
+## 0.8D.2 — Backend del perfil deportivo básico
+
+- Añade `GET/PATCH /athlete/profile` con scope del Athlete activo y aislamiento multiatleta.
+- Incorpora completitud básica derivada, sin estado persistido.
+- Añade la capability `edit_athlete_profile` para owner/editor y mantiene coach/viewer en solo lectura.
+- Valida y actualiza parcialmente nombre, timezone, unidades y contexto fisiológico básico sin tocar cuenta, rendimiento, actividades ni Strava.
 ## 0.8C.3 — Frontend Nuevo atleta
 
 - Añade “Nuevo atleta” al selector y “Crear mi primer atleta” al estado sin perfiles.

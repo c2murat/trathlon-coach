@@ -38,6 +38,7 @@ EXPECTED = {
     "editor": set(AthleteCapability),
     "coach": set(AthleteCapability) - {
         AthleteCapability.DELETE_MANUAL_STRENGTH,
+        AthleteCapability.EDIT_ATHLETE_PROFILE,
         AthleteCapability.MANAGE_STRAVA_CONNECTION,
         AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
     },

@@ -231,3 +231,13 @@ Diseñar/añadir `athlete`, capability edit profile, matriz owner/athlete/editor
 0.8D.2 sale con profile GET/PATCH aislado, whitelist, capability y completitud derivada. 0.8D.3 sale con UX no bloqueante A/B y Cuenta intacta. 0.8D.4 sale con pruebas automatizadas de binding/reconexión/conflicto y auditor ampliado. 0.8D.5 sale solo con evidencia real segura o alternativa documentada sin duplicar external account. 0.8D.6 sale con semántica y matriz probadas para self/coach, sin ampliar a organizaciones.
 
 DECISIÓN final: secuencia 0.8D.2 backend básico → 0.8D.3 frontend progresivo → 0.8D.4 cierre Strava multiatleta → 0.8D.5 validación real → 0.8D.6 roles/self/coach.
+## Estado de implementación 0.8D
+
+- 0.8D.1 — closed.
+- 0.8D.2 — implemented: `GET/PATCH /athlete/profile`, completitud derivada y `edit_athlete_profile` para owner/editor.
+- 0.8D.3 — planned.
+- 0.8D.4 — planned.
+- 0.8D.5 — planned.
+- 0.8D.6 — planned.
+
+Contrato efectivo 0.8D.2: birth year admite 1900..año natural actual; `sex_for_training_context` conserva compatibilidad estructural nullable, trim, no blank y máximo 32 porque no existe vocabulario canónico; altura y peso aceptan valores positivos compatibles con `Numeric(5,3)` y `Numeric(6,3)`. La lista recomendada estable contiene birth year, sex context, height y weight. El PATCH vacío devuelve `422 athlete_profile_update_empty`. Cambiar timezone no reagrega históricos y cambiar unidades no convierte valores canónicos. La edición no sincroniza el snapshot de peso de PerformanceProfileVersion.
