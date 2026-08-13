@@ -140,3 +140,10 @@
 - Adapta auditor y preflight a la invariante controladora `owner OR athlete`.
 - Prepara la migracion 0019 del CHECK de roles sin backfill ni cambios de datos reales, con tests de dominio, endpoints, contexto, aislamiento y migracion.
 - Carlos y Jenny no fueron convertidos; Jenny sigue sin Strava y 0.8D.5 sigue pausada.
+
+## 0.8E.1 - provisioning interno de User atleta
+
+- Prepara un CLI seguro para vincular un User nuevo con un AthleteProfile existente mediante role athlete.
+- Reutiliza normalizacion de email, politica/hash productivos, contraseña oculta, confirmacion, dry-run y transaccion atomica.
+- Añade unicidad DB de una identidad athlete activa por AthleteProfile, auditor/preflight y tests de login y aislamiento.
+- Documenta la operacion manual; no crea a Jenny real, no duplica su AthleteProfile y no modifica Strava.

@@ -281,3 +281,8 @@ La auditoría y el contrato del onboarding deportivo progresivo, perfil básico,
 ## Invariante de control desde 0.8D.6
 
 La integridad multiatleta acepta como relacion controladora una membership activa `owner` o `athlete`. `athlete` expresa self-service y no propiedad tecnica. La unicidad `(user_id, athlete_profile_id)` permanece; no se exige duplicar owner+athlete. Los flujos actuales de alta siguen creando `owner` hasta que exista una eleccion de producto explicita.
+
+
+## Provisioning interno self-user 0.8E.1
+
+Un mecanismo interno permite crear un User nuevo y una membership athlete sobre un AthleteProfile existente en una sola transaccion. No es registro publico, invitacion ni administracion generica de roles. El Athlete se resuelve exclusivamente por UUID y nunca se duplica ni se modifica. Un indice parcial garantiza como maximo una membership activa athlete por AthleteProfile.

@@ -268,3 +268,8 @@ La autoridad sigue siendo `Session User -> membership activa del Athlete selecci
 No existe todavia un flujo productivo para asignar `athlete`: POST /athletes conserva `owner`, no hay heuristicas, conversion automatica, API de roles ni UI de roles. La migracion 0019 solo amplia el CHECK y no transforma filas.
 
 Roadmap: 0.8D.1, 0.8D.2, 0.8D.3 y 0.8D.4 cerradas; 0.8D.5 sigue pausada a la espera de la validacion Strava real; 0.8D.6 implementada.
+
+
+## 0.8E.1 - identidad de acceso para Athlete existente
+
+El provisioning interno materializa New User + existing AthleteProfile + membership athlete. Reutiliza normalizacion, politica y hash de autenticacion; no crea sesion y el login continua por /auth/login. El contexto y las capabilities permanecen membership-scoped. No existe registro publico, UI de roles ni inferencia por nombre.

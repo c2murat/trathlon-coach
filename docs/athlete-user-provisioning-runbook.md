@@ -1,0 +1,35 @@
+# Provisioning interno de User atleta
+
+Este procedimiento vincula un User nuevo con un AthleteProfile existente. No crea Athletes, no cambia memberships owner y no opera Strava.
+
+## PRE
+
+Confirmar working tree/commit revisado, Alembic current igual a heads en 0020_unique_active_self_athlete, auditores en cero y UUID exacto del AthleteProfile. Jenny debe seguir sin IntegrationAccount.
+
+## BACKUP
+
+Crear un backup PostgreSQL NUEVO posterior a 0019/0020 y validarlo con pg_restore --list. No sobrescribir ni restaurar automaticamente tricoach_pre_jenny_strava_20260813_113238.dump.
+
+## DRY-RUN
+
+Ejecutar provision_athlete_user.py con --athlete-id, --email, --display-name, --timezone y --dry-run. Comprobar Athlete, role athlete, active/default true y email enmascarado. Dry-run no pide password ni escribe.
+
+## PROVISION
+
+Repetir sin --dry-run. Verificar el resumen, escribir exactamente YES e introducir dos veces la contraseña mediante el prompt oculto. No pasar passwords como argumentos. La transaccion inserta User y membership conjuntamente.
+
+## LOGIN-JENNY
+
+Usar /login normal. Confirmar /auth/me con el User Jenny, Cuenta con su identidad y /session/context con unicamente Jenny AthleteProfile, role athlete y capabilities self-service.
+
+## ISOLATION
+
+Confirmar Jenny Profile/Dashboard vacios propios, Strava desconectado y acceso a Carlos denegado. Volver a Carlos y confirmar que conserva Carlos+Jenny, roles owner e historico Strava.
+
+## POST
+
+Ejecutar auditor de autenticacion, auditor multiatleta, preflight y auditor Strava. Esperado: users 2, Athletes 2, memberships 3, owners 2, athletes 1, defaults activos 2, issues 0. No ejecutar sync.
+
+## STOP CONDITIONS
+
+Detenerse si se crea otro AthleteProfile; cambia Carlos a Jenny; Jenny recibe Carlos; role no es athlete; aparece mas de una membership athlete activa; cualquier auditor tiene issues; o cambia Strava Jenny. No borrar filas ni restaurar automaticamente: capturar estado read-only y diagnosticar.

@@ -121,3 +121,18 @@ def test_0019_allows_athlete_without_backfill_and_blocks_unsafe_downgrade(monkey
   with pytest.raises(Exception):command.downgrade(cfg,"0018_athlete_onboarding")
   with engine.begin() as c:c.execute(text("UPDATE user_athlete_memberships SET role='owner' WHERE athlete_profile_id=:a"),{"a":aid})
   command.downgrade(cfg,"0018_athlete_onboarding");engine.dispose()
+
+
+def test_0020_enforces_one_active_self_athlete_per_profile(monkeypatch):
+ with migrated_database(monkeypatch) as (engine,cfg):
+  uid,aid=seed(engine);command.upgrade(cfg,"0019_athlete_membership_role")
+  other=uuid4()
+  with engine.begin() as c:
+   c.execute(text("INSERT INTO users(id,email,normalized_email,auth_subject,status,timezone,created_at,updated_at) VALUES(:u,:e,:e,:s,'active','UTC',now(),now())"),{"u":other,"e":f"{other}@invalid","s":str(other)})
+   c.execute(text("UPDATE user_athlete_memberships SET role='athlete' WHERE athlete_profile_id=:a"),{"a":aid})
+  command.upgrade(cfg,"0020_unique_active_self_athlete")
+  with engine.begin() as c:
+   assert c.scalar(text("SELECT count(*) FROM pg_indexes WHERE indexname='uq_user_athlete_memberships_active_self_athlete'"))==1
+   with pytest.raises(Exception):
+    c.execute(text("INSERT INTO user_athlete_memberships(id,user_id,athlete_profile_id,role,is_active,is_default,created_at,updated_at) VALUES(:i,:u,:a,'athlete',true,false,now(),now())"),{"i":uuid4(),"u":other,"a":aid})
+  engine.dispose()

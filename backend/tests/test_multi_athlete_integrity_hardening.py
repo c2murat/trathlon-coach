@@ -64,3 +64,15 @@ def test_auditor_reports_invalid_membership_role(integrity_session):
     session.commit()
     result=audit(session)
     assert result["checks"]["invalid_membership_roles"]==[{"membership_id":str(membership.id),"role":"unexpected"}]
+
+
+def test_auditor_reports_multiple_active_athlete_identities(integrity_session):
+    session,a1,_,_=integrity_session
+    session.execute(text("DROP INDEX uq_user_athlete_memberships_active_self_athlete"))
+    users=session.query(User).all()
+    session.add_all([
+        UserAthleteMembership(user_id=users[0].id,athlete_profile_id=a1,role="athlete",is_active=True),
+        UserAthleteMembership(user_id=users[1].id,athlete_profile_id=a1,role="athlete",is_active=True),
+    ])
+    session.commit()
+    assert audit(session)["checks"]["multiple_active_athlete_memberships"]==[{"athlete_id":str(a1),"count":2}]
