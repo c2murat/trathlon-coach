@@ -110,3 +110,14 @@ def test_upgrade_preserves_representative_sports_history(monkeypatch):
   assert before['strength_loads']['rows'][0][1]==str(ids['strength'])
   assert before['oauth_credentials']['rows'][0][1]==str(ids['account'])
   engine.dispose()
+
+def test_0019_allows_athlete_without_backfill_and_blocks_unsafe_downgrade(monkeypatch):
+ with migrated_database(monkeypatch) as (engine,cfg):
+  uid,aid=seed(engine);command.upgrade(cfg,"0018_athlete_onboarding")
+  with engine.connect() as c:before=c.execute(text("SELECT user_id,athlete_profile_id,role,is_default FROM user_athlete_memberships")).all()
+  command.upgrade(cfg,"0019_athlete_membership_role")
+  with engine.connect() as c:assert c.execute(text("SELECT user_id,athlete_profile_id,role,is_default FROM user_athlete_memberships")).all()==before
+  with engine.begin() as c:c.execute(text("UPDATE user_athlete_memberships SET role='athlete' WHERE athlete_profile_id=:a"),{"a":aid})
+  with pytest.raises(Exception):command.downgrade(cfg,"0018_athlete_onboarding")
+  with engine.begin() as c:c.execute(text("UPDATE user_athlete_memberships SET role='owner' WHERE athlete_profile_id=:a"),{"a":aid})
+  command.downgrade(cfg,"0018_athlete_onboarding");engine.dispose()

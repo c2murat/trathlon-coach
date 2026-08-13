@@ -43,3 +43,8 @@ Detenerse antes o durante CONNECT si Jenny muestra datos de Carlos, OAuth identi
 Detenerse durante FIRST-SYNC si el job Jenny usa account Carlos, aparece una actividad en el Athlete incorrecto, cambian inesperadamente contadores de Carlos o aparece cualquier mismatch.
 
 Ante un STOP: no desconectar, no borrar cuentas/actividades, no ejecutar SQL correctivo y no restaurar automáticamente. Capturar únicamente estado read-only, detener nuevos syncs y diagnosticar. La restauración del dump requiere una decisión operativa explícita y una base de destino limpia.
+
+
+## Compatibilidad 0.8D.6 antes de reanudar CONNECT
+
+0.8D.5 permanece pausada. Antes de conectar Jenny: revisar `alembic current` y `alembic heads`; revisar y aplicar manualmente `0019_athlete_membership_role`; crear un NUEVO backup post-migration; y repetir todo PRE. El dump 0018 existente sigue siendo valido, no se sobrescribe ni se restaura automaticamente.

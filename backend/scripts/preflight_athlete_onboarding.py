@@ -8,6 +8,8 @@ from app.core.settings import get_settings
 
 CHECKS={
 "athletes_without_active_owner":"SELECT count(*) FROM athlete_profiles a WHERE NOT EXISTS (SELECT 1 FROM user_athlete_memberships m WHERE m.athlete_profile_id=a.id AND m.role='owner' AND m.is_active IS TRUE)",
+"athletes_without_active_controller":"SELECT count(*) FROM athlete_profiles a WHERE NOT EXISTS (SELECT 1 FROM user_athlete_memberships m WHERE m.athlete_profile_id=a.id AND m.role IN ('owner','athlete') AND m.is_active IS TRUE)",
+"invalid_membership_roles":"SELECT count(*) FROM user_athlete_memberships WHERE role NOT IN ('owner','athlete','editor','coach','viewer')",
 "legacy_owner_membership_missing":"SELECT count(*) FROM athlete_profiles a WHERE NOT EXISTS (SELECT 1 FROM user_athlete_memberships m WHERE m.athlete_profile_id=a.id AND m.user_id=a.user_id AND m.role='owner' AND m.is_active IS TRUE)",
 "legacy_owner_mismatch":"SELECT count(*) FROM athlete_profiles a JOIN user_athlete_memberships m ON m.athlete_profile_id=a.id AND m.role='owner' AND m.is_active IS TRUE WHERE m.user_id<>a.user_id",
 "multiple_active_defaults":"SELECT count(*) FROM (SELECT user_id FROM user_athlete_memberships WHERE is_active IS TRUE AND is_default IS TRUE GROUP BY user_id HAVING count(*)>1) q",
@@ -21,7 +23,7 @@ def run(connection):
  baseline={k:connection.scalar(text(q)) for k,q in BASELINE.items()}; issues={}
  if schema=='0017': issues={k:connection.scalar(text(q)) for k,q in CHECKS.items()}
  else:
-  post={"athletes_without_active_owner":CHECKS["athletes_without_active_owner"],"multiple_active_defaults":CHECKS["multiple_active_defaults"],"inactive_defaults":CHECKS["inactive_defaults"],"deleted_athlete_defaults":CHECKS["deleted_athlete_defaults"],"active_memberships_deleted_athlete":CHECKS["active_memberships_deleted_athlete"],"invalid_display_names":"SELECT count(*) FROM athlete_profiles WHERE display_name IS NULL OR char_length(btrim(display_name)) NOT BETWEEN 1 AND 200"}; issues={k:connection.scalar(text(q)) for k,q in post.items()}
+  post={"athletes_without_active_controller":CHECKS["athletes_without_active_controller"],"invalid_membership_roles":CHECKS["invalid_membership_roles"],"multiple_active_defaults":CHECKS["multiple_active_defaults"],"inactive_defaults":CHECKS["inactive_defaults"],"deleted_athlete_defaults":CHECKS["deleted_athlete_defaults"],"active_memberships_deleted_athlete":CHECKS["active_memberships_deleted_athlete"],"invalid_display_names":"SELECT count(*) FROM athlete_profiles WHERE display_name IS NULL OR char_length(btrim(display_name)) NOT BETWEEN 1 AND 200"}; issues={k:connection.scalar(text(q)) for k,q in post.items()}
  return {"schema":schema,"baseline":baseline,"checks":issues,"issue_count":sum(issues.values())}
 def main(argv=None):
  p=argparse.ArgumentParser();p.add_argument('--format',choices=('text','json'),default='text');p.add_argument('--all-athletes',action='store_true');a=p.parse_args(argv)

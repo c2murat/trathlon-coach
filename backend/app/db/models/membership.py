@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class UserAthleteMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "user_athlete_memberships"
     __table_args__ = (
-        CheckConstraint("role IN ('owner', 'coach', 'editor', 'viewer')", name="role_valid"),
+        CheckConstraint("role IN ('owner', 'athlete', 'coach', 'editor', 'viewer')", name="role_valid"),
         UniqueConstraint("user_id", "athlete_profile_id", name="uq_user_athlete_memberships_user_athlete"),
         Index("uq_user_athlete_memberships_active_default_user", "user_id", unique=True, postgresql_where=text("is_active IS TRUE AND is_default IS TRUE"), sqlite_where=text("is_active IS 1 AND is_default IS 1")),
     )

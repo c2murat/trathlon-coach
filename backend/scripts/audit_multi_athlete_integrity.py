@@ -16,7 +16,7 @@ from app.db.models import (AthleteDailyTrainingLoad,AthleteProfile,AthleteWeekly
 from app.db.session import SessionLocal
 
 
-CHECK_NAMES=("duplicate_active_accounts","integration_accounts_deleted_athlete","invalid_integration_providers","activity_tenant_mismatch","job_tenant_mismatch","orphan_credentials","orphan_activity_accounts","orphan_job_accounts","aggregate_missing_activity","aggregate_tenant_mismatch","aggregate_duplicate_activity","users_without_memberships","athletes_without_memberships","athletes_without_active_owner","multiple_active_defaults","inactive_defaults","deleted_athlete_defaults","active_memberships_deleted_athlete","invalid_athlete_display_names","legacy_athlete_user_id_present","active_strava_without_credential","invalid_job_minimums")
+CHECK_NAMES=("duplicate_active_accounts","integration_accounts_deleted_athlete","invalid_integration_providers","activity_tenant_mismatch","job_tenant_mismatch","orphan_credentials","orphan_activity_accounts","orphan_job_accounts","aggregate_missing_activity","aggregate_tenant_mismatch","aggregate_duplicate_activity","users_without_memberships","athletes_without_memberships","athletes_without_active_owner","athletes_without_active_controller","invalid_membership_roles","multiple_active_defaults","inactive_defaults","deleted_athlete_defaults","active_memberships_deleted_athlete","invalid_athlete_display_names","legacy_athlete_user_id_present","active_strava_without_credential","invalid_job_minimums")
 
 
 def audit(session,*,athlete_id:UUID|None=None)->dict:
@@ -54,16 +54,18 @@ def audit(session,*,athlete_id:UUID|None=None)->dict:
     if athlete_id is None:
         for user in session.scalars(select(User)).all():
             if not session.scalar(select(UserAthleteMembership.id).where(UserAthleteMembership.user_id==user.id,UserAthleteMembership.is_active.is_(True))):issues["users_without_memberships"].append({"user_id":str(user.id)})
-        athlete_ids=[row[0] for row in session.execute(text("SELECT id FROM athlete_profiles ORDER BY id"))]
+        athlete_ids=[UUID(str(row[0])) for row in session.execute(text("SELECT id FROM athlete_profiles ORDER BY id"))]
         for athlete_id_value in athlete_ids:
             if not session.scalar(select(UserAthleteMembership.id).where(UserAthleteMembership.athlete_profile_id==athlete_id_value,UserAthleteMembership.is_active.is_(True))):issues["athletes_without_memberships"].append({"athlete_id":str(athlete_id_value)})
         defaults=session.execute(select(UserAthleteMembership.user_id,func.count()).where(UserAthleteMembership.is_active.is_(True),UserAthleteMembership.is_default.is_(True)).group_by(UserAthleteMembership.user_id).having(func.count()>1)).all();issues["multiple_active_defaults"]=[{"user_id":str(x),"count":n} for x,n in defaults]
-        issues["athletes_without_active_owner"]=[{"athlete_id":str(row[0])} for row in session.execute(text("SELECT a.id FROM athlete_profiles a WHERE NOT EXISTS (SELECT 1 FROM user_athlete_memberships m WHERE m.athlete_profile_id=a.id AND m.role='owner' AND m.is_active IS TRUE) ORDER BY a.id"))]
+        issues["athletes_without_active_owner"]=[]
+        issues["athletes_without_active_controller"]=[{"athlete_id":str(UUID(str(row[0])))} for row in session.execute(text("SELECT a.id FROM athlete_profiles a WHERE NOT EXISTS (SELECT 1 FROM user_athlete_memberships m WHERE m.athlete_profile_id=a.id AND m.role IN ('owner','athlete') AND m.is_active IS TRUE) ORDER BY a.id"))]
+        issues["invalid_membership_roles"]=[{"membership_id":str(UUID(str(row[0]))),"role":row[1]} for row in session.execute(text("SELECT id,role FROM user_athlete_memberships WHERE role NOT IN ('owner','athlete','editor','coach','viewer') ORDER BY id"))]
         issues["inactive_defaults"]=[{"membership_id":str(row[0])} for row in session.execute(text("SELECT id FROM user_athlete_memberships WHERE is_active IS FALSE AND is_default IS TRUE ORDER BY id"))]
         issues["deleted_athlete_defaults"]=[{"membership_id":str(row[0])} for row in session.execute(text("SELECT m.id FROM user_athlete_memberships m JOIN athlete_profiles a ON a.id=m.athlete_profile_id WHERE m.is_default IS TRUE AND a.deleted_at IS NOT NULL ORDER BY m.id"))]
         issues["active_memberships_deleted_athlete"]=[{"membership_id":str(row[0])} for row in session.execute(text("SELECT m.id FROM user_athlete_memberships m JOIN athlete_profiles a ON a.id=m.athlete_profile_id WHERE m.is_active IS TRUE AND a.deleted_at IS NOT NULL ORDER BY m.id"))]
         columns={column["name"] for column in inspect(session.bind).get_columns("athlete_profiles")}
-        if "display_name" in columns: issues["invalid_athlete_display_names"]=[{"athlete_id":str(row[0])} for row in session.execute(text("SELECT id FROM athlete_profiles WHERE display_name IS NULL OR char_length(btrim(display_name)) NOT BETWEEN 1 AND 200 ORDER BY id"))]
+        if "display_name" in columns: issues["invalid_athlete_display_names"]=[{"athlete_id":str(row[0])} for row in session.execute(select(AthleteProfile.id).where((AthleteProfile.display_name.is_(None)) | (~func.length(func.trim(AthleteProfile.display_name)).between(1,200))).order_by(AthleteProfile.id))]
         issues["legacy_athlete_user_id_present"]=[]
     credential_accounts={x.integration_account_id for x in credentials};issues["active_strava_without_credential"]=[{"account_id":str(x.id)} for x in accounts if x.provider=="strava" and x.status=="active" and x.id not in credential_accounts]
     return {"scope":{"athlete_id":str(athlete_id) if athlete_id else None,"all_athletes":athlete_id is None},"issue_count":sum(map(len,issues.values())),"checks":issues}

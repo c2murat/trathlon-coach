@@ -32,3 +32,5 @@ def test_multiple_defaults_are_rejected_and_unknown_role(context_client):
  c,e=context_client;add(e,default=True)
  with pytest.raises(IntegrityError):add(e,default=True)
  assert capabilities_for_role("unknown")==()
+def test_athlete_role_is_returned_with_self_service_capabilities(context_client):
+ c,e=context_client;athlete_id=add(e,"athlete",default=True);body=c.get("/session/context").json();view=body["athletes"][0];assert view["athlete_id"]==str(athlete_id) and view["role"]=="athlete";assert set(view["capabilities"])=={item.value for item in capabilities_for_role("athlete")};assert body["selected_athlete_id"]==str(athlete_id)

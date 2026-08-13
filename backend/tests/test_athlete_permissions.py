@@ -35,6 +35,7 @@ from app.providers.base import OAuthState, OAuthStateStore
 
 EXPECTED = {
     "owner": set(AthleteCapability),
+    "athlete": set(AthleteCapability),
     "editor": set(AthleteCapability),
     "coach": set(AthleteCapability) - {
         AthleteCapability.DELETE_MANUAL_STRENGTH,
@@ -163,7 +164,7 @@ def _enable_strava_start(client):
     return store
 
 
-@pytest.mark.parametrize("role", ["owner", "editor"])
+@pytest.mark.parametrize("role", ["owner", "athlete", "editor"])
 def test_owner_and_editor_start_strava_for_selected_athlete(multi_athlete_context, role):
     client, engine, ids = multi_athlete_context
     _set_shared_role(engine, ids, role)

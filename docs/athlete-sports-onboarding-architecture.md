@@ -257,3 +257,14 @@ DECISIÓN final: secuencia 0.8D.2 backend básico → 0.8D.3 frontend progresivo
 Contrato efectivo 0.8D.2: birth year admite 1900..año natural actual; `sex_for_training_context` conserva compatibilidad estructural nullable, trim, no blank y máximo 32 porque no existe vocabulario canónico; altura y peso aceptan valores positivos compatibles con `Numeric(5,3)` y `Numeric(6,3)`. La lista recomendada estable contiene birth year, sex context, height y weight. El PATCH vacío devuelve `422 athlete_profile_update_empty`. Cambiar timezone no reagrega históricos y cambiar unidades no convierte valores canónicos. La edición no sincroniza el snapshot de peso de PerformanceProfileVersion.
 
 UX efectiva 0.8D.3: Cuenta sigue editando al User; Perfil deportivo edita solo el Athlete activo; Perfil de rendimiento conserva referencias y umbrales. El formulario descarta cambios locales sin guardar al cambiar de Athlete, nunca hace autosave y refresca SessionContext tras cambiar nombre, timezone o unidades. El campo de sexo se mantiene como texto opcional explicado, sin inventar vocabulario. En imperial la altura usa pies+pulgadas y el peso libras; el PATCH persiste exclusivamente metros/kg. Inicio consulta el perfil del Athlete activo y muestra el aviso solo para estado `minimal`.
+
+
+## 0.8D.6 - role athlete y self-access
+
+La autoridad sigue siendo `Session User -> membership activa del Athlete seleccionado -> role -> capabilities`. Los roles significan: `owner`, relacion de control o gobierno; `athlete`, relacion explicita con el propio sujeto deportivo; `editor`, edicion deportiva delegada; `coach`, coaching; `viewer`, lectura.
+
+`owner` y `athlete` reciben hoy las mismas capabilities deportivas porque todavia no existen capabilities de gobierno. La matriz de `athlete` es explicita y deny-by-default para futuras capabilities. Un AthleteProfile con una membership activa `athlete` y sin `owner` es valido: la invariante exige al menos una relacion controladora `owner OR athlete`.
+
+No existe todavia un flujo productivo para asignar `athlete`: POST /athletes conserva `owner`, no hay heuristicas, conversion automatica, API de roles ni UI de roles. La migracion 0019 solo amplia el CHECK y no transforma filas.
+
+Roadmap: 0.8D.1, 0.8D.2, 0.8D.3 y 0.8D.4 cerradas; 0.8D.5 sigue pausada a la espera de la validacion Strava real; 0.8D.6 implementada.

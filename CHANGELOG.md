@@ -132,3 +132,11 @@
 - Endurecida la exclusión de atletas eliminados en contexto, selección y OAuth Strava.
 - Añadidos preflight, auditoría compatible 0017/0018, pruebas PostgreSQL temporales y runbook.
 - La migración PostgreSQL real queda pendiente de revisión y aplicación manual; no se creó un segundo Athlete.
+
+## 0.8D.6 - role athlete y self-access
+
+- Incorpora `athlete` como relacion self-service explicita y una matriz central, auditable y deny-by-default de capabilities deportivas.
+- Mantiene permisos por membership y Athlete seleccionado, sin union global, bypass por identidad ni cambios en owner/editor/coach/viewer.
+- Adapta auditor y preflight a la invariante controladora `owner OR athlete`.
+- Prepara la migracion 0019 del CHECK de roles sin backfill ni cambios de datos reales, con tests de dominio, endpoints, contexto, aislamiento y migracion.
+- Carlos y Jenny no fueron convertidos; Jenny sigue sin Strava y 0.8D.5 sigue pausada.

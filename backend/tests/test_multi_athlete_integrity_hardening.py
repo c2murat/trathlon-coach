@@ -3,14 +3,14 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine,text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.application.multi_athlete_integrity import MultiAthleteIntegrityError,validate_activity_ids
 from app.db.base import Base,utc_now
-from app.db.models import AthleteProfile,CompletedActivity,IntegrationAccount,User
+from app.db.models import AthleteProfile,CompletedActivity,IntegrationAccount,User,UserAthleteMembership
 from scripts.audit_multi_athlete_integrity import audit
 from scripts.backfill_training_load import BackfillOptions
 
@@ -43,6 +43,9 @@ def test_auditor_is_read_only_and_reports_clean_scope(integrity_session):
 def test_auditor_reports_integration_linked_to_deleted_athlete(integrity_session):
     session,a1,_,_=integrity_session;athlete=session.get(AthleteProfile,a1);athlete.deleted_at=utc_now();account=IntegrationAccount(athlete_id=a1,provider="strava",external_account_id="deleted-athlete",status="active");session.add(account);session.commit();result=audit(session,athlete_id=a1);assert result["checks"]["integration_accounts_deleted_athlete"]==[{"account_id":str(account.id),"athlete_id":str(a1)}]
 
+def test_athlete_only_profile_is_a_valid_controller_and_non_controller_is_reported(integrity_session):
+    session,a1,a2,_=integrity_session;user=session.query(User).first();session.add_all([UserAthleteMembership(user_id=user.id,athlete_profile_id=a1,role="athlete",is_active=True),UserAthleteMembership(user_id=user.id,athlete_profile_id=a2,role="viewer",is_active=True)]);session.commit();result=audit(session);assert not any(row["athlete_id"]==str(a1) for row in result["checks"]["athletes_without_active_controller"]);assert any(row["athlete_id"]==str(a2) for row in result["checks"]["athletes_without_active_controller"])
+
 
 def test_backfill_scope_and_global_confirmation_are_mandatory():
     with pytest.raises(ValueError,match="exactly one"):BackfillOptions()
@@ -50,3 +53,14 @@ def test_backfill_scope_and_global_confirmation_are_mandatory():
     with pytest.raises(ValueError,match="confirm"):BackfillOptions(all_athletes=True)
     assert BackfillOptions(all_athletes=True,dry_run=True).dry_run
     assert BackfillOptions(all_athletes=True,confirm_all_athletes=True).all_athletes
+
+
+def test_auditor_reports_invalid_membership_role(integrity_session):
+    session,a1,_,_=integrity_session
+    user=session.query(User).first()
+    session.execute(text("PRAGMA ignore_check_constraints = ON"))
+    membership=UserAthleteMembership(user_id=user.id,athlete_profile_id=a1,role="unexpected",is_active=True)
+    session.add(membership)
+    session.commit()
+    result=audit(session)
+    assert result["checks"]["invalid_membership_roles"]==[{"membership_id":str(membership.id),"role":"unexpected"}]

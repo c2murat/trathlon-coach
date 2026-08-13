@@ -276,3 +276,8 @@ La retirada de la FK legacy `AthleteProfile.user_id -> users.id ON DELETE CASCAD
 ## Continuación 0.8D
 
 La auditoría y el contrato del onboarding deportivo progresivo, perfil básico, Strava por atleta y preparación de roles self/coach se documentan en [athlete-sports-onboarding-architecture.md](athlete-sports-onboarding-architecture.md). 0.8D.1 es exclusivamente arquitectura y no modifica runtime.
+
+
+## Invariante de control desde 0.8D.6
+
+La integridad multiatleta acepta como relacion controladora una membership activa `owner` o `athlete`. `athlete` expresa self-service y no propiedad tecnica. La unicidad `(user_id, athlete_profile_id)` permanece; no se exige duplicar owner+athlete. Los flujos actuales de alta siguen creando `owner` hasta que exista una eleccion de producto explicita.
