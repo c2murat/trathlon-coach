@@ -286,3 +286,10 @@ La integridad multiatleta acepta como relacion controladora una membership activ
 ## Provisioning interno self-user 0.8E.1
 
 Un mecanismo interno permite crear un User nuevo y una membership athlete sobre un AthleteProfile existente en una sola transaccion. No es registro publico, invitacion ni administracion generica de roles. El Athlete se resuelve exclusivamente por UUID y nunca se duplica ni se modifica. Un indice parcial garantiza como maximo una membership activa athlete por AthleteProfile.
+
+
+## Normalizacion de memberships 0.8E.2
+
+La semantica es: owner representa gobierno; athlete identifica al propio sujeto deportivo; coach representa entrenamiento delegado. Controller significa exclusivamente una membership activa owner OR athlete. Un Athlete self-service con athlete+coach y sin owner es integro.
+
+Los cambios de role usan una operacion administrativa transaccional sobre una membership existente. Preservan id, active, default, created_at y relaciones; son idempotentes y validan controller y unicidad self-athlete antes del flush. No existe API publica ni UI de roles.

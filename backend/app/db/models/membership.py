@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from app.db.models.athlete import AthleteProfile
     from app.db.models.user import User
 
+ATHLETE_MEMBERSHIP_ROLES = frozenset({"owner", "athlete", "editor", "coach", "viewer"})
+
 
 class UserAthleteMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "user_athlete_memberships"

@@ -156,3 +156,11 @@
 - Confirmado aislamiento A/B de accounts, credentials, jobs, activities, loads, aggregates y status.
 - Auditor Strava y auditor multiatleta finalizaron con issue_count 0.
 - 0.8D.5 queda cerrada; 0.8E.1 tambien quedo validada y cerrada documentalmente.
+
+
+## 0.8E.2 - normalizacion de roles multiusuario
+
+- Incorpora una operacion administrativa transaccional e idempotente para cambiar el role de una membership existente.
+- Añade CLI con dry-run y confirmacion, proteccion del ultimo controller y rechazo previo de una segunda identidad athlete.
+- Refuerza tests de owner/coach/athlete por Athlete seleccionado y ausencia de capability leakage.
+- Documenta la normalizacion Carlos owner propio, coach de Jenny y Jenny athlete self-service sin tocar Strava.

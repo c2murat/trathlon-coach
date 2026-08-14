@@ -42,3 +42,12 @@ Detenerse si se crea otro AthleteProfile; cambia Carlos a Jenny; Jenny recibe Ca
 El bucle de respuestas 403 observado durante la operacion se resolvio al detectar un proceso Uvicorn antiguo con codigo stale. No era un defecto del codigo actual.
 
 Estado final: **0.8E.1 CLOSED**.
+
+
+## NORMALIZACION ADMINISTRATIVA DE ROLES - 0.8E.2
+
+Los roles se cambian con scripts/set_athlete_membership_role.py, nunca mediante SQL manual. La herramienta exige --user-id, --athlete-id, --role y permite --dry-run/--yes. Resuelve una membership existente, bloquea la fila en cambios reales, no reactiva filas, no altera default ni crea memberships.
+
+Antes de aplicar un cambio real se debe ejecutar dry-run, verificar current/requested role y confirmar Controller after transition=true. La operacion rechaza dejar un Athlete sin controller activo, donde controller significa owner OR athlete, y rechaza una segunda identidad athlete activa.
+
+La autorizacion sigue siendo por membership del Athlete seleccionado. Tener owner sobre un Athlete no eleva las capabilities coach sobre otro Athlete.

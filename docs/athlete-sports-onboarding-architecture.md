@@ -278,3 +278,10 @@ El provisioning interno materializa New User + existing AthleteProfile + members
 ## Estado 0.8E.1
 
 0.8E.1 CLOSED: User Jenny real, login, identidad, Session Context, aislamiento frente a Carlos y datos Strava propios validados. El 403 operativo se debio a un Uvicorn stale, no a un defecto del codigo actual.
+
+
+## 0.8E.2 - roles multiusuario normalizados
+
+Estado semantico objetivo validado por tests: Carlos sobre Carlos owner, Carlos sobre Jenny coach y Jenny sobre Jenny athlete. Owner no implica identidad y athlete es self-service. Las capabilities se calculan por la membership del Athlete seleccionado, sin union global: Carlos conserva owner sobre Carlos y recibe solo coach sobre Jenny.
+
+La herramienta interna set_athlete_membership_role.py ofrece dry-run, confirmacion y transaccion segura. No modifica Strava ni datos deportivos. La invariante de integridad permanece controller = active owner OR active athlete.
