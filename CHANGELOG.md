@@ -164,3 +164,11 @@
 - Añade CLI con dry-run y confirmacion, proteccion del ultimo controller y rechazo previo de una segunda identidad athlete.
 - Refuerza tests de owner/coach/athlete por Athlete seleccionado y ausencia de capability leakage.
 - Documenta la normalizacion Carlos owner propio, coach de Jenny y Jenny athlete self-service sin tocar Strava.
+
+## 0.8E.3 - pipeline automatico post-Strava
+
+- Encadena automaticamente import, Training Load, agregados combinados y Training Status dentro del SyncJob athlete-scoped.
+- Persiste alcance, etapa y progreso sin migracion; los fallos derivados conservan el import y permiten retry idempotente desde navegador.
+- Inicia la primera preparacion tras OAuth, protege concurrencia por cuenta y mantiene rate limits/enrichment remoto separados.
+- Actualiza la UX con estados de importacion/procesamiento, errores recuperables, accesibilidad y guardas stale por Athlete.
+- Los scripts de backfill quedan reservados para mantenimiento y dejan de ser necesarios en el flujo normal.

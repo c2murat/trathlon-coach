@@ -116,6 +116,10 @@ def test_status_response_is_allow_listed_and_secret_free(caplog):
         "completed_at",
         "next_resume_at",
         "error_category",
+        "stage",
+        "processed_count",
+        "affected_start_date",
+        "affected_end_date",
     }
     rendered = response.text + caplog.text
     assert "access_token" not in rendered

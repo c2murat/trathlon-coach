@@ -20,6 +20,10 @@ from app.db.models import (
     SyncJob,
     User,
     UserAthleteMembership,
+    ActivityTrainingLoad,
+    AthleteDailyTrainingLoad,
+    AthleteWeeklyTrainingLoad,
+    AthleteDailyTrainingStatus,
 )
 from app.integrations.strava.activity_import import (
     ImportJobNotFoundError,
@@ -184,6 +188,12 @@ def test_first_import_and_multiple_pages_commit_checkpoints(database):
         assert persisted_job.stats["imported_count"] == 3
         assert persisted_job.stats["page"] == 2
         assert persisted_job.stats["last_external_activity_id"] == "1"
+        assert persisted_job.stats["stage"] == "completed"
+        assert persisted_job.stats["processed_count"] == 3
+        assert session.scalar(select(func.count(ActivityTrainingLoad.id))) == 3
+        assert session.scalar(select(func.count(AthleteDailyTrainingLoad.id))) == 1
+        assert session.scalar(select(func.count(AthleteWeeklyTrainingLoad.id))) == 1
+        assert session.scalar(select(func.count(AthleteDailyTrainingStatus.id))) > 0
     assert [call["page"] for call in client.calls] == [1, 2]
     assert all(call["per_page"] == 2 for call in client.calls)
 
@@ -516,3 +526,29 @@ def test_database_failure_rolls_back_only_current_page(database):
         assert stored_job.stats["imported_count"] == 1
         assert stored_job.status == "failed"
         assert stored_job.error_code == "database_error"
+
+class FailingPostSyncProcessor:
+    def __init__(self, session): self.session = session
+    def process(self, **kwargs): raise RuntimeError("derived failure")
+
+
+def test_post_processing_failure_preserves_import_and_retry_is_idempotent(database):
+    factory, (user_id, _, _, _) = database
+    failing = StravaSummaryImportManager(session_factory=factory, activity_client=FakeActivityClient([StravaActivityPage((activity(90),), EMPTY_RATE)]), token_service=FakeTokenService(), post_sync_processor_factory=FailingPostSyncProcessor)
+    first = failing.create_or_resume_job(user_id)
+    asyncio.run(failing.run_job(first.job_id))
+    with factory() as session:
+        job = session.get(SyncJob, first.job_id)
+        assert job.status == "partially_succeeded" and job.error_code == "post_processing_failed"
+        assert session.scalar(select(func.count(CompletedActivity.id))) == 1
+        assert session.scalar(select(func.count(ActivityTrainingLoad.id))) == 0
+    retry = StravaSummaryImportManager(session_factory=factory, activity_client=FakeActivityClient([StravaActivityPage((), EMPTY_RATE)]), token_service=FakeTokenService())
+    resumed = retry.create_or_resume_job(user_id)
+    asyncio.run(retry.run_job(resumed.job_id))
+    with factory() as session:
+        assert session.get(SyncJob, resumed.job_id).status == "succeeded"
+        assert session.scalar(select(func.count(CompletedActivity.id))) == 1
+        assert session.scalar(select(func.count(ActivityTrainingLoad.id))) == 1
+        assert session.scalar(select(func.count(AthleteDailyTrainingLoad.id))) == 1
+        assert session.scalar(select(func.count(AthleteWeeklyTrainingLoad.id))) == 1
+        assert session.scalar(select(func.count(AthleteDailyTrainingStatus.id))) > 0

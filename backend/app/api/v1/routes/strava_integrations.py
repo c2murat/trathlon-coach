@@ -1,8 +1,9 @@
 from dataclasses import asdict
+import logging
 from datetime import timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
@@ -25,6 +26,7 @@ from app.api.dependencies.providers import (
     get_strava_oauth_client,
     get_strava_callback_configuration,
     get_strava_connect_configuration,
+    get_strava_import_manager,
 )
 from app.db.session import get_db_session
 from app.db.models import AthleteProfile, UserAthleteMembership
@@ -54,6 +56,9 @@ from app.providers.base import (
 from app.providers.strava import GrantedScopes, StravaRevocationCredential
 from app.integrations.strava.account_selection import StravaAccountConfigurationError,active_strava_account
 from app.api.v1.schemas.strava_integration import StravaConnectionStartResponse
+from app.integrations.strava.activity_import import StravaSummaryImportManager
+
+LOGGER = logging.getLogger(__name__)
 
 read_strava = require_athlete_capability(AthleteCapability.READ_STRAVA_INTEGRATION)
 manage_strava = require_athlete_capability(AthleteCapability.MANAGE_STRAVA_CONNECTION)
@@ -182,8 +187,10 @@ async def start_strava_connection(
     configuration: StravaConnectConfiguration = Depends(get_strava_connect_configuration),
     state_store: OAuthStateStore = Depends(get_oauth_state_store),
     session: Session = Depends(get_db_session),
+    import_manager: StravaSummaryImportManager = Depends(get_strava_import_manager),
 ) -> StravaConnectionStartResponse:
     """Create athlete-bound OAuth state and return only the external URL."""
+    del import_manager
     response.headers.update(NO_STORE_HEADERS)
     authorization_url = await _start_strava_connection(
         current_athlete=current_athlete,
@@ -224,6 +231,7 @@ async def _start_strava_connection(
 
 @router.get("/callback")
 async def strava_callback(
+    request: Request,
     state_value: str | None = Query(default=None, alias="state"),
     code: str | None = Query(default=None),
     scope: str | None = Query(default=None),
@@ -359,6 +367,13 @@ async def strava_callback(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "strava_persistence_failed"
         ) from None
 
+    manager = getattr(request.app.state, "strava_import_manager", None)
+    if isinstance(manager, StravaSummaryImportManager):
+        try:
+            initial_job = await run_in_threadpool(manager.create_or_resume_job, current_user.id, athlete_id=oauth_state.athlete_id)
+            manager.schedule(initial_job.job_id)
+        except Exception:
+            LOGGER.exception("Automatic Strava import scheduling failed", extra={"athlete_id": str(oauth_state.athlete_id)})
     return _safe_response(result.status)
 
 

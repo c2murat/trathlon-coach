@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -11,6 +12,10 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.base import utc_now
+from app.application.strava_post_sync_processing import (
+    StravaPostSyncProcessingApplication,
+    StravaPostSyncProcessingError,
+)
 from app.db.models import (
     AthleteProfile,
     CompletedActivity,
@@ -38,6 +43,8 @@ from app.providers.strava.activity_mapper import (
 
 JOB_TYPE = "strava_historical_summary"
 IDEMPOTENCY_KEY_PREFIX = "strava-summary-v1"
+LOGGER = logging.getLogger(__name__)
+
 ACTIVE_JOB_STATUSES = ("queued", "running", "retry_scheduled")
 DEFAULT_STATS: dict[str, object] = {
     "imported_count": 0,
@@ -46,6 +53,11 @@ DEFAULT_STATS: dict[str, object] = {
     "failed_count": 0,
     "page": 0,
     "last_external_activity_id": None,
+    "stage": "importing",
+    "processed_count": 0,
+    "affected_activity_ids": [],
+    "affected_start_date": None,
+    "affected_end_date": None,
 }
 
 
@@ -77,6 +89,10 @@ class StravaImportJobView:
     completed_at: datetime | None
     next_resume_at: datetime | None
     error_category: str | None
+    stage: str = "importing"
+    processed_count: int = 0
+    affected_start_date: str | None = None
+    affected_end_date: str | None = None
 
 
 class StravaSummaryImportManager:
@@ -93,6 +109,7 @@ class StravaSummaryImportManager:
         retry_seconds: int = 60,
         incremental_overlap_seconds: int = 86400,
         clock: Callable[[], datetime] = utc_now,
+        post_sync_processor_factory=StravaPostSyncProcessingApplication,
     ) -> None:
         if (
             not 1 <= page_size <= 200
@@ -110,6 +127,7 @@ class StravaSummaryImportManager:
             seconds=incremental_overlap_seconds
         )
         self._clock = clock
+        self._post_sync_processor_factory = post_sync_processor_factory
         self._tasks: dict[UUID, asyncio.Task[None]] = {}
 
     def create_or_resume_job(
@@ -285,6 +303,10 @@ class StravaSummaryImportManager:
                     completed_at=None,
                     next_resume_at=None,
                     error_category=None,
+                    stage="not_started",
+                    processed_count=0,
+                    affected_start_date=None,
+                    affected_end_date=None,
                 )
             return self._view(row[0], row[1].provider)
 
@@ -315,7 +337,7 @@ class StravaSummaryImportManager:
                     before=before,
                 )
                 if not result.activities:
-                    await asyncio.to_thread(self._mark_succeeded, job_id)
+                    await asyncio.to_thread(self._complete_import, job_id)
                     return
                 await asyncio.to_thread(
                     self._persist_page,
@@ -332,7 +354,7 @@ class StravaSummaryImportManager:
                     )
                     return
                 if len(result.activities) < self._page_size:
-                    await asyncio.to_thread(self._mark_succeeded, job_id)
+                    await asyncio.to_thread(self._complete_import, job_id)
                     return
                 page += 1
         except StravaActivityRateLimitError as exc:
@@ -443,7 +465,11 @@ class StravaSummaryImportManager:
                             **provider_fields,
                         )
                         session.add(activity)
+                        session.flush()
                         stats["imported_count"] = int(stats["imported_count"]) + 1
+                        affected = list(stats.get("affected_activity_ids") or [])
+                        affected.append(str(activity.id))
+                        stats["affected_activity_ids"] = list(dict.fromkeys(affected))
                     else:
                         changed = any(
                             getattr(activity, field_name) != value
@@ -454,6 +480,9 @@ class StravaSummaryImportManager:
                         activity.last_synced_at = now
                         if changed:
                             activity.provider_updated_at = now
+                            affected = list(stats.get("affected_activity_ids") or [])
+                            affected.append(str(activity.id))
+                            stats["affected_activity_ids"] = list(dict.fromkeys(affected))
                         counter = "updated_count" if changed else "skipped_count"
                         stats[counter] = int(stats[counter]) + 1
                     stats["last_external_activity_id"] = (
@@ -468,6 +497,63 @@ class StravaSummaryImportManager:
             except Exception:
                 session.rollback()
                 raise
+
+    def _complete_import(self, job_id: UUID) -> None:
+        with self._session_factory() as session:
+            job = scoped_strava_job(session, job_id=job_id)
+            if job is None or job.status != "running":
+                return
+            stats = self._stats(job)
+            stats["stage"] = "processing"
+            job.stats = stats
+            session.commit()
+        try:
+            with self._session_factory() as session:
+                job = scoped_strava_job(session, job_id=job_id)
+                if job is None or job.status != "running":
+                    return
+                stats = self._stats(job)
+                activity_ids = tuple(
+                    UUID(value)
+                    for value in stats.get("affected_activity_ids") or []
+                )
+                result = self._post_sync_processor_factory(session).process(
+                    athlete_id=job.athlete_id,
+                    activity_ids=activity_ids,
+                )
+                stats["processed_count"] = result.processed_count
+                stats["affected_start_date"] = (
+                    result.affected_start_date.isoformat()
+                    if result.affected_start_date
+                    else None
+                )
+                stats["affected_end_date"] = (
+                    result.affected_end_date.isoformat()
+                    if result.affected_end_date
+                    else None
+                )
+                stats["stage"] = "completed"
+                job.stats = stats
+                session.commit()
+        except StravaPostSyncProcessingError as error:
+            LOGGER.exception(
+                "Strava post-sync processing stage failed",
+                extra={"sync_job_id": str(job_id), "stage": error.stage},
+            )
+            self._mark_failed(
+                job_id,
+                f"post_processing_{error.stage}_failed",
+                partial=True,
+            )
+            return
+        except Exception:
+            LOGGER.exception(
+                "Strava post-sync processing failed",
+                extra={"sync_job_id": str(job_id)},
+            )
+            self._mark_failed(job_id, "post_processing_failed", partial=True)
+            return
+        self._mark_succeeded(job_id)
 
     def _mark_succeeded(self, job_id: UUID) -> None:
         with self._session_factory() as session:
@@ -514,12 +600,12 @@ class StravaSummaryImportManager:
             job.error_detail = None
             session.commit()
 
-    def _mark_failed(self, job_id: UUID, category: str) -> None:
+    def _mark_failed(self, job_id: UUID, category: str, *, partial: bool = False) -> None:
         with self._session_factory() as session:
             job = scoped_strava_job(session,job_id=job_id)
             if job is None:
                 return
-            job.status = "failed"
+            job.status = "partially_succeeded" if partial else "failed"
             job.finished_at = self._clock()
             job.error_code = category
             job.error_detail = None
@@ -564,4 +650,8 @@ class StravaSummaryImportManager:
             completed_at=job.finished_at,
             next_resume_at=job.next_retry_at,
             error_category=job.error_code,
+            stage=str(stats.get("stage") or "importing"),
+            processed_count=int(stats.get("processed_count") or 0),
+            affected_start_date=str(stats["affected_start_date"]) if stats.get("affected_start_date") else None,
+            affected_end_date=str(stats["affected_end_date"]) if stats.get("affected_end_date") else None,
         )

@@ -38,6 +38,10 @@ const noImport: ImportStatus = {
   completed_at: null,
   next_resume_at: null,
   error_category: null,
+  stage: "not_started",
+  processed_count: 0,
+  affected_start_date: null,
+  affected_end_date: null,
 };
 
 const activityPage: ActivityPage = {
