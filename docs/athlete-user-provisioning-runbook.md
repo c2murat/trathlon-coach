@@ -33,3 +33,12 @@ Ejecutar auditor de autenticacion, auditor multiatleta, preflight y auditor Stra
 ## STOP CONDITIONS
 
 Detenerse si se crea otro AthleteProfile; cambia Carlos a Jenny; Jenny recibe Carlos; role no es athlete; aparece mas de una membership athlete activa; cualquier auditor tiene issues; o cambia Strava Jenny. No borrar filas ni restaurar automaticamente: capturar estado read-only y diagnosticar.
+
+
+## VALIDACION REAL FINAL
+
+0.8E.1 quedo validada con User Jenny real, login estandar correcto, identidad Jenny visible y Session Context limitado exclusivamente a AthleteProfile Jenny. Carlos no fue seleccionable desde su cuenta. Antes del primer sync Jenny mostraba 0 actividades; despues se conecto su Strava propio y solo recibio sus datos.
+
+El bucle de respuestas 403 observado durante la operacion se resolvio al detectar un proceso Uvicorn antiguo con codigo stale. No era un defecto del codigo actual.
+
+Estado final: **0.8E.1 CLOSED**.

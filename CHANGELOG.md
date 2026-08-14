@@ -139,11 +139,20 @@
 - Mantiene permisos por membership y Athlete seleccionado, sin union global, bypass por identidad ni cambios en owner/editor/coach/viewer.
 - Adapta auditor y preflight a la invariante controladora `owner OR athlete`.
 - Prepara la migracion 0019 del CHECK de roles sin backfill ni cambios de datos reales, con tests de dominio, endpoints, contexto, aislamiento y migracion.
-- Carlos y Jenny no fueron convertidos; Jenny sigue sin Strava y 0.8D.5 sigue pausada.
+- En ese cierre de codigo no se convirtieron memberships ni se conecto Strava; la validacion real posterior se documenta en 0.8D.5.
 
 ## 0.8E.1 - provisioning interno de User atleta
 
 - Prepara un CLI seguro para vincular un User nuevo con un AthleteProfile existente mediante role athlete.
 - Reutiliza normalizacion de email, politica/hash productivos, contraseña oculta, confirmacion, dry-run y transaccion atomica.
 - Añade unicidad DB de una identidad athlete activa por AthleteProfile, auditor/preflight y tests de login y aislamiento.
-- Documenta la operacion manual; no crea a Jenny real, no duplica su AthleteProfile y no modifica Strava.
+- La implementacion no creo a Jenny real ni modifico Strava; la operacion real posterior quedo validada y cerrada documentalmente.
+
+
+## 0.8D.5 - segunda integracion Strava real validada
+
+- Validada una segunda cuenta Strava real con identidad externa distinta y primer sync de Jenny completado con 451 actividades.
+- Generadas 451 cargas por actividad, 409 agregados diarios, 137 semanales y 1127 estados diarios.
+- Confirmado aislamiento A/B de accounts, credentials, jobs, activities, loads, aggregates y status.
+- Auditor Strava y auditor multiatleta finalizaron con issue_count 0.
+- 0.8D.5 queda cerrada; 0.8E.1 tambien quedo validada y cerrada documentalmente.

@@ -2,11 +2,11 @@
 
 Estado: auditoría cerrada y contrato propuesto; sin cambios de runtime ni migraciones.
 
-## Preparación 0.8D.5
+## Cierre 0.8D.5
 
-0.8D.5 está `prepared / awaiting real second-Strava validation`. El baseline real previo se captura con `scripts/audit_multi_athlete_strava_state.py`, que devuelve contadores athlete-scoped y comprueba credenciales huérfanas, mismatches job/account y activity/account, agregados incompatibles, cuentas hacia Athlete eliminado e identidades Strava duplicadas, sin mostrar tokens ni external IDs. El procedimiento manual y sus condiciones de parada están en `docs/strava-second-athlete-validation-runbook.md`.
+0.8D.5 esta CLOSED tras validar la segunda cuenta Strava real, el primer sync, cargas, agregados, status y aislamiento A/B. El runbook conserva la preparacion y la evidencia final sin secretos.
 
-OAuth no dispara import automáticamente. El primer sync no admite rango, límite ni dry-run y puede recorrer todo el histórico disponible hasta el momento de crear el job. CONNECT y FIRST-SYNC de Jenny siguen pendientes del usuario; la fase no está cerrada.
+OAuth no dispara import automaticamente. La ejecucion real posterior completo CONNECT y FIRST-SYNC de Jenny con 451 actividades y auditores en cero; la fase esta cerrada.
 
 ## Implementación 0.8D.4
 
@@ -14,7 +14,7 @@ OAuth no dispara import automáticamente. El primer sync no admite rango, límit
 
 La UI limpia el estado al cambiar de Athlete y aplica guardas mounted/generation. OAuth start captura User, Athlete y expiry en el store; callback consume ese state y revalida User, membership, Athlete no eliminado y `manage_strava_connection`, sin depender del selector actual. Owner/editor gestionan; coach/viewer solo leen. La misma identidad externa en otro Athlete devuelve `409 strava_external_account_already_linked`; no existe transferencia. Reconectar el mismo external account rota credenciales sin duplicar cuenta. Desconectar conserva actividades e histórico. Sync solo se ofrece para una conexión activa del Athlete seleccionado.
 
-Estado: 0.8D.1 closed; 0.8D.2 closed; 0.8D.3 closed; 0.8D.4 implemented; 0.8D.5 planned; 0.8D.6 planned.
+Estado actual: 0.8D.1 closed; 0.8D.2 closed; 0.8D.3 closed; 0.8D.4 closed; 0.8D.5 closed; 0.8D.6 closed.
 
 ## 1. Estado actual
 
@@ -251,7 +251,7 @@ DECISIÓN final: secuencia 0.8D.2 backend básico → 0.8D.3 frontend progresivo
 - 0.8D.2 — closed: `GET/PATCH /athlete/profile`, completitud derivada y `edit_athlete_profile` para owner/editor.
 - 0.8D.3 — implemented: `/settings/athlete-profile`, editor athlete-scoped, unidades visuales, completitud y banner progresivo en Inicio.
 - 0.8D.4 — planned.
-- 0.8D.5 — planned.
+- 0.8D.5 - closed: segunda cuenta real, primer sync, cargas/agregados/status y aislamiento A/B validados.
 - 0.8D.6 — planned.
 
 Contrato efectivo 0.8D.2: birth year admite 1900..año natural actual; `sex_for_training_context` conserva compatibilidad estructural nullable, trim, no blank y máximo 32 porque no existe vocabulario canónico; altura y peso aceptan valores positivos compatibles con `Numeric(5,3)` y `Numeric(6,3)`. La lista recomendada estable contiene birth year, sex context, height y weight. El PATCH vacío devuelve `422 athlete_profile_update_empty`. Cambiar timezone no reagrega históricos y cambiar unidades no convierte valores canónicos. La edición no sincroniza el snapshot de peso de PerformanceProfileVersion.
@@ -267,9 +267,14 @@ La autoridad sigue siendo `Session User -> membership activa del Athlete selecci
 
 No existe todavia un flujo productivo para asignar `athlete`: POST /athletes conserva `owner`, no hay heuristicas, conversion automatica, API de roles ni UI de roles. La migracion 0019 solo amplia el CHECK y no transforma filas.
 
-Roadmap: 0.8D.1, 0.8D.2, 0.8D.3 y 0.8D.4 cerradas; 0.8D.5 sigue pausada a la espera de la validacion Strava real; 0.8D.6 implementada.
+Roadmap final: 0.8D.1 a 0.8D.6 cerradas; 0.8D.5 incluye validacion Strava real multiatleta y 0.8D.6 el role athlete.
 
 
 ## 0.8E.1 - identidad de acceso para Athlete existente
 
 El provisioning interno materializa New User + existing AthleteProfile + membership athlete. Reutiliza normalizacion, politica y hash de autenticacion; no crea sesion y el login continua por /auth/login. El contexto y las capabilities permanecen membership-scoped. No existe registro publico, UI de roles ni inferencia por nombre.
+
+
+## Estado 0.8E.1
+
+0.8E.1 CLOSED: User Jenny real, login, identidad, Session Context, aislamiento frente a Carlos y datos Strava propios validados. El 403 operativo se debio a un Uvicorn stale, no a un defecto del codigo actual.
