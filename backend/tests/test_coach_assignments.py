@@ -39,6 +39,7 @@ def test_owner_lists_candidates_assigns_idempotently_reactivates_and_revokes(env
     first=c.post("/coach-assignments",json=payload(coach,target),headers=headers(c));second=c.post("/coach-assignments",json=payload(coach,target),headers=headers(c));assert first.status_code==second.status_code==201;assert first.json()["membership_id"]==second.json()["membership_id"];assert session.scalar(select(func.count()).select_from(UserAthleteMembership))==1
     membership=session.get(UserAthleteMembership,UUID(first.json()["membership_id"]));assert membership.role=="coach" and membership.is_active and membership.is_default
     assert c.get("/coach-assignments").json()[0]["athlete_display_name"]=="Target"
+    assert c.delete(f"/coach-assignments/{uuid4()}",headers=headers(c)).status_code==404
     revoked=c.delete(f"/coach-assignments/{membership.id}",headers=headers(c));assert revoked.status_code==200;session.refresh(membership);assert not membership.is_active and not membership.is_default
     again=c.post("/coach-assignments",json=payload(coach,target),headers=headers(c));assert again.status_code==201 and again.json()["membership_id"]==str(membership.id);assert session.scalar(select(func.count()).select_from(UserAthleteMembership))==1
 

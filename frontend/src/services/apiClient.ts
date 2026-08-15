@@ -119,7 +119,7 @@ export class FetchApiClient implements ApiClient {
   coachAssignmentCandidates(){return this.request<CoachAssignmentCandidates>("/coach-assignments/candidates",undefined,true)}
   coachAssignments(){return this.request<CoachAssignment[]>("/coach-assignments",undefined,true)}
   createCoachAssignment(input:{coach_user_id:string;athlete_profile_id:string}){return this.request<CoachAssignment>("/coach-assignments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
-  revokeCoachAssignment(id:string){return this.request<CoachAssignment>("/coach-assignments/",{method:"DELETE"},true)}
+  revokeCoachAssignment(id:string){const membershipId=id?.trim();if(!membershipId)return Promise.reject(new Error("invalid_membership_id"));return this.request<CoachAssignment>(`/coach-assignments/${encodeURIComponent(membershipId)}`,{method:"DELETE"},true)}
   getAthleteProfile(){return this.request<AthleteProfile>("/athlete/profile")}
   updateAthleteProfile(input:AthleteProfileUpdateRequest){return this.request<AthleteProfile>("/athlete/profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   getAccount(){return this.request<Account>("/account",undefined,true)}
