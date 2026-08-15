@@ -332,6 +332,6 @@ def test_public_account_plans_cannot_create_athletes(athlete_env, account_plan):
     response = post_athlete(authenticated_client(application, user))
 
     assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "athlete_creation_forbidden"
+    assert response.json()["detail"]["code"] == "owner_account_required"
     assert session.scalar(select(func.count()).select_from(AthleteProfile)) == 0
     assert session.scalar(select(func.count()).select_from(UserAthleteMembership)) == 0

@@ -243,3 +243,14 @@ describe("account-scoped athlete creation",()=>{
     expect(screen.queryByRole("button",{name:/Nuevo atleta/})).not.toBeInTheDocument();
   });
 });
+
+describe("coach assignment navigation",()=>{
+  it("shows Entrenadores only to owner accounts",async()=>{
+    const owner=renderShell("/dashboard",{...session,user:{...session.user,account_plan:"owner"}});expect(await screen.findByRole("link",{name:"Entrenadores"})).toBeVisible();owner.unmount();
+    renderShell("/dashboard",{...session,user:{...session.user,account_plan:"athlete"}});await screen.findAllByText("Mi atleta");expect(screen.queryByRole("link",{name:"Entrenadores"})).not.toBeInTheDocument();
+  });
+  it("labels assigned coach memberships as Mis atletas and keeps names role-free",async()=>{
+    renderShell("/dashboard",{...session,user:{...session.user,account_plan:"coach"},athletes:[{...session.athletes[0],role:"coach",label:"Atleta A"},{...session.athletes[0],athlete_id:"athlete-b",role:"coach",label:"Atleta B",is_default:false}],selected_athlete_id:"athlete-a"});
+    expect(await screen.findByText("Mis atletas")).toBeVisible();const selector=screen.getByRole("combobox",{name:"Seleccionar atleta"});expect(Array.from((selector as HTMLSelectElement).options).map(x=>x.textContent)).toEqual(["Selecciona…","Atleta A","Atleta B"]);expect(screen.getByText("Entrenador")).toBeVisible();expect(screen.queryByRole("link",{name:"Entrenadores"})).not.toBeInTheDocument();
+  });
+});

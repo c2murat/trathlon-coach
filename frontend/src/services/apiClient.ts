@@ -37,6 +37,8 @@ export function readCookie(name:string,source=typeof document==="undefined"?"":d
 const configuredBaseUrl =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+export interface CoachAssignment {membership_id:string;coach_user_id:string;coach_display_name:string;coach_email:string;athlete_profile_id:string;athlete_display_name:string;is_active:boolean;is_default:boolean}
+export interface CoachAssignmentCandidates {coaches:{user_id:string;display_name:string;email:string}[];athletes:{athlete_profile_id:string;display_name:string}[]}
 export interface ApiClient {
   authMe(): Promise<AuthenticatedUser>;
   login(credentials: LoginCredentials): Promise<AuthenticatedUser>;
@@ -47,6 +49,10 @@ export interface ApiClient {
   changePassword?(input:PasswordChangeRequest):Promise<void>;
   sessionContext?():Promise<SessionContext>;
   createAthlete?(input:AthleteCreateRequest):Promise<AthleteCreateResponse>;
+  coachAssignmentCandidates?():Promise<CoachAssignmentCandidates>;
+  coachAssignments?():Promise<CoachAssignment[]>;
+  createCoachAssignment?(input:{coach_user_id:string;athlete_profile_id:string}):Promise<CoachAssignment>;
+  revokeCoachAssignment?(membershipId:string):Promise<CoachAssignment>;
   getAthleteProfile?():Promise<AthleteProfile>;
   updateAthleteProfile?(input:AthleteProfileUpdateRequest):Promise<AthleteProfile>;
   health(): Promise<HealthResponse>;
@@ -110,6 +116,10 @@ export class FetchApiClient implements ApiClient {
   logout(){return this.request<void>("/auth/logout",{method:"POST"},true)}
   sessionContext(){return this.request<SessionContext>("/session/context",undefined,true)}
   createAthlete(input:AthleteCreateRequest){return this.request<AthleteCreateResponse>("/athletes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
+  coachAssignmentCandidates(){return this.request<CoachAssignmentCandidates>("/coach-assignments/candidates",undefined,true)}
+  coachAssignments(){return this.request<CoachAssignment[]>("/coach-assignments",undefined,true)}
+  createCoachAssignment(input:{coach_user_id:string;athlete_profile_id:string}){return this.request<CoachAssignment>("/coach-assignments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
+  revokeCoachAssignment(id:string){return this.request<CoachAssignment>("/coach-assignments/",{method:"DELETE"},true)}
   getAthleteProfile(){return this.request<AthleteProfile>("/athlete/profile")}
   updateAthleteProfile(input:AthleteProfileUpdateRequest){return this.request<AthleteProfile>("/athlete/profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   getAccount(){return this.request<Account>("/account",undefined,true)}

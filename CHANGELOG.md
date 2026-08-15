@@ -1,3 +1,8 @@
+## 0.8E.6 — Asignación Coach ↔ Athlete
+
+- Añade un flujo owner-only para listar candidatos, asignar, reactivar y revocar memberships Coach sin acceso deportivo global.
+- Incorpora Configuración → Entrenadores y “Mis atletas”, reutilizando CurrentAthlete y el selector multiatleta existente.
+- Mantiene revocación inmediata, aislamiento athlete-scoped, defaults coherentes y auditoría de planes Coach.
 ## 0.8E.5 — Registro self-service desde navegador
 
 - Restringe la creación posterior de AthleteProfiles a cuentas internas Owner; Athlete y Coach no ven ni pueden invocar `POST /athletes`.

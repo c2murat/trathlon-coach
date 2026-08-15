@@ -16,7 +16,7 @@ from app.db.models import (AthleteDailyTrainingLoad,AthleteProfile,AthleteWeekly
 from app.db.session import SessionLocal
 
 
-CHECK_NAMES=("duplicate_active_accounts","integration_accounts_deleted_athlete","invalid_integration_providers","activity_tenant_mismatch","job_tenant_mismatch","orphan_credentials","orphan_activity_accounts","orphan_job_accounts","aggregate_missing_activity","aggregate_tenant_mismatch","aggregate_duplicate_activity","users_without_memberships","athlete_plan_without_self_membership","invalid_account_plan","athletes_without_memberships","athletes_without_active_owner","athletes_without_active_controller","invalid_membership_roles","multiple_active_athlete_memberships","multiple_active_defaults","inactive_defaults","deleted_athlete_defaults","active_memberships_deleted_athlete","invalid_athlete_display_names","legacy_athlete_user_id_present","active_strava_without_credential","invalid_job_minimums")
+CHECK_NAMES=("duplicate_active_accounts","integration_accounts_deleted_athlete","invalid_integration_providers","activity_tenant_mismatch","job_tenant_mismatch","orphan_credentials","orphan_activity_accounts","orphan_job_accounts","aggregate_missing_activity","aggregate_tenant_mismatch","aggregate_duplicate_activity","users_without_memberships","athlete_plan_without_self_membership","active_coach_membership_non_coach_plan","invalid_account_plan","athletes_without_memberships","athletes_without_active_owner","athletes_without_active_controller","invalid_membership_roles","multiple_active_athlete_memberships","multiple_active_defaults","inactive_defaults","deleted_athlete_defaults","active_memberships_deleted_athlete","invalid_athlete_display_names","legacy_athlete_user_id_present","active_strava_without_credential","invalid_job_minimums")
 
 
 def audit(session,*,athlete_id:UUID|None=None)->dict:
@@ -57,6 +57,7 @@ def audit(session,*,athlete_id:UUID|None=None)->dict:
             if user.account_plan!="coach" and not active_membership:issues["users_without_memberships"].append({"user_id":str(user.id)})
             if user.account_plan=="athlete" and not session.scalar(select(UserAthleteMembership.id).where(UserAthleteMembership.user_id==user.id,UserAthleteMembership.role=="athlete",UserAthleteMembership.is_active.is_(True))):issues["athlete_plan_without_self_membership"].append({"user_id":str(user.id)})
             if user.account_plan not in {"owner","athlete","coach"}:issues["invalid_account_plan"].append({"user_id":str(user.id),"account_plan":user.account_plan})
+        issues["active_coach_membership_non_coach_plan"]=[{"membership_id":str(row[0]),"user_id":str(row[1])} for row in session.execute(text("SELECT m.id,m.user_id FROM user_athlete_memberships m JOIN users u ON u.id=m.user_id WHERE m.role='coach' AND m.is_active IS TRUE AND u.account_plan<>'coach' ORDER BY m.id"))]
         athlete_ids=[UUID(str(row[0])) for row in session.execute(text("SELECT id FROM athlete_profiles ORDER BY id"))]
         for athlete_id_value in athlete_ids:
             if not session.scalar(select(UserAthleteMembership.id).where(UserAthleteMembership.athlete_profile_id==athlete_id_value,UserAthleteMembership.is_active.is_(True))):issues["athletes_without_memberships"].append({"athlete_id":str(athlete_id_value)})

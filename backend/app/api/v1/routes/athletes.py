@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.account_permissions import require_owner_account
 from app.api.dependencies.athlete_permissions import capabilities_for_role
-from app.api.dependencies.auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.athletes import AthleteCreateRequest, AthleteCreateResponse
 from app.application.athletes import (
     AthleteAccountUnavailableError,
@@ -26,21 +26,9 @@ def _default_conflict(exc: IntegrityError) -> bool:
 @router.post("", response_model=AthleteCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_athlete(
     payload: AthleteCreateRequest,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_user: User = Depends(require_owner_account),
     session: Session = Depends(get_db_session),
 ) -> AthleteCreateResponse:
-    user = session.get(User, current_user.id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "authentication_required"},
-        )
-    if user.account_plan != "owner":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "athlete_creation_forbidden"},
-        )
-
     try:
         created = AthleteApplication(session).create_owned_athlete(
             current_user.id,
