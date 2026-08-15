@@ -16,7 +16,7 @@ from app.security.passwords import hash_password
 
 
 PASSWORD = "a secure test password"
-PUBLIC_FIELDS = {"id", "email", "display_name", "created_at", "last_login_at"}
+PUBLIC_FIELDS = {"id", "email", "display_name", "created_at", "last_login_at", "account_plan"}
 SENSITIVE_FIELDS = {
     "password", "password_hash", "normalized_email", "auth_subject", "token",
     "session", "csrf", "secret", "oauth", "status", "deleted_at", "timezone",
@@ -82,6 +82,7 @@ def test_get_returns_only_the_authenticated_account_without_an_athlete(account_e
         "display_name": "Ana Cuenta",
         "created_at": user.created_at.isoformat().replace("+00:00", "Z"),
         "last_login_at": user.last_login_at.isoformat().replace("+00:00", "Z"),
+        "account_plan": "owner",
     }
     assert set(response.json()) == PUBLIC_FIELDS
     assert not SENSITIVE_FIELDS.intersection(response.json())

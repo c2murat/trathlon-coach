@@ -29,7 +29,7 @@ def temporary_postgres(monkeypatch):
     config.attributes["skip_logging_config"] = True
     engine = create_engine(url)
     try:
-        command.upgrade(config, "0018_athlete_onboarding")
+        command.upgrade(config, "head")
         yield engine
     finally:
         engine.dispose()

@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     login_rate_limit_window_seconds: int = Field(default=15 * 60, ge=1, le=86400)
     login_rate_limit_max_keys: int = Field(default=10000, ge=100, le=1000000)
     max_active_sessions_per_user: int = Field(default=10, ge=1, le=1000)
+    public_registration_enabled: bool = False
+    registration_rate_limit_attempts: int = Field(default=5, ge=1, le=100)
+    registration_rate_limit_window_seconds: int = Field(default=60 * 60, ge=1, le=86400)
+    registration_rate_limit_max_keys: int = Field(default=10000, ge=100, le=1000000)
     revoked_session_retention_days: int = Field(default=30, ge=0, le=3650)
     strava_client_id: str | None = Field(
         default=None, validation_alias="STRAVA_CLIENT_ID"

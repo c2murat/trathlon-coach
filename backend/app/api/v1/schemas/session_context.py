@@ -4,6 +4,7 @@ class CurrentUserResponse(BaseModel):
     id: UUID
     display_name: str
     email: str | None = None
+    account_plan: str
 class AthleteMembershipResponse(BaseModel):
     athlete_id: UUID
     label: str

@@ -84,7 +84,7 @@ def test_login_normalizes_email_creates_session_and_safe_cookies(http_auth) -> N
     client = TestClient(application)
     response = login(client, "  USER@EXAMPLE.TEST  ")
     assert response.status_code == 200
-    assert response.json() == {"id": str(user.id), "email": user.email, "display_name": "Ana Triatleta", "authentication_mode": "session"}
+    assert response.json() == {"id": str(user.id), "email": user.email, "display_name": "Ana Triatleta", "authentication_mode": "session", "account_plan": "owner"}
     assert "password_hash" not in response.text and "token" not in response.text
     stored = session.scalar(select(UserAuthSession))
     assert stored and stored.user_id == user.id
@@ -139,7 +139,7 @@ def test_me_valid_missing_revoked_and_expired(http_auth) -> None:
     assert login(client).status_code == 200
     body = client.get("/auth/me").json()
     assert body["id"] == str(user.id) and body["authentication_mode"] == "session"
-    assert set(body) == {"id", "email", "display_name", "authentication_mode"}
+    assert set(body) == {"id", "email", "display_name", "authentication_mode", "account_plan"}
     stored = session.scalar(select(UserAuthSession))
     stored.revoked_at = utc_now(); session.commit()
     assert client.get("/auth/me").status_code == 401

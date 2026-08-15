@@ -10,6 +10,7 @@ class AccountResponse(BaseModel):
     display_name: str | None
     created_at: datetime
     last_login_at: datetime | None
+    account_plan: str
 
 
 class AccountUpdateRequest(BaseModel):

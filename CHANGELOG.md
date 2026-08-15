@@ -1,3 +1,9 @@
+## 0.8E.5 — Registro self-service desde navegador
+
+- Añade registro público exclusivo para Atleta y Entrenador, con account plan persistente separado del rol athlete-scoped.
+- Crea atómicamente el perfil propio del Atleta y permite al Coach empezar sin memberships en un estado estable.
+- Reutiliza Argon2, normalización de email, sesiones, CSRF y rate limiting existentes; Owner no es registrable.
+
 ## 0.8E.4 — Modelo definitivo de roles y permisos
 
 - Define OWNER como administración athlete-scoped, ATHLETE como identidad self-service y COACH como entrenador de perfiles previamente asignados.

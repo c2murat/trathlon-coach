@@ -20,7 +20,7 @@ import type { DailyTrainingLoadAggregate, WeeklyTrainingLoadAggregate, TrainingL
 import type {ManualStrengthSession,ManualStrengthSessionCreate,ManualStrengthSessionUpdate,ManualStrengthTrainingLoad} from "../types/manualStrength";
 import type {DailyTrainingStatus,LatestTrainingStatusQuery,TrainingStatusQuery} from "../types/trainingStatus";
 import {ATHLETE_HEADER,type SessionContext} from "../types/sessionContext";
-import type {AuthenticatedUser,LoginCredentials} from "../types/auth";
+import type {AuthenticatedUser,LoginCredentials,RegistrationInput} from "../types/auth";
 import type {Account,AccountUpdateRequest,PasswordChangeRequest} from "../features/account/accountTypes";
 import type {AthleteCreateRequest,AthleteCreateResponse} from "../types/athlete";
 import type {AthleteProfile,AthleteProfileUpdateRequest} from "../features/athleteProfile/athleteProfileTypes";
@@ -40,6 +40,7 @@ const configuredBaseUrl =
 export interface ApiClient {
   authMe(): Promise<AuthenticatedUser>;
   login(credentials: LoginCredentials): Promise<AuthenticatedUser>;
+  register?(input:RegistrationInput):Promise<AuthenticatedUser>;
   logout(): Promise<void>;
   getAccount?():Promise<Account>;
   updateAccount?(input:AccountUpdateRequest):Promise<Account>;
@@ -105,6 +106,7 @@ export class FetchApiClient implements ApiClient {
   setAuthorizationErrorHandler(handler:((code:string)=>void)|null){this.authorizationHandler=handler}
   authMe(){return this.request<AuthenticatedUser>("/auth/me",undefined,true)}
   login(credentials:LoginCredentials){return this.request<AuthenticatedUser>("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(credentials)},true)}
+  register(input:RegistrationInput){return this.request<AuthenticatedUser>("/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
   logout(){return this.request<void>("/auth/logout",{method:"POST"},true)}
   sessionContext(){return this.request<SessionContext>("/session/context",undefined,true)}
   createAthlete(input:AthleteCreateRequest){return this.request<AthleteCreateResponse>("/athletes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
@@ -202,7 +204,7 @@ export class FetchApiClient implements ApiClient {
     const headers = new Headers(init?.headers);
     headers.set("Accept", "application/json");
     const method=(init?.method??"GET").toUpperCase();
-    if(UNSAFE_METHODS.has(method)&&path!=="/auth/login"){const csrfToken=readCookie(CSRF_COOKIE_NAME);if(csrfToken)headers.set(CSRF_HEADER_NAME,csrfToken)}
+    if(UNSAFE_METHODS.has(method)&&path!=="/auth/login"&&path!=="/auth/register"){const csrfToken=readCookie(CSRF_COOKIE_NAME);if(csrfToken)headers.set(CSRF_HEADER_NAME,csrfToken)}
     if(!withoutAthlete&&path!=="/health"){
       if(!this.activeAthleteId)throw new Error("athlete_selection_required");
       headers.set(ATHLETE_HEADER,this.activeAthleteId);

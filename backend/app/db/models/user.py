@@ -30,6 +30,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
     display_name: Mapped[str | None] = mapped_column(String(200))
+    account_plan: Mapped[str] = mapped_column(String(16), nullable=False, default="owner")
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 

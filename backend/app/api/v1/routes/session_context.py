@@ -27,4 +27,4 @@ def get_session_context(current_user:AuthenticatedUser=Depends(get_current_user)
   if defaults:selected=defaults[0].athlete_id
   else:required=True
  name=(user.display_name or "").strip() or user.email or "Usuario"
- return SessionContextResponse(user=CurrentUserResponse(id=user.id,display_name=name,email=user.email),athletes=views,selected_athlete_id=selected,selection_required=required)
+ return SessionContextResponse(user=CurrentUserResponse(id=user.id,display_name=name,email=user.email,account_plan=user.account_plan),athletes=views,selected_athlete_id=selected,selection_required=required)

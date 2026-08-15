@@ -33,6 +33,7 @@ def _response(user: User) -> AccountResponse:
         display_name=user.display_name,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
+        account_plan=user.account_plan,
     )
 
 
