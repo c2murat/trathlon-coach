@@ -28,6 +28,7 @@ interface DashboardPageProps {
   onExternalNavigate?: (url: string) => void;
   currentAthleteName?: string;
   currentAthleteRole?: AthleteRole;
+  canEditAthleteProfile?: boolean;
 }
 
 const emptyActivities: ActivityPage = {
@@ -45,6 +46,7 @@ export function DashboardPage({
   onExternalNavigate,
   currentAthleteName,
   currentAthleteRole,
+  canEditAthleteProfile = true,
 }: DashboardPageProps) {
   const [loading, setLoading] = useState(true);
   const [backendOnline, setBackendOnline] = useState(false);
@@ -140,7 +142,7 @@ export function DashboardPage({
     <div className="dashboard-page">{showSync&&strava?.connected&&<ActivitySyncButton client={client} pollDelayMs={pollDelayMs}/>}
       <header className="page-header"><div><p className="eyebrow">PANEL PERSONAL</p><h1>Inicio</h1><p>Tu espacio personal de entrenamiento de resistencia</p>{currentAthleteName&&currentAthleteRole&&<div className="dashboard-athlete-context"><strong>{currentAthleteName}</strong><span className="athlete-role-badge">{roleLabel(currentAthleteRole)}</span></div>}</div><span className="version-badge">Versión 0.5A.1</span></header>
 
-      {profileCompleteness?.status==="minimal"&&<aside className="athlete-profile-banner" aria-labelledby="complete-profile-title"><div><h2 id="complete-profile-title">Completa tu perfil deportivo</h2><p>Puedes añadir información opcional para mejorar el contexto de entrenamiento.</p></div><AppLink className="button button--primary" to="/settings/athlete-profile">Completar perfil</AppLink></aside>}
+      {profileCompleteness?.status==="minimal"&&<aside className="athlete-profile-banner" aria-labelledby="athlete-profile-banner-title">{canEditAthleteProfile?<><div><h2 id="athlete-profile-banner-title">Completa tu perfil deportivo</h2><p>Puedes añadir información opcional para mejorar el contexto de entrenamiento.</p></div><AppLink className="button button--primary" to="/settings/athlete-profile">Completar perfil</AppLink></>:<><div><h2 id="athlete-profile-banner-title">Perfil deportivo del atleta</h2><p>Consulta la información básica de {currentAthleteName??"el atleta"}.</p></div><AppLink className="button button--primary" to="/settings/athlete-profile">Ver perfil</AppLink></>}</aside>}
 
       {loading ? (
         <section className="loading-state" aria-live="polite">

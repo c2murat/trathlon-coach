@@ -30,7 +30,7 @@ const nav:{path:string;label:string;icon:NavIconName}[]=[
 function ActivitySyncButton(_: {client:ApiClient}){return null}
 function greeting(){const hour=new Date().getHours();return hour<12?"Buenos días":hour<20?"Buenas tardes":"Buenas noches"}
 function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapability)=>boolean,athlete?:{label:string;role:string}|null){
- if(path==="/dashboard")return <DashboardPage client={client} showSync canManageStrava={has(ATHLETE_CAPABILITIES.CONNECT_STRAVA)} currentAthleteName={athlete?.label} currentAthleteRole={athlete?.role as AthleteRole|undefined}/>;
+ if(path==="/dashboard")return <DashboardPage client={client} showSync canManageStrava={has(ATHLETE_CAPABILITIES.CONNECT_STRAVA)} currentAthleteName={athlete?.label} currentAthleteRole={athlete?.role as AthleteRole|undefined} canEditAthleteProfile={has(ATHLETE_CAPABILITIES.EDIT_PROFILE)}/>;
  if(path==="/activities")return <ActivitiesPage client={client}/>;
  if(path==="/activities/strength")return <ManualStrengthPage client={client} canCreate={has(ATHLETE_CAPABILITIES.CREATE_STRENGTH)} canUpdate={has(ATHLETE_CAPABILITIES.UPDATE_STRENGTH)} canDelete={has(ATHLETE_CAPABILITIES.DELETE_STRENGTH)} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
  if(path==="/settings/account")return <AccountPage client={client}/>;
