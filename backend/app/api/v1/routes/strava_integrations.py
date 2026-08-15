@@ -61,7 +61,8 @@ from app.integrations.strava.activity_import import StravaSummaryImportManager
 LOGGER = logging.getLogger(__name__)
 
 read_strava = require_athlete_capability(AthleteCapability.READ_STRAVA_INTEGRATION)
-manage_strava = require_athlete_capability(AthleteCapability.MANAGE_STRAVA_CONNECTION)
+connect_strava_permission = require_athlete_capability(AthleteCapability.CONNECT_STRAVA)
+disconnect_strava_permission = require_athlete_capability(AthleteCapability.DISCONNECT_STRAVA)
 
 router = APIRouter(prefix="/integrations/strava", tags=["integrations"])
 NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
@@ -96,7 +97,7 @@ def strava_status(
 @router.delete("/disconnect")
 async def disconnect_strava(
     current_user: AuthenticatedUser = Depends(get_current_user),
-    current_athlete: CurrentAthleteContext = Depends(manage_strava),
+    current_athlete: CurrentAthleteContext = Depends(disconnect_strava_permission),
     settings: Settings = Depends(get_settings),
     transport: AsyncHttpTransport = Depends(get_strava_http_transport),
     session: Session = Depends(get_db_session),
@@ -158,7 +159,7 @@ async def disconnect_strava(
 @router.get("/connect", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 async def connect_strava(
     current_user: AuthenticatedUser = Depends(get_current_user),
-    current_athlete: CurrentAthleteContext = Depends(manage_strava),
+    current_athlete: CurrentAthleteContext = Depends(connect_strava_permission),
     configuration: StravaConnectConfiguration = Depends(
         get_strava_connect_configuration
     ),
@@ -183,7 +184,7 @@ async def connect_strava(
 @router.post("/connect/start", response_model=StravaConnectionStartResponse)
 async def start_strava_connection(
     response: Response,
-    current_athlete: CurrentAthleteContext = Depends(manage_strava),
+    current_athlete: CurrentAthleteContext = Depends(connect_strava_permission),
     configuration: StravaConnectConfiguration = Depends(get_strava_connect_configuration),
     state_store: OAuthStateStore = Depends(get_oauth_state_store),
     session: Session = Depends(get_db_session),
@@ -280,7 +281,7 @@ async def strava_callback(
         membership=membership,
     )
     if not athlete_has_capability(
-        callback_athlete, AthleteCapability.MANAGE_STRAVA_CONNECTION
+        callback_athlete, AthleteCapability.CONNECT_STRAVA
     ):
         raise _safe_error(status.HTTP_403_FORBIDDEN, "athlete_permission_denied")
 

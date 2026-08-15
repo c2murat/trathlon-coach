@@ -35,12 +35,15 @@ from app.providers.base import OAuthState, OAuthStateStore
 
 EXPECTED = {
     "owner": set(AthleteCapability),
-    "athlete": set(AthleteCapability),
-    "editor": set(AthleteCapability),
+    "athlete": set(AthleteCapability) - {AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS},
+    "editor": set(AthleteCapability) - {AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS},
     "coach": set(AthleteCapability) - {
         AthleteCapability.DELETE_MANUAL_STRENGTH,
         AthleteCapability.EDIT_ATHLETE_PROFILE,
+        AthleteCapability.READ_ATHLETE_HEALTH,
         AthleteCapability.MANAGE_STRAVA_CONNECTION,
+        AthleteCapability.CONNECT_STRAVA,
+        AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS,
         AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
     },
     "viewer": {
@@ -341,3 +344,24 @@ def test_openapi_has_one_athlete_header_and_no_role_input(multi_athlete_context)
         ]
         assert len(athlete_headers) == 1
     assert '"role"' not in str(schema["components"]["schemas"])
+
+def test_capabilities_do_not_leak_between_owner_and_coach_memberships(multi_athlete_context):
+    client, engine, ids = multi_athlete_context
+    _set_shared_role(engine, ids, "coach")
+    owner_context = client.get("/session/context").json()["athletes"]
+    owner = next(item for item in owner_context if item["athlete_id"] == str(ids["athlete_a1"]))
+    coach = next(item for item in owner_context if item["athlete_id"] == str(ids["athlete_b2"]))
+    assert "manage_athlete_memberships" in owner["capabilities"]
+    assert "disconnect_strava" in coach["capabilities"]
+    assert "connect_strava" not in coach["capabilities"]
+    assert "read_athlete_health" not in coach["capabilities"]
+    assert "edit_athlete_profile" not in coach["capabilities"]
+    assert "manage_athlete_memberships" not in coach["capabilities"]
+
+
+def test_coach_can_disconnect_selected_athlete_without_connect_permission(multi_athlete_context):
+    client, engine, ids = multi_athlete_context
+    _set_shared_role(engine, ids, "coach")
+    response = client.delete("/integrations/strava/disconnect", headers=_headers(ids))
+    assert response.status_code == 200
+    assert response.json()["status"] == "already_disconnected"

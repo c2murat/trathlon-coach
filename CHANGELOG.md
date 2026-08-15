@@ -1,3 +1,11 @@
+## 0.8E.4 — Modelo definitivo de roles y permisos
+
+- Define OWNER como administración athlete-scoped, ATHLETE como identidad self-service y COACH como entrenador de perfiles previamente asignados.
+- Separa las capabilities Strava de conexión y desconexión; Coach puede consultar, sincronizar y desconectar, pero no conectar ni reconectar.
+- Protege Salud y perfil físico frente a Coach, mantiene rendimiento editable y evita leakage de capabilities entre memberships.
+- Añade revocación administrativa transaccional, idempotente y con dry-run para memberships, preservando el invariante de controller.
+- Documenta límites actuales de planificación y autoría de sesiones sin introducir migraciones ni endpoints ficticios.
+- Muestra en Inicio el rol de producto de la membership activa, actualizado al cambiar de atleta, sin añadir roles al selector.
 ## 0.8D.3 — Frontend del perfil deportivo
 
 - Añade `Configuración → Perfil deportivo` con formulario athlete-scoped, PATCH parcial y semántica null explícita.

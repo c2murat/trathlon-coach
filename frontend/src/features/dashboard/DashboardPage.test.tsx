@@ -204,7 +204,15 @@ describe("DashboardPage", () => {
     await waitFor(() => expect(client.activities).toHaveBeenCalledTimes(2));
   });
 });
-
-
-
-
+describe("Dashboard athlete membership role",()=>{
+  it.each([
+    ["owner","Propietario"],
+    ["athlete","Atleta"],
+    ["coach","Entrenador"],
+  ] as const)("renders the selected %s membership with its product label",async(role,label)=>{
+    render(<DashboardPage client={fakeClient()} currentAthleteName="Perfil seleccionado" currentAthleteRole={role}/>);
+    expect(screen.getByText("Perfil seleccionado")).toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
+    await screen.findByText("Conectado");
+  });
+});

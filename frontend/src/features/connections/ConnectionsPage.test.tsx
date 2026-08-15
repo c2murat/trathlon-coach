@@ -15,3 +15,17 @@ describe("StravaConnectionPanel athlete scope",()=>{
  it("keeps status visible but hides management without capability",async()=>{render(<StravaConnectionPanel client={client({stravaStatus:vi.fn().mockResolvedValue(state(true))})} athleteId="carlos" athleteName="Carlos Murat"/>);expect(await screen.findByText("Conectado")).toBeInTheDocument();expect(screen.getByText(/no gestionarla/)).toBeInTheDocument();expect(screen.queryByRole("button",{name:/Desconectar/})).not.toBeInTheDocument()});
  it("reports a status load failure instead of claiming disconnected",async()=>{const c=client({stravaStatus:vi.fn().mockRejectedValue(new Error("network"))});render(<StravaConnectionPanel client={c} athleteId="jenny" athleteName="Jenny Ruiz"/>);expect(await screen.findByRole("alert")).toHaveTextContent("No se ha podido cargar el estado de Strava.");expect(screen.queryByText("Sin conectar")).not.toBeInTheDocument()});
 });
+describe("Strava operation capabilities",()=>{
+ it("lets a coach sync and disconnect without showing connect or reconnect",async()=>{
+  render(<StravaConnectionPanel client={client({stravaStatus:vi.fn().mockResolvedValue(state(true))})} athleteId="athlete-a" athleteName="Atleta A" canDisconnect canSync/>);
+  expect(await screen.findByText("Conectado")).toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"Sincronizar actividades"})).toBeVisible();
+  expect(screen.getByRole("button",{name:"Desconectar Strava"})).toBeVisible();
+  expect(screen.queryByRole("button",{name:/Conectar Strava para/})).not.toBeInTheDocument();
+ });
+ it("does not show reconnect when connect capability is absent",async()=>{
+  render(<StravaConnectionPanel client={client({stravaStatus:vi.fn().mockResolvedValue({...state(false),requires_reconnect:true})})} athleteId="athlete-a" athleteName="Atleta A" canDisconnect canSync/>);
+  expect(await screen.findByText("Requiere reconexión")).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:/Reconectar Strava/})).not.toBeInTheDocument();
+ });
+});

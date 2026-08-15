@@ -13,6 +13,7 @@ from app.api.dependencies.current_athlete import (
 
 class AthleteCapability(str, Enum):
     READ_ATHLETE_DATA = "read_athlete_data"
+    READ_ATHLETE_HEALTH = "read_athlete_health"
     RECALCULATE_ATHLETE_DATA = "recalculate_athlete_data"
     EDIT_ATHLETE_PROFILE = "edit_athlete_profile"
     CREATE_MANUAL_STRENGTH = "create_manual_strength"
@@ -22,6 +23,9 @@ class AthleteCapability(str, Enum):
     CREATE_PERFORMANCE_REFERENCE = "create_performance_reference"
     READ_STRAVA_INTEGRATION = "read_strava_integration"
     MANAGE_STRAVA_CONNECTION = "manage_strava_connection"
+    CONNECT_STRAVA = "connect_strava"
+    DISCONNECT_STRAVA = "disconnect_strava"
+    MANAGE_ATHLETE_MEMBERSHIPS = "manage_athlete_memberships"
     RUN_STRAVA_IMPORT = "run_strava_import"
     RUN_STRAVA_ENRICHMENT = "run_strava_enrichment"
     RUN_STRAVA_EVIDENCE = "run_strava_evidence"
@@ -31,6 +35,7 @@ class AthleteCapability(str, Enum):
 _ALL_SPORT_CAPABILITIES = frozenset(AthleteCapability)
 _ATHLETE_SELF_SERVICE_CAPABILITIES = frozenset({
     AthleteCapability.READ_ATHLETE_DATA,
+    AthleteCapability.READ_ATHLETE_HEALTH,
     AthleteCapability.RECALCULATE_ATHLETE_DATA,
     AthleteCapability.EDIT_ATHLETE_PROFILE,
     AthleteCapability.CREATE_MANUAL_STRENGTH,
@@ -40,6 +45,8 @@ _ATHLETE_SELF_SERVICE_CAPABILITIES = frozenset({
     AthleteCapability.CREATE_PERFORMANCE_REFERENCE,
     AthleteCapability.READ_STRAVA_INTEGRATION,
     AthleteCapability.MANAGE_STRAVA_CONNECTION,
+    AthleteCapability.CONNECT_STRAVA,
+    AthleteCapability.DISCONNECT_STRAVA,
     AthleteCapability.RUN_STRAVA_IMPORT,
     AthleteCapability.RUN_STRAVA_ENRICHMENT,
     AthleteCapability.RUN_STRAVA_EVIDENCE,
@@ -48,13 +55,16 @@ _ATHLETE_SELF_SERVICE_CAPABILITIES = frozenset({
 _COACH_CAPABILITIES = _ALL_SPORT_CAPABILITIES - {
     AthleteCapability.DELETE_MANUAL_STRENGTH,
     AthleteCapability.EDIT_ATHLETE_PROFILE,
+    AthleteCapability.READ_ATHLETE_HEALTH,
     AthleteCapability.MANAGE_STRAVA_CONNECTION,
+    AthleteCapability.CONNECT_STRAVA,
+    AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS,
     AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
 }
 _ROLE_CAPABILITIES: dict[str, frozenset[AthleteCapability]] = {
     "owner": _ALL_SPORT_CAPABILITIES,
     "athlete": _ATHLETE_SELF_SERVICE_CAPABILITIES,
-    "editor": _ALL_SPORT_CAPABILITIES,
+    "editor": _ALL_SPORT_CAPABILITIES - {AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS},
     "coach": _COACH_CAPABILITIES,
     "viewer": frozenset({
         AthleteCapability.READ_ATHLETE_DATA,

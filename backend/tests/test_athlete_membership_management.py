@@ -10,9 +10,10 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies.athlete_permissions import AthleteCapability, capabilities_for_role
 from app.api.dependencies.auth import AuthenticatedUser
 from app.api.dependencies.current_athlete import resolve_current_athlete
-from app.application.athlete_membership_management import AthleteMembershipRoleChangeError, set_athlete_membership_role, validate_athlete_membership_role_change
+from app.application.athlete_membership_management import AthleteMembershipRoleChangeError, revoke_athlete_membership, set_athlete_membership_role, validate_athlete_membership_revocation, validate_athlete_membership_role_change
 from app.db.base import Base
 from app.db.models import AthleteProfile, User, UserAthleteMembership
+from scripts import revoke_athlete_membership as revoke_cli
 from scripts import set_athlete_membership_role as cli
 
 
@@ -112,3 +113,66 @@ def test_capabilities_are_scoped_to_selected_membership(role_env):
     with pytest.raises(HTTPException) as error:
         resolve_current_athlete(session,AuthenticatedUser(jenny_user.id),str(carlos.id))
     assert error.value.status_code==403 and error.value.detail["code"]=="athlete_not_authorized"
+
+def test_revoke_coach_preserves_athlete_controller(role_env):
+    session, _, _, _, _, jenny, _, membership, _ = role_env
+    membership.role = "coach"
+    session.commit()
+    result = revoke_athlete_membership(session, user_id=membership.user_id, athlete_id=jenny.id)
+    session.commit()
+    session.refresh(membership)
+    assert result.changed
+    assert not membership.is_active
+    assert not membership.is_default
+
+
+def test_revoke_is_idempotent_when_already_inactive(role_env):
+    session, _, _, _, _, jenny, _, membership, _ = role_env
+    membership.role = "coach"
+    membership.is_active = False
+    session.commit()
+    result = revoke_athlete_membership(session, user_id=membership.user_id, athlete_id=jenny.id)
+    assert not result.changed
+
+
+def test_revoke_only_controller_is_rejected(role_env):
+    session, _, carlos_user, _, carlos, _, membership, _, _ = role_env
+    with pytest.raises(AthleteMembershipRoleChangeError, match="athlete_controller_required"):
+        revoke_athlete_membership(session, user_id=carlos_user.id, athlete_id=carlos.id)
+    session.rollback()
+    assert membership.is_active
+
+
+def test_revoke_unknown_membership_is_controlled(role_env):
+    session, _, carlos_user, _, _, _, _, _, _ = role_env
+    unrelated = AthleteProfile(display_name="Unrelated")
+    session.add(unrelated)
+    session.commit()
+    with pytest.raises(AthleteMembershipRoleChangeError, match="membership_not_found"):
+        validate_athlete_membership_revocation(session, user_id=carlos_user.id, athlete_id=unrelated.id)
+
+
+def test_revoke_rollback_preserves_original(role_env):
+    session, _, _, _, _, jenny, _, membership, _ = role_env
+    membership.role = "coach"
+    session.commit()
+    revoke_athlete_membership(session, user_id=membership.user_id, athlete_id=jenny.id)
+    session.rollback()
+    session.refresh(membership)
+    assert membership.is_active
+
+
+def test_revoke_cli_dry_run_persists_nothing(role_env, monkeypatch, capsys):
+    session, engine, _, _, _, jenny, _, membership, _ = role_env
+    membership.role = "coach"
+    session.commit()
+    monkeypatch.setattr(revoke_cli, "SessionLocal", lambda: Session(engine))
+    code = revoke_cli.main(["--user-id", str(membership.user_id), "--athlete-id", str(jenny.id), "--dry-run"])
+    with Session(engine) as verification:
+        assert verification.get(UserAthleteMembership, membership.id).is_active
+    output = capsys.readouterr().out
+    assert code == 0
+    assert "Current role: coach" in output
+    assert "Action: revoke" in output
+    assert "Controller after transition: true" in output
+    assert "No changes persisted." in output
