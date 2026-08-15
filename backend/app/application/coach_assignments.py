@@ -7,6 +7,17 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.models import AthleteProfile, User, UserAthleteMembership
 
 
+def coach_membership_lock_statement(membership_id: UUID):
+    return (
+        select(UserAthleteMembership)
+        .where(
+            UserAthleteMembership.id == membership_id,
+            UserAthleteMembership.role == "coach",
+        )
+        .with_for_update(of=UserAthleteMembership)
+    )
+
+
 class CoachAssignmentError(ValueError):
     pass
 
@@ -58,10 +69,14 @@ class CoachAssignmentApplication:
         return CoachAssignment(membership, coach, athlete)
 
     def revoke(self, membership_id: UUID) -> CoachAssignment:
-        membership = self.session.scalar(select(UserAthleteMembership).options(joinedload(UserAthleteMembership.user), joinedload(UserAthleteMembership.athlete_profile)).where(UserAthleteMembership.id == membership_id, UserAthleteMembership.role == "coach").with_for_update())
+        membership = self.session.scalar(coach_membership_lock_statement(membership_id))
         if membership is None:
+            raise CoachAssignmentError("assignment_not_found")
+        coach = self.session.get(User, membership.user_id)
+        athlete = self.session.get(AthleteProfile, membership.athlete_profile_id)
+        if coach is None or athlete is None:
             raise CoachAssignmentError("assignment_not_found")
         membership.is_active = False
         membership.is_default = False
         self.session.flush()
-        return CoachAssignment(membership, membership.user, membership.athlete_profile)
+        return CoachAssignment(membership, coach, athlete)

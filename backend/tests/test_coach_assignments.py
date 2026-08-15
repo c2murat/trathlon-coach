@@ -2,9 +2,11 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.application.coach_assignments import coach_membership_lock_statement
 from app.core.settings import Settings, get_settings
 from app.db.base import Base
 from app.db.models import AthleteProfile, User, UserAthleteMembership
@@ -32,6 +34,12 @@ def client(app,row):
 
 def headers(c):return {"X-CSRF-Token":c.cookies.get("tricoach_csrf")}
 def payload(coach,athlete):return {"coach_user_id":str(coach.id),"athlete_profile_id":str(athlete.id)}
+
+def test_revocation_lock_targets_only_membership_table():
+    sql = str(coach_membership_lock_statement(uuid4()).compile(dialect=postgresql.dialect()))
+    normalized_sql = " ".join(sql.upper().split())
+    assert "FOR UPDATE OF USER_ATHLETE_MEMBERSHIPS" in normalized_sql
+    assert " JOIN " not in normalized_sql
 
 def test_owner_lists_candidates_assigns_idempotently_reactivates_and_revokes(env):
     session,app=env;owner=user(session,"owner","owner");coach=user(session,"coach");target=athlete(session,"Target");c=client(app,owner)
