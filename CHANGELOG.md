@@ -1,3 +1,9 @@
+## 0.8E.7 - Base de planificación y objetivos de competición
+
+- Añade objetivos de competición multiatleta con prioridades A/B/C y Calendar athlete-scoped.
+- Incorpora la base persistente de planes, asociaciones, sesiones planificadas y workouts estructurados provider-neutral.
+- Permite autogestión a Athlete y lectura sin edición a Coach asignado; no incluye generación IA, Garmin ni matching planificado/realizado.
+
 ## 0.8E.6 — Asignación Coach ↔ Athlete
 
 - Añade un flujo owner-only para listar candidatos, asignar, reactivar y revocar memberships Coach sin acceso deportivo global.

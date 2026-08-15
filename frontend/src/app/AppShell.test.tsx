@@ -15,7 +15,7 @@ vi.mock("../features/trainingStatus/TrainingStatusPage", () => ({
 }));
 vi.mock("../components/ActivitySyncButton",()=>({ActivitySyncButton:()=>null,activitySyncCompletedEvent:"tricoach:activity-sync-completed"}));
 
-const session={user:{id:"user-1",display_name:"Ana",email:"ana@example.test"},athletes:[{athlete_id:"athlete-a",label:"Mi atleta",role:"owner",is_default:true,capabilities:["read_athlete_data","read_athlete_health","connect_strava","disconnect_strava"]}],selected_athlete_id:"athlete-a",selection_required:false} as any;
+const session={user:{id:"user-1",display_name:"Ana",email:"ana@example.test"},athletes:[{athlete_id:"athlete-a",label:"Mi atleta",role:"owner",is_default:true,capabilities:["read_athlete_data","read_athlete_health","connect_strava","disconnect_strava","read_training_planning","manage_competition_goals"]}],selected_athlete_id:"athlete-a",selection_required:false} as any;
 function shellClient(context=session):ApiClient{return {authMe:vi.fn().mockResolvedValue({id:"user-1",display_name:context.user.display_name,email:"ana@example.test",authentication_mode:"session",account_plan:context.user.account_plan??"owner"}),login:vi.fn(),logout:vi.fn(),getAccount:vi.fn().mockResolvedValue({id:"user-1",email:"ana@example.test",display_name:"Ana",created_at:"2026-08-10T10:00:00Z",last_login_at:null}),updateAccount:vi.fn().mockResolvedValue({id:"user-1",email:"ana@example.test",display_name:"Ana Nueva",created_at:"2026-08-10T10:00:00Z",last_login_at:null}),changePassword:vi.fn(),sessionContext:vi.fn().mockResolvedValue(context),health:vi.fn().mockResolvedValue({status:"ok"}),stravaStatus:vi.fn().mockResolvedValue({connected:false}),activities:vi.fn().mockResolvedValue({total:0,limit:10,offset:0,items:[]}),browseActivities:vi.fn().mockResolvedValue({total:0,limit:20,offset:0,items:[]}),activityDetail:vi.fn().mockResolvedValue(null),activityFilterOptions:vi.fn().mockResolvedValue({sport_types:[],visibility_values:[],minimum_activity_date:null,maximum_activity_date:null}),latestImport:vi.fn().mockResolvedValue({status:"not_started"}),startImport:vi.fn().mockResolvedValue({job_id:"job",status:"queued"}),importStatus:vi.fn().mockResolvedValue({job_id:"job",status:"succeeded"}),dashboardSummary:vi.fn().mockResolvedValue(null),dashboardTrends:vi.fn().mockResolvedValue([]),dashboardConsistency:vi.fn().mockResolvedValue(null),performanceProfile:vi.fn().mockResolvedValue({profile:null,derived:{}}),performanceProfileHistory:vi.fn().mockResolvedValue([]),performanceReferences:vi.fn().mockResolvedValue([]),performanceZones:vi.fn().mockResolvedValue([]),startStravaConnection:vi.fn().mockResolvedValue({authorization_url:"https://www.strava.com/oauth/authorize?state=opaque"}),getAthleteProfile:vi.fn().mockResolvedValue({id:"athlete-a",display_name:"Mi atleta",timezone:"Europe/Madrid",unit_system:"metric",birth_year:null,sex_for_training_context:null,height_m:null,weight_kg:null,updated_at:"2026-08-12T10:00:00Z",completeness:{status:"minimal",missing_recommended_fields:["birth_year","sex_for_training_context","height_m","weight_kg"]}})} as unknown as ApiClient}
 function renderShell(path: string,context=session) {
   window.history.replaceState({}, "", path);
@@ -111,17 +111,7 @@ it("marks profile and reference actions as denied for read-only capabilities",as
       await screen.findByRole("heading", { name: "Calendario" }),
     ).toBeInTheDocument();
 
-    const versionText = document.querySelector(".coming-soon__version");
-
-    expect(versionText).toBeInTheDocument();
-    expect(versionText).toHaveTextContent(/Versión prevista:/i);
-    expect(versionText).toHaveTextContent(/0\.9/);
-
-    await userEvent.click(
-      screen.getByRole("link", { name: /volver al inicio/i }),
-    );
-
-    expect(window.location.pathname).toBe("/dashboard");
+    expect(await screen.findByText("Todavía no tienes objetivos de competición.")).toBeVisible();
   });
 
   it("shows a time-aware Spanish greeting", async () => {

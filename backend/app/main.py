@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.api.v1.routes.account import router as account_router
 from app.api.v1.routes.coach_assignments import router as coach_assignments_router
+from app.api.v1.routes.competition_goals import router as competition_goals_router
 from app.api.v1.routes.athletes import router as athletes_router
 from app.api.v1.routes.athlete_profile import router as athlete_profile_router
 from app.application.login_rate_limit import InMemoryLoginRateLimiter, LoginRateLimitPolicy
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(account_router)
     application.include_router(coach_assignments_router)
+    application.include_router(competition_goals_router)
     application.include_router(athletes_router)
     application.include_router(athlete_profile_router)
     application.include_router(auth_router)

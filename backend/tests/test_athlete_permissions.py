@@ -45,10 +45,12 @@ EXPECTED = {
         AthleteCapability.CONNECT_STRAVA,
         AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS,
         AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
+        AthleteCapability.MANAGE_COMPETITION_GOALS,
     },
     "viewer": {
         AthleteCapability.READ_ATHLETE_DATA,
         AthleteCapability.READ_STRAVA_INTEGRATION,
+        AthleteCapability.READ_TRAINING_PLANNING,
     },
     "unknown": set(),
 }

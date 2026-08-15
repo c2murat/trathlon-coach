@@ -23,7 +23,7 @@ def add(e,role="owner",default=False,active=True):
  with Session(e) as s:
   token=str(uuid4());u=User(email=f"{token}@test",normalized_email=f"{token}@test",auth_subject=token);a=AthleteProfile(display_name="Test athlete");s.add_all([u,a,UserAthleteMembership(user_id=LOCAL_MVP_USER_ID,athlete_profile=a,role=role,is_default=default,is_active=active)]);s.commit();return a.id
 def test_empty_single_and_inactive(context_client):
- c,e=context_client;b=c.get("/session/context").json();assert b["athletes"]==[] and not b["selection_required"];a=add(e,"viewer");add(e,active=False);b=c.get("/session/context").json();assert b["selected_athlete_id"]==str(a);assert b["athletes"][0]["capabilities"]==["read_athlete_data","read_strava_integration"]
+ c,e=context_client;b=c.get("/session/context").json();assert b["athletes"]==[] and not b["selection_required"];a=add(e,"viewer");add(e,active=False);b=c.get("/session/context").json();assert b["selected_athlete_id"]==str(a);assert b["athletes"][0]["capabilities"]==["read_athlete_data","read_strava_integration","read_training_planning"]
 def test_ambiguous_and_explicit(context_client):
  c,e=context_client;add(e,"coach");b=add(e,"editor");body=c.get("/session/context").json();assert body["selection_required"] and body["selected_athlete_id"] is None;assert c.get("/session/context",headers={"X-TriCoach-Athlete-Id":str(b)}).json()["selected_athlete_id"]==str(b)
 def test_default_and_header_errors(context_client):

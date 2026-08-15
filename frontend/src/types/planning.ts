@@ -1,0 +1,5 @@
+export type CompetitionPriority="A"|"B"|"C";
+export type CompetitionCategory="triathlon"|"running"|"cycling"|"swimming";
+export interface CompetitionGoal{id:string;athlete_profile_id:string;name:string;event_date:string;event_start_time:string|null;timezone:string;event_category:CompetitionCategory;event_format:string;priority:CompetitionPriority;distance_m:number|null;swim_distance_m:number|null;bike_distance_m:number|null;run_distance_m:number|null;target_finish_time_seconds:number|null;notes:string|null;status:"active"|"completed"|"cancelled";created_by_user_id:string;created_at:string;updated_at:string}
+export interface CompetitionGoalCreate{name:string;event_date:string;event_category:CompetitionCategory;event_format:string;priority:CompetitionPriority;distance_m?:number|null;swim_distance_m?:number|null;bike_distance_m?:number|null;run_distance_m?:number|null;target_finish_time_seconds?:number|null;notes?:string|null}
+export type CompetitionGoalUpdate=Partial<CompetitionGoalCreate>&{status?:CompetitionGoal["status"]};

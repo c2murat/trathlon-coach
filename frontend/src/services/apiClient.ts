@@ -24,6 +24,7 @@ import type {AuthenticatedUser,LoginCredentials,RegistrationInput} from "../type
 import type {Account,AccountUpdateRequest,PasswordChangeRequest} from "../features/account/accountTypes";
 import type {AthleteCreateRequest,AthleteCreateResponse} from "../types/athlete";
 import type {AthleteProfile,AthleteProfileUpdateRequest} from "../features/athleteProfile/athleteProfileTypes";
+import type {CompetitionGoal,CompetitionGoalCreate,CompetitionGoalUpdate} from "../types/planning";
 
 export const CSRF_COOKIE_NAME="tricoach_csrf";
 export const CSRF_HEADER_NAME="X-CSRF-Token";
@@ -53,6 +54,10 @@ export interface ApiClient {
   coachAssignments?():Promise<CoachAssignment[]>;
   createCoachAssignment?(input:{coach_user_id:string;athlete_profile_id:string}):Promise<CoachAssignment>;
   revokeCoachAssignment?(membershipId:string):Promise<CoachAssignment>;
+  competitionGoals?():Promise<CompetitionGoal[]>;
+  createCompetitionGoal?(input:CompetitionGoalCreate):Promise<CompetitionGoal>;
+  updateCompetitionGoal?(id:string,input:CompetitionGoalUpdate):Promise<CompetitionGoal>;
+  deleteCompetitionGoal?(id:string):Promise<void>;
   getAthleteProfile?():Promise<AthleteProfile>;
   updateAthleteProfile?(input:AthleteProfileUpdateRequest):Promise<AthleteProfile>;
   health(): Promise<HealthResponse>;
@@ -120,6 +125,10 @@ export class FetchApiClient implements ApiClient {
   coachAssignments(){return this.request<CoachAssignment[]>("/coach-assignments",undefined,true)}
   createCoachAssignment(input:{coach_user_id:string;athlete_profile_id:string}){return this.request<CoachAssignment>("/coach-assignments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)},true)}
   revokeCoachAssignment(id:string){const membershipId=id?.trim();if(!membershipId)return Promise.reject(new Error("invalid_membership_id"));return this.request<CoachAssignment>(`/coach-assignments/${encodeURIComponent(membershipId)}`,{method:"DELETE"},true)}
+  competitionGoals(){return this.request<CompetitionGoal[]>("/competition-goals")}
+  createCompetitionGoal(input:CompetitionGoalCreate){return this.request<CompetitionGoal>("/competition-goals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
+  updateCompetitionGoal(id:string,input:CompetitionGoalUpdate){return this.request<CompetitionGoal>(`/competition-goals/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
+  deleteCompetitionGoal(id:string){return this.request<void>(`/competition-goals/${encodeURIComponent(id)}`,{method:"DELETE"})}
   getAthleteProfile(){return this.request<AthleteProfile>("/athlete/profile")}
   updateAthleteProfile(input:AthleteProfileUpdateRequest){return this.request<AthleteProfile>("/athlete/profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   getAccount(){return this.request<Account>("/account",undefined,true)}

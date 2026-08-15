@@ -30,6 +30,8 @@ class AthleteCapability(str, Enum):
     RUN_STRAVA_ENRICHMENT = "run_strava_enrichment"
     RUN_STRAVA_EVIDENCE = "run_strava_evidence"
     DELETE_STRAVA_LOCATION_EVIDENCE = "delete_strava_location_evidence"
+    READ_TRAINING_PLANNING = "read_training_planning"
+    MANAGE_COMPETITION_GOALS = "manage_competition_goals"
 
 
 _ALL_SPORT_CAPABILITIES = frozenset(AthleteCapability)
@@ -51,6 +53,8 @@ _ATHLETE_SELF_SERVICE_CAPABILITIES = frozenset({
     AthleteCapability.RUN_STRAVA_ENRICHMENT,
     AthleteCapability.RUN_STRAVA_EVIDENCE,
     AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
+    AthleteCapability.READ_TRAINING_PLANNING,
+    AthleteCapability.MANAGE_COMPETITION_GOALS,
 })
 _COACH_CAPABILITIES = _ALL_SPORT_CAPABILITIES - {
     AthleteCapability.DELETE_MANUAL_STRENGTH,
@@ -60,6 +64,7 @@ _COACH_CAPABILITIES = _ALL_SPORT_CAPABILITIES - {
     AthleteCapability.CONNECT_STRAVA,
     AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS,
     AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
+    AthleteCapability.MANAGE_COMPETITION_GOALS,
 }
 _ROLE_CAPABILITIES: dict[str, frozenset[AthleteCapability]] = {
     "owner": _ALL_SPORT_CAPABILITIES,
@@ -69,6 +74,7 @@ _ROLE_CAPABILITIES: dict[str, frozenset[AthleteCapability]] = {
     "viewer": frozenset({
         AthleteCapability.READ_ATHLETE_DATA,
         AthleteCapability.READ_STRAVA_INTEGRATION,
+        AthleteCapability.READ_TRAINING_PLANNING,
     }),
 }
 
