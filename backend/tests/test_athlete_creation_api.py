@@ -43,13 +43,14 @@ def athlete_env():
     engine.dispose()
 
 
-def add_user(session: Session, suffix: str) -> User:
+def add_user(session: Session, suffix: str, *, account_plan: str = "owner") -> User:
     user = User(
         email=f"{suffix}@example.test",
         normalized_email=f"{suffix}@example.test",
         auth_subject=f"subject-{suffix}",
         password_hash=hash_password(PASSWORD),
         display_name=f"Account {suffix}",
+        account_plan=account_plan,
     )
     session.add(user)
     session.commit()
@@ -322,3 +323,15 @@ def test_cross_user_cannot_access_new_athlete(athlete_env):
     response = authenticated_client(application, stranger).get("/activities", headers={"X-TriCoach-Athlete-Id": created})
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "athlete_not_authorized"
+
+@pytest.mark.parametrize("account_plan", ["athlete", "coach"])
+def test_public_account_plans_cannot_create_athletes(athlete_env, account_plan):
+    session, _, application = athlete_env
+    user = add_user(session, f"denied-{account_plan}", account_plan=account_plan)
+
+    response = post_athlete(authenticated_client(application, user))
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "athlete_creation_forbidden"
+    assert session.scalar(select(func.count()).select_from(AthleteProfile)) == 0
+    assert session.scalar(select(func.count()).select_from(UserAthleteMembership)) == 0

@@ -228,3 +228,18 @@ describe("empty coach account",()=>{
     expect(screen.queryByRole("link",{name:"Perfil deportivo"})).not.toBeInTheDocument();
   });
 });
+describe("account-scoped athlete creation",()=>{
+  it("shows Nuevo atleta only to owner accounts",async()=>{
+    const owner=renderShell("/dashboard",{...session,user:{...session.user,account_plan:"owner"}});
+    expect(await screen.findByRole("button",{name:/Nuevo atleta/})).toBeVisible();
+    owner.unmount();
+    renderShell("/dashboard",{...session,user:{...session.user,account_plan:"athlete"}});
+    expect((await screen.findAllByText("Mi atleta")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button",{name:/Nuevo atleta/})).not.toBeInTheDocument();
+  });
+  it("does not expose Nuevo atleta to coach accounts",async()=>{
+    renderShell("/dashboard",{...session,user:{...session.user,account_plan:"coach"},athletes:[],selected_athlete_id:null,selection_required:false});
+    expect(await screen.findByText("Todavía no tienes atletas asignados.")).toBeVisible();
+    expect(screen.queryByRole("button",{name:/Nuevo atleta/})).not.toBeInTheDocument();
+  });
+});

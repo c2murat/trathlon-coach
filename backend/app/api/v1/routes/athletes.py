@@ -10,6 +10,7 @@ from app.application.athletes import (
     AthleteApplication,
     AthleteDefaultConfigurationError,
 )
+from app.db.models import User
 from app.db.session import get_db_session
 
 
@@ -28,6 +29,18 @@ def create_athlete(
     current_user: AuthenticatedUser = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> AthleteCreateResponse:
+    user = session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "authentication_required"},
+        )
+    if user.account_plan != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "athlete_creation_forbidden"},
+        )
+
     try:
         created = AthleteApplication(session).create_owned_athlete(
             current_user.id,

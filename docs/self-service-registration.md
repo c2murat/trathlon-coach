@@ -14,3 +14,7 @@
 El registro normaliza email, aplica la política Argon2 existente, valida timezone IANA, limita intentos y usa las cookies de sesión/CSRF existentes. No acepta IDs, roles ni flags administrativos.
 
 Los precios son configuración de producto pendiente. Esta fase no implementa pagos, verificación de email, recuperación de contraseña ni asignación Coach–Athlete. El registro público debe permanecer deshabilitado en producción hasta completar ese hardening.
+
+## Creación posterior de perfiles
+
+La creación account-scoped mediante `POST /athletes` está reservada a cuentas internas `owner`. Las cuentas públicas `athlete` y `coach` no pueden crear AthleteProfiles adicionales. El perfil propio creado atómicamente durante `POST /auth/register` para Athlete no usa ese endpoint y se mantiene intacto.

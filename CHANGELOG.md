@@ -1,5 +1,7 @@
 ## 0.8E.5 — Registro self-service desde navegador
 
+- Restringe la creación posterior de AthleteProfiles a cuentas internas Owner; Athlete y Coach no ven ni pueden invocar `POST /athletes`.
+
 - Añade registro público exclusivo para Atleta y Entrenador, con account plan persistente separado del rol athlete-scoped.
 - Crea atómicamente el perfil propio del Atleta y permite al Coach empezar sin memberships en un estado estable.
 - Reutiliza Argon2, normalización de email, sesiones, CSRF y rate limiting existentes; Owner no es registrable.
