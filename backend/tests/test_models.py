@@ -144,7 +144,7 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
     expected_tables.update(
         {'manual_strength_sessions', 'manual_strength_training_loads'}
     )
-    expected_tables.update({"athlete_daily_training_statuses", "competition_goals", "training_plans", "training_plan_goals", "planned_training_sessions", "structured_workouts"})
+    expected_tables.update({"athlete_daily_training_statuses", "competition_goals", "competition_goal_segments", "training_plans", "training_plan_goals", "planned_training_sessions", "structured_workouts"})
     assert set(Base.metadata.tables) == expected_tables
     assert activity.start_at.utcoffset() == timedelta(0)
     assert all(
@@ -294,8 +294,3 @@ def test_oauth_credential_repr_redacts_secrets() -> None:
     assert "refresh-super-secret" not in rendered
     assert "access_token" not in rendered
     assert "refresh_token" not in rendered
-
-
-
-
-

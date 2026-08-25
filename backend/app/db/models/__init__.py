@@ -38,5 +38,5 @@ from app.db.models.training_status import AthleteDailyTrainingStatus
 __all__ += ['ManualStrengthSession', 'ManualStrengthTrainingLoad']
 __all__ += ["AthleteDailyTrainingStatus"]
 
-from app.db.models.planning import CompetitionGoal, TrainingPlan, TrainingPlanGoal, PlannedTrainingSession, StructuredWorkout
-__all__ += ["CompetitionGoal", "TrainingPlan", "TrainingPlanGoal", "PlannedTrainingSession", "StructuredWorkout"]
+from app.db.models.planning import CompetitionGoal, CompetitionGoalSegment, TrainingPlan, TrainingPlanGoal, PlannedTrainingSession, StructuredWorkout
+__all__ += ["CompetitionGoal", "CompetitionGoalSegment", "TrainingPlan", "TrainingPlanGoal", "PlannedTrainingSession", "StructuredWorkout"]

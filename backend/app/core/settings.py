@@ -110,6 +110,22 @@ class Settings(BaseSettings):
         default=86400, validation_alias="STRAVA_IMPORT_OVERLAP_SECONDS"
     )
 
+    world_triathlon_enabled: bool = False
+    world_triathlon_api_key: SecretStr | None = None
+    world_triathlon_api_base_url: str = "https://api.triathlon.org/v1"
+    competition_catalog_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    ai_web_competition_enabled: bool = False
+    openai_api_key: SecretStr | None = None
+    ai_web_competition_model: str = Field(default="gpt-5.6", min_length=1, max_length=100)
+    ai_web_competition_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    ai_web_competition_max_results: int = Field(default=10, ge=1, le=20)
+    tavily_competition_enabled: bool = False
+    tavily_api_key: SecretStr | None = None
+    tavily_competition_search_depth: Literal["basic", "advanced"] = "basic"
+    tavily_competition_timeout_seconds: float = Field(default=15.0, gt=0, le=60)
+    tavily_competition_max_results: int = Field(default=20, ge=1, le=20)
+    tavily_competition_use_extract: bool = True
+
     activity_stream_retention_enabled: bool = True
     activity_location_stream_retention_enabled: bool = False
     activity_stream_max_samples: int = Field(default=1000, ge=2, le=10000)

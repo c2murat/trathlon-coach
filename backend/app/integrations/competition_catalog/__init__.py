@@ -1,0 +1,3 @@
+﻿from app.integrations.competition_catalog.ai_web import AIWebCompetitionProvider
+from app.integrations.competition_catalog.tavily import TavilyCompetitionProvider
+from app.integrations.competition_catalog.world_triathlon import WorldTriathlonProvider

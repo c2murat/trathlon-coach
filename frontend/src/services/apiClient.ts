@@ -24,7 +24,7 @@ import type {AuthenticatedUser,LoginCredentials,RegistrationInput} from "../type
 import type {Account,AccountUpdateRequest,PasswordChangeRequest} from "../features/account/accountTypes";
 import type {AthleteCreateRequest,AthleteCreateResponse} from "../types/athlete";
 import type {AthleteProfile,AthleteProfileUpdateRequest} from "../features/athleteProfile/athleteProfileTypes";
-import type {CompetitionGoal,CompetitionGoalCreate,CompetitionGoalUpdate} from "../types/planning";
+import type {CatalogEvent,CatalogProvider,CatalogSearchFilters,CompetitionGoal,CompetitionGoalCreate,CompetitionGoalUpdate,WebCompetitionSearchResponse} from "../types/planning";
 
 export const CSRF_COOKIE_NAME="tricoach_csrf";
 export const CSRF_HEADER_NAME="X-CSRF-Token";
@@ -58,6 +58,11 @@ export interface ApiClient {
   createCompetitionGoal?(input:CompetitionGoalCreate):Promise<CompetitionGoal>;
   updateCompetitionGoal?(id:string,input:CompetitionGoalUpdate):Promise<CompetitionGoal>;
   deleteCompetitionGoal?(id:string):Promise<void>;
+  competitionCatalogProviders?():Promise<CatalogProvider[]>;
+  searchCompetitionCatalog?(filters:CatalogSearchFilters):Promise<CatalogEvent[]>;
+  searchWebCompetitions?(filters:CatalogSearchFilters,phase?:"initial"|"more"):Promise<WebCompetitionSearchResponse>;
+  competitionCatalogDetail?(provider:string,externalId:string):Promise<CatalogEvent>;
+  importCompetitionGoal?(provider:string,externalId:string,priority?:"A"|"B"|"C"):Promise<CompetitionGoal>;
   getAthleteProfile?():Promise<AthleteProfile>;
   updateAthleteProfile?(input:AthleteProfileUpdateRequest):Promise<AthleteProfile>;
   health(): Promise<HealthResponse>;
@@ -129,6 +134,11 @@ export class FetchApiClient implements ApiClient {
   createCompetitionGoal(input:CompetitionGoalCreate){return this.request<CompetitionGoal>("/competition-goals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   updateCompetitionGoal(id:string,input:CompetitionGoalUpdate){return this.request<CompetitionGoal>(`/competition-goals/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   deleteCompetitionGoal(id:string){return this.request<void>(`/competition-goals/${encodeURIComponent(id)}`,{method:"DELETE"})}
+  competitionCatalogProviders(){return this.request<CatalogProvider[]>("/competition-catalog/providers")}
+  searchCompetitionCatalog(filters:CatalogSearchFilters){const params=new URLSearchParams();Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,String(value))});return this.request<CatalogEvent[]>(`/competition-catalog/search?${params}`)}
+  searchWebCompetitions(filters:CatalogSearchFilters,phase:"initial"|"more"="initial"){const params=new URLSearchParams({phase});Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,String(value))});return this.request<WebCompetitionSearchResponse>(`/competition-catalog/web-search?${params}`)}
+  competitionCatalogDetail(provider:string,externalId:string){return this.request<CatalogEvent>(`/competition-catalog/${encodeURIComponent(provider)}/events/${encodeURIComponent(externalId)}`)}
+  importCompetitionGoal(provider:string,externalId:string,priority:"A"|"B"|"C"="B"){return this.request<CompetitionGoal>("/competition-catalog/import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,external_id:externalId,priority})})}
   getAthleteProfile(){return this.request<AthleteProfile>("/athlete/profile")}
   updateAthleteProfile(input:AthleteProfileUpdateRequest){return this.request<AthleteProfile>("/athlete/profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
   getAccount(){return this.request<Account>("/account",undefined,true)}
@@ -247,13 +257,3 @@ export class FetchApiClient implements ApiClient {
 }
 
 export const apiClient = new FetchApiClient();
-
-
-
-
-
-
-
-
-
-

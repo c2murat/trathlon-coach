@@ -6,9 +6,18 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CompetitionCategory = Literal["triathlon", "running", "cycling", "swimming"]
+CompetitionCategory = Literal["triathlon", "running", "cycling", "swimming", "duathlon", "aquathlon"]
+SegmentSport = Literal["swim", "bike", "run"]
 CompetitionPriority = Literal["A", "B", "C"]
 CompetitionStatus = Literal["active", "completed", "cancelled"]
+
+class CompetitionGoalSegmentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    position: int = Field(ge=1)
+    sport: SegmentSport
+    distance_m: int = Field(gt=0)
+    label: str | None = Field(default=None, max_length=100)
+    elevation_gain_m: int | None = Field(default=None, ge=0)
 
 class CompetitionGoalInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -19,26 +28,21 @@ class CompetitionGoalInput(BaseModel):
     event_category: CompetitionCategory
     event_format: str = Field(min_length=1, max_length=32)
     priority: CompetitionPriority
-    distance_m: int | None = Field(default=None, ge=0)
-    swim_distance_m: int | None = Field(default=None, ge=0)
-    bike_distance_m: int | None = Field(default=None, ge=0)
-    run_distance_m: int | None = Field(default=None, ge=0)
+    segments: list[CompetitionGoalSegmentInput] = Field(default_factory=list, max_length=32)
     target_finish_time_seconds: int | None = Field(default=None, gt=0)
     notes: str | None = Field(default=None, max_length=4000)
+    city: str | None = Field(default=None, max_length=120)
+    region: str | None = Field(default=None, max_length=120)
+    country: str | None = Field(default=None, max_length=120)
     status: CompetitionStatus = "active"
 
     @model_validator(mode="after")
     def validate_shape(self):
         try: ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError: raise ValueError("invalid timezone") from None
-        triathlon = self.event_category == "triathlon"
-        legs = (self.swim_distance_m, self.bike_distance_m, self.run_distance_m)
-        if triathlon and (self.distance_m is not None or any(value is None for value in legs)):
-            raise ValueError("triathlon requires swim, bike and run distances")
-        if not triathlon and (self.distance_m is None or any(value is not None for value in legs)):
-            raise ValueError("single-sport competition requires distance_m only")
+        if [item.position for item in self.segments] != list(range(1, len(self.segments) + 1)):
+            raise ValueError("segment positions must be contiguous and ordered")
         return self
-
 class WorkoutDuration(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["time", "distance", "open"]
