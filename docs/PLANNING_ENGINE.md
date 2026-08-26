@@ -3,6 +3,65 @@
 Estado auditado sobre `c030d7b`. Este documento describe capacidades reales y una
 arquitectura futura; no implementa generación, periodización ni persistencia.
 
+## Implementación 0.8F.2
+
+0.8F.2 materializa exclusivamente el input puro del futuro motor:
+
+```text
+PlanningRequest -> PlanningContextAssembler -> PlanningContext + fingerprint
+```
+
+Los contratos inmutables viven en `app/domains/planning/contracts.py` y el
+ensamblador SQLAlchemy, fuera del dominio puro, en
+`app/application/planning_context.py`. No existe todavía `PlanningEngine`,
+`PlanningResult`, generación de semanas/sesiones, API pública ni persistencia del
+contexto o de preferencias.
+
+Decisiones efectivas:
+
+- `PlanningRequest` exige atleta, `planning_date`, timezone IANA, goals únicos en
+  orden UUID canónico, fechas, preferencias y versiones de algoritmo/configuración.
+  El enum estabiliza `INITIAL_PLAN|REPLAN_FROM_DATE`, pero el assembler sólo ejecuta
+  `INITIAL_PLAN` en esta fase.
+- Las preferencias separan restricciones cuantificables (slots, minutos y máximos)
+  de preferencias de colocación (descanso, días largos y fuerza semanal). Se reciben
+  en el request y no tienen defaults deportivos ocultos ni tabla.
+- Los goals se ordenan por fecha, prioridad A/B/C y UUID; sus segmentos por posición
+  y UUID. Un request inicial no inventa `primary|supporting`, por lo que `role` queda
+  nullable hasta que una relación o selección explícita lo aporte.
+- El perfil y las referencias se resuelven **as-of `planning_date`**: una versión
+  cuya fecha local efectiva coincide con `planning_date` ya es configuración
+  conocida y puede utilizarse; sólo se excluyen versiones de fechas posteriores.
+  El snapshot conserva valores efectivos, IDs, vigencia, fuente, calidad y versiones;
+  los ausentes permanecen `None`.
+- El cutoff factual es el final del día local anterior a `planning_date`. La consulta
+  usa el intervalo UTC equivalente `[planning_date-90, planning_date)` y deriva en
+  memoria ventanas inclusivas de 7, 28, 42 y 90 días. No usa actividades del propio
+  día de planificación ni posteriores.
+- Por tanto hay dos fronteras deliberadamente distintas: `OBSERVATION_AS_OF =
+  planning_date - 1 local day` para entrenamiento/carga/fuerza/status y
+  `PERFORMANCE_AS_OF = planning_date` para perfil/referencias. El entrenamiento del
+  día aún no pertenece al histórico cerrado, mientras que una referencia ya efectiva
+  ese día sí es información disponible para generar.
+- Una consulta obtiene hasta 90 días de `CompletedActivity` con su carga versionada;
+  otra obtiene fuerza manual y su carga. No se leen laps ni streams. Los agregados
+  diarios suministran total, resistencia/fuerza, cobertura y calidad sin recalcular
+  TrainingLoad. Las ventanas mantienen breakdown estable de running, cycling,
+  swimming y strength, incluyendo missing load y sesiones largas factuales.
+- TrainingStatus se selecciona con `local_date <= cutoff` y combinación exacta de
+  timezone/versiones. Nunca se usa simplemente el último status global.
+- Ausencia de perfil, historial, carga o status no bloquea el contexto; produce
+  `None`, contadores y warnings técnicos deterministas. Mismatch de atleta, goal
+  inexistente/inactivo, timezone incoherente o rango inválido sí es estructural.
+- El fingerprint es SHA-256 de JSON UTF-8 canónico: claves ordenadas, separadores
+  compactos, UUID string, fechas/horas ISO-8601, datetimes con zona, Decimal textual,
+  enums por valor y `None` explícito. Excluye timestamps de lectura y otros datos de
+  ejecución. Consultas y colecciones se ordenan con desempates estables.
+
+`PLANNING_CONTEXT_SCHEMA_VERSION = 1` versiona el contrato, separado de las
+versiones solicitadas del futuro algoritmo y su configuración. El resultado de
+0.8F.2 es un objeto de ejecución: no se escribe en la base de datos.
+
 ## A. Estado actual del dominio planning
 
 El dominio está en `backend/app/db/models/planning.py`, sus objetos puros en
