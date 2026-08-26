@@ -40,3 +40,5 @@ __all__ += ["AthleteDailyTrainingStatus"]
 
 from app.db.models.planning import CompetitionGoal, CompetitionGoalSegment, TrainingPlan, TrainingPlanGoal, PlannedTrainingSession, StructuredWorkout
 __all__ += ["CompetitionGoal", "CompetitionGoalSegment", "TrainingPlan", "TrainingPlanGoal", "PlannedTrainingSession", "StructuredWorkout"]
+from app.db.models.planning_preferences import AthleteAvailabilitySlot, AthletePlanningPreferenceVersion
+__all__ += ["AthleteAvailabilitySlot", "AthletePlanningPreferenceVersion"]

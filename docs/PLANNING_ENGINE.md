@@ -62,6 +62,98 @@ Decisiones efectivas:
 versiones solicitadas del futuro algoritmo y su configuración. El resultado de
 0.8F.2 es un objeto de ejecución: no se escribe en la base de datos.
 
+## Implementación 0.8F.3
+
+### Preferencias y disponibilidad persistentes
+
+`AthletePlanningPreferenceVersion` conserva versiones históricas inmutables por
+`athlete_profile_id` y número secuencial. Cada versión contiene límites globales y
+preferencias blandas; `AthleteAvailabilitySlot` contiene weekday, posición,
+minutos, máximo de sesiones y ventana horaria opcional. La posición permite varias
+franjas futuras sin columnas booleanas ni rediseñar la tabla, aunque el contrato
+inicial admite un slot por weekday.
+
+`PUT /planning/preferences` crea una nueva versión completa sólo cuando cambia el
+estado configurable; una repetición semánticamente idéntica devuelve la versión
+vigente sin insertar. `GET /planning/preferences` devuelve la última. Lectura usa
+`READ_TRAINING_PLANNING` y escritura usa la capability específica
+`MANAGE_PLANNING_PREFERENCES`: editar el perfil general no concede implícitamente
+permisos sobre planning. Owner/athlete/editor mantienen escritura; coach/viewer
+sólo leen cuando su membership lo permite.
+
+La igualdad ignora IDs, autor y `created_at`: compara exclusivamente el contrato
+`PlanningPreferences`. El contrato inicial exige weekdays únicos y slots ordenados,
+por lo que el orden es semántico/canónico en la entrada; al reconstruir desde DB se
+ordena de manera estable por weekday y position. El `PUT` bloquea primero la fila
+padre `athlete_profiles` (`SELECT ... FOR UPDATE`), de modo que PostgreSQL serializa
+los writers del mismo atleta antes de comparar y calcular `next_version`. La
+constraint `UNIQUE(athlete_profile_id, version_number)` permanece como última
+defensa y su eventual colisión se expone como conflicto 409, no como 500 opaco.
+
+La precedencia del assembler es inequívoca:
+
+1. `PlanningRequest.preferences` explícito se usa como override y no se asocia a
+   una versión persistida.
+2. Si es `None`, se carga la última versión del atleta.
+3. Si tampoco existe persistencia, el contexto falla estructuralmente; no inventa
+   defaults deportivos.
+
+`PlanningContext.preferences` contiene siempre el valor efectivo. `ContextVersions`
+guarda ID/número de la versión persistida cuando se utilizó. Ambos forman parte del
+payload canónico y del fingerprint.
+
+La migración `0024_planning_preferences` crea exclusivamente
+`athlete_planning_preference_versions` y `athlete_availability_slots`. No persiste
+SeasonStructure ni modifica entidades de planes/sesiones.
+
+### SeasonStructure determinista
+
+`PlanningContext + SeasonStructureConfig -> SeasonStructure` es un cálculo puro.
+La configuración separa `algorithm_version` de su propia `version` y centraliza
+thresholds de cercanía, horizonte corto, disponibilidad, taper y recuperación.
+No usa reloj, aleatoriedad, DB ni IDs de ejecución.
+
+Reglas iniciales de rol e impacto:
+
+- A → `primary`, taper 14 días, recuperación 7 días y pico estructural.
+- B → `supporting`, taper parcial 7 días y recuperación 3 días.
+- C → `training`, sin taper estructural y recuperación 1 día.
+
+Estos valores son defaults de `SeasonStructureConfig`, no constantes dispersas.
+Puede haber varios A. Dos A separados por menos de 21 días producen
+`MULTIPLE_PRIMARY_GOALS_CLOSE`; no se elimina ninguno ni se crean planes superpuestos.
+Una carrera dentro del taper de un A produce `GOAL_DURING_TAPER`.
+
+El horizonte comienza en `request.start_date`. Termina en el último goal, salvo
+`horizon_end_date` explícito; un horizonte que deje fuera un goal solicitado es
+error. Un goal solicitado anterior al inicio también es error, nunca exclusión
+silenciosa.
+
+Las disciplinas se derivan de los segmentos reales, conservando el orden del goal
+y segmentos repetidos; la estructura usa el conjunto canónico swim/bike/run para
+sus restricciones, no presets de `event_format`.
+
+La taxonomía disponible es `PREPARATION`, `BASE`, `BUILD`, `SPECIFIC`,
+`MAINTENANCE`, `TAPER`, `COMPETITION` y `RECOVERY`. La clasificación diaria aplica
+precedencia competition → recovery → taper → preparación general por proximidad;
+después comprime días contiguos equivalentes en `SeasonBlock`. No fuerza que todas
+las fases aparezcan. Un horizonte menor de 21 días usa mantenimiento/taper y emite
+`SHORT_PREPARATION_HORIZON`, sin inventar base/build.
+
+Cada `CompetitionMarker` conserva goal, fecha, prioridad, rol, ventanas taper/recovery
+y conflictos. Los warnings estructurales disponibles son:
+
+- `MULTIPLE_PRIMARY_GOALS_CLOSE`;
+- `SHORT_PREPARATION_HORIZON`;
+- `GOAL_DURING_TAPER`;
+- `GOALS_OVERLAP`;
+- `LOW_WEEKLY_AVAILABILITY`;
+- `MULTISPORT_AVAILABILITY_CONSTRAINT`;
+- `NO_TRAINING_AVAILABILITY` (error bloqueante).
+
+SeasonStructure no calcula carga/volumen semanal, ramp rate, sesiones, días de
+entrenamiento concretos ni workouts, y no se persiste en 0.8F.3.
+
 ## A. Estado actual del dominio planning
 
 El dominio está en `backend/app/db/models/planning.py`, sus objetos puros en
@@ -229,9 +321,10 @@ usar sport `strength`, pero StructuredWorkout v1 sólo ofrece una receta genéri
 
 Todo input y output debe llevar un único `athlete_id`, resuelto mediante
 `CurrentAthleteContext`; nunca se aceptará el alcance efectivo sólo desde el body.
-Ya existen `READ_TRAINING_PLANNING` y `MANAGE_COMPETITION_GOALS`. Owner y editor
-tienen ambas; athlete también; coach y viewer pueden leer planning pero no gestionar
-goals. No existe capacidad para generar, aceptar, editar, bloquear o replanificar.
+Ya existen `READ_TRAINING_PLANNING`, `MANAGE_PLANNING_PREFERENCES` y
+`MANAGE_COMPETITION_GOALS`. Owner, athlete y editor pueden gestionar preferencias y
+goals; coach y viewer pueden leer planning pero no gestionar esas escrituras. No
+existe capacidad para generar, aceptar, editar, bloquear o replanificar planes.
 Antes de exponer escrituras deben añadirse capacidades específicas, con una matriz
 de producto explícita: previsiblemente owner/athlete/editor generan y aceptan;
 coach sólo si se autoriza; viewer nunca escribe. No se modifica en 0.8F.1.

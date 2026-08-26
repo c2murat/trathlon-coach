@@ -72,7 +72,7 @@ class PlanningRequest(FrozenModel):
     mode: PlanningMode = PlanningMode.INITIAL_PLAN
     start_date: date
     horizon_end_date: date | None = None
-    preferences: PlanningPreferences
+    preferences: PlanningPreferences | None = None
     algorithm_version: str = Field(min_length=1, max_length=64)
     configuration_version: str = Field(min_length=1, max_length=64)
 
@@ -208,8 +208,16 @@ class PlanningWarning(FrozenModel):
         "NO_TRAINING_HISTORY",
         "TRAINING_LOAD_INCOMPLETE",
         "TRAINING_STATUS_UNAVAILABLE",
+        "MULTIPLE_PRIMARY_GOALS_CLOSE",
+        "SHORT_PREPARATION_HORIZON",
+        "GOAL_DURING_TAPER",
+        "GOALS_OVERLAP",
+        "LOW_WEEKLY_AVAILABILITY",
+        "MULTISPORT_AVAILABILITY_CONSTRAINT",
+        "NO_TRAINING_AVAILABILITY",
     ]
-    severity: Literal["WARNING"] = "WARNING"
+    severity: Literal["WARNING", "ERROR"] = "WARNING"
+    blocking: bool = False
     context: dict[str, str | int | bool | None] = Field(default_factory=dict)
 
 
@@ -222,10 +230,13 @@ class ContextVersions(FrozenModel):
     manual_strength_algorithm_version: str
     training_status_algorithm_version: str
     performance_profile_version_id: UUID | None = None
+    planning_preferences_version_id: UUID | None = None
+    planning_preferences_version_number: int | None = None
 
 
 class PlanningContext(FrozenModel):
     request: PlanningRequest
+    preferences: PlanningPreferences
     goals: tuple[PlanningGoal, ...]
     performance: PerformanceSnapshot
     training: AthleteTrainingSnapshot

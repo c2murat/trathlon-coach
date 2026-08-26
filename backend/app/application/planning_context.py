@@ -36,6 +36,7 @@ from app.domains.planning.contracts import (
     TrainingWindowSnapshot,
     context_fingerprint,
 )
+from app.application.planning_preferences import PlanningPreferencesApplication, preferences_from_row
 
 
 class PlanningContextError(ValueError):
@@ -55,6 +56,10 @@ class PlanningGoalAthleteMismatchError(PlanningContextError):
 
 
 class PlanningGoalInvalidError(PlanningContextError):
+    pass
+
+
+class PlanningPreferencesUnavailableError(PlanningContextError):
     pass
 
 
@@ -107,6 +112,14 @@ class PlanningContextAssembler:
         ).astimezone(timezone.utc)
 
         goals = self._goals(request)
+        preference_row = None
+        if request.preferences is None:
+            preference_row = PlanningPreferencesApplication(self.session).latest(request.athlete_id)
+            if preference_row is None:
+                raise PlanningPreferencesUnavailableError("planning preferences are required")
+            preferences = preferences_from_row(preference_row)
+        else:
+            preferences = request.preferences
         performance = self._performance(request.athlete_id, performance_exclusive_utc)
         sessions = self._sessions(
             request.athlete_id, zone, start_utc, cutoff_exclusive_utc
@@ -127,9 +140,12 @@ class PlanningContextAssembler:
             manual_strength_algorithm_version=self.strength_version,
             training_status_algorithm_version=self.status_version,
             performance_profile_version_id=performance.profile_version_id,
+            planning_preferences_version_id=preference_row.id if preference_row else None,
+            planning_preferences_version_number=preference_row.version_number if preference_row else None,
         )
         payload = {
             "request": request,
+            "preferences": preferences,
             "goals": goals,
             "performance": performance,
             "training": training,

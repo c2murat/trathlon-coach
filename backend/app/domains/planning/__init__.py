@@ -18,6 +18,10 @@ from app.domains.planning.contracts import (
     canonical_json,
     context_fingerprint,
 )
+from app.domains.planning.season_structure import (
+    CompetitionMarker, SeasonBlock, SeasonGoal, SeasonPhase, SeasonStructure,
+    SeasonStructureBuilder, SeasonStructureConfig, SeasonStructureError,
+)
 
 __all__ = [
     "PLANNING_CONTEXT_SCHEMA_VERSION", "AthleteTrainingSnapshot", "AvailabilitySlot",
@@ -27,4 +31,7 @@ __all__ = [
     "StructuredWorkoutDefinition", "TrainingStatusSnapshot", "TrainingWindowSnapshot",
     "WorkoutDuration", "WorkoutNode", "WorkoutTarget", "canonical_json",
     "context_fingerprint",
+    "CompetitionMarker", "SeasonBlock", "SeasonGoal", "SeasonPhase",
+    "SeasonStructure", "SeasonStructureBuilder", "SeasonStructureConfig",
+    "SeasonStructureError",
 ]

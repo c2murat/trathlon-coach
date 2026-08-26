@@ -10,6 +10,7 @@ from app.application.planning_context import (
     PlanningContextAssembler,
     PlanningGoalAthleteMismatchError,
 )
+from app.application.planning_preferences import PlanningPreferencesApplication
 from app.db.base import Base
 from app.db.models import (
     ActivityTrainingLoad,
@@ -208,6 +209,7 @@ def test_assembler_builds_windows_sports_cutoff_status_and_stable_fingerprint(db
     assert first.fingerprint == second.fingerprint
     fingerprint_payload = {
         "request": first.request,
+        "preferences": first.preferences,
         "goals": first.goals,
         "performance": first.performance,
         "training": first.training,
@@ -327,3 +329,52 @@ def test_same_day_ftp_change_changes_fingerprint(db):
     assert first.performance.cycling_ftp_watts == Decimal("250.00")
     assert second.performance.cycling_ftp_watts == Decimal("260.00")
     assert first.fingerprint != second.fingerprint
+
+
+def test_request_override_precedes_persisted_preferences_and_changes_fingerprint(db):
+    athlete, goal = seed_identity_goal(db)
+    persisted = PlanningPreferences(
+        availability_slots=(AvailabilitySlot(weekday=1, available_minutes=45, max_sessions=1),),
+        max_sessions_per_day=1, max_sessions_per_week=4,
+        preferred_rest_days=(0,), strength_sessions_per_week=1,
+    )
+    row = PlanningPreferencesApplication(db).replace(athlete.id, goal.created_by_user_id, persisted)
+    db.commit()
+    fallback_request = make_request(athlete, goal).model_copy(update={"preferences": None})
+    from_persistence = assembler(db).assemble(fallback_request)
+    override_request = make_request(athlete, goal)
+    overridden = assembler(db).assemble(override_request)
+    assert from_persistence.preferences == persisted
+    assert from_persistence.versions.planning_preferences_version_id == row.id
+    assert overridden.preferences == override_request.preferences
+    assert overridden.versions.planning_preferences_version_id is None
+    assert from_persistence.fingerprint != overridden.fingerprint
+
+
+def test_idempotent_persisted_preferences_keep_provenance_and_fingerprint(db):
+    athlete, goal = seed_identity_goal(db)
+    preferences = PlanningPreferences(
+        availability_slots=(AvailabilitySlot(weekday=1, available_minutes=45, max_sessions=1),),
+        max_sessions_per_day=1, max_sessions_per_week=4,
+        preferred_rest_days=(0,), strength_sessions_per_week=1,
+    )
+    application = PlanningPreferencesApplication(db)
+    first_row = application.replace(athlete.id, goal.created_by_user_id, preferences)
+    db.commit()
+    request = make_request(athlete, goal).model_copy(update={"preferences": None})
+    first_context = assembler(db).assemble(request)
+
+    repeated_row = application.replace(athlete.id, goal.created_by_user_id, preferences)
+    db.commit()
+    repeated_context = assembler(db).assemble(request)
+    assert repeated_row.id == first_row.id
+    assert repeated_context.versions == first_context.versions
+    assert repeated_context.fingerprint == first_context.fingerprint
+
+    changed = preferences.model_copy(update={"max_sessions_per_week": 5})
+    changed_row = application.replace(athlete.id, goal.created_by_user_id, changed)
+    db.commit()
+    changed_context = assembler(db).assemble(request)
+    assert changed_row.version_number == first_row.version_number + 1
+    assert changed_context.versions.planning_preferences_version_id == changed_row.id
+    assert changed_context.fingerprint != first_context.fingerprint

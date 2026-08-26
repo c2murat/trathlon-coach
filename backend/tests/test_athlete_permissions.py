@@ -45,6 +45,7 @@ EXPECTED = {
         AthleteCapability.CONNECT_STRAVA,
         AthleteCapability.MANAGE_ATHLETE_MEMBERSHIPS,
         AthleteCapability.DELETE_STRAVA_LOCATION_EVIDENCE,
+        AthleteCapability.MANAGE_PLANNING_PREFERENCES,
         AthleteCapability.MANAGE_COMPETITION_GOALS,
     },
     "viewer": {
