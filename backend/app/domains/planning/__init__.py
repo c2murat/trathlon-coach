@@ -27,6 +27,12 @@ from app.domains.planning.weekly_budget import (
     LoadBaseline, WeeklyBudgetConfig, WeeklyBudgetPlan, WeeklyTrainingBudget,
     build_weekly_budget_plan,
 )
+from app.domains.planning.session_planning import (
+    IntensityClass, SessionPlacementDecision, SessionPlan, SessionPlanningConfig,
+    SessionPlanValidationError, SessionPlanValidationIssue, SessionPrescription,
+    SessionPriority, SessionPurpose, SessionType, WeeklySessionPlan,
+    build_session_plan, validate_session_plan,
+)
 
 __all__ = [
     "PLANNING_CONTEXT_SCHEMA_VERSION", "AthleteTrainingSnapshot", "AvailabilitySlot",
@@ -42,4 +48,9 @@ __all__ = [
     "BudgetAdjustment", "BudgetConfidence", "BudgetDecision",
     "DisciplineBudget", "LoadBaseline", "WeeklyBudgetConfig",
     "WeeklyBudgetPlan", "WeeklyTrainingBudget", "build_weekly_budget_plan",
+    "IntensityClass", "SessionPlacementDecision", "SessionPlan",
+    "SessionPlanningConfig", "SessionPlanValidationError",
+    "SessionPlanValidationIssue", "SessionPrescription", "SessionPriority",
+    "SessionPurpose", "SessionType", "WeeklySessionPlan", "build_session_plan",
+    "validate_session_plan",
 ]

@@ -579,7 +579,56 @@ aceptar explícitamente. El calendario sólo refresca tras accept exitoso. Repla
 el mismo patrón y muestra qué se preserva/cambia; nunca persiste cien sesiones al
 primer clic.
 
-## U. Roadmap
+## U. SessionPlan determinista (0.8F.5A)
+
+`build_session_plan(context, season_structure, weekly_budget_plan, config)` es una
+función pura y en memoria. Selecciona una taxonomía v1 de sesiones de carrera,
+ciclismo, natación y fuerza general, y las coloca por fecha local dentro de cada
+presupuesto semanal. El resultado incluye `SessionPlan`, `WeeklySessionPlan` y
+`SessionPrescription`, junto con decisiones de colocación, warnings, versiones y
+fingerprint. No lee ORM, reloj, servicios o base de datos y no persiste nada.
+En esta separación, 0.8F.4 decide **cuánto** entrenamiento presupuestar, 0.8F.5A
+decide **qué** tipo de sesión ubicar y **cuándo**, y 0.8F.5B decidirá **cómo** se
+estructura el contenido interno de cada workout.
+
+La disponibilidad, los minutos y máximos por día, y el máximo semanal son
+restricciones duras. Los días de descanso y de tirada larga preferidos son señales
+blandas. La frecuencia parte del historial de 28 días, admite como máximo el aumento
+configurado y se reduce de forma estable si no cabe. Las sesiones clave tienen un
+máximo semanal y se separan cuando existen fechas factibles; cualquier compromiso
+queda expresado mediante warnings. Las dobles sesiones están desactivadas por
+defecto y requieren configuración explícita.
+
+La distribución de carga usa únicamente los `DisciplineBudget` conocidos. Si la
+carga semanal o la de una disciplina es desconocida, sus prescripciones conservan
+`target_load`, suelo y techo como `None`; no se inventan TSS, minutos fisiológicos ni
+valores de fuerza. Una competición se representa sólo como sesión especial y fija
+en la fecha del goal, sin estimar carga ni duración y sin otra sesión ese día.
+
+Cada semana distingue `budget_target_load`, `planned_load` cuantificada y
+`load_delta`. La carga planificada es exclusivamente la suma de `target_load` de las
+recetas que realmente pudieron colocarse; no incluye sesiones descartadas,
+competición ni fuerza no cuantificada. Una receta sin carga puede coexistir con la
+carga cuantificada de las demás disciplinas sin convertirla en cero ni volverla
+desconocida. Si una restricción impide materializar parte del presupuesto, la carga
+no se redistribuye a las sesiones restantes: se conserva el plan factible y se emite
+un warning de undershoot u overshoot cuando el delta supera la tolerancia configurada.
+Las restricciones duras prevalecen sobre el floor y el validador rechaza cualquier
+exceso real sobre el ceiling.
+
+La competición cuenta como una sesión de agenda para el máximo diario y semanal,
+aunque no tenga carga o duración. Su día es exclusivo incluso cuando las dobles
+sesiones están habilitadas; 0.8F.5A no incorpora activación precompetitiva.
+
+Cada receta define disciplina, tipo, propósito, clase de intensidad, prioridad,
+fecha, duración aproximada cuando procede, rango de carga cuando es conocido,
+objetivos relacionados, fase y trazabilidad de la decisión. No contiene bloques,
+intervalos, repeticiones, zonas ni pasos de `StructuredWorkout`: esa biblioteca rica
+queda fuera de 0.8F.5A. El validador comprueba horizonte, disponibilidad, capacidad
+diaria/semanal y fecha de competición. El fingerprint depende sólo de los tres inputs
+puros y de la configuración versionada, no del resultado ni de metadata de runtime.
+
+## V. Roadmap
 
 1. **0.8F.2 — contratos puros + ensamblador de contexto:** DTOs, resolución efectiva,
    snapshots 7/28/42/90, fingerprints y fixtures; sin generador ni DB nueva.
@@ -588,9 +637,9 @@ primer clic.
    de temporada pura.
 3. **0.8F.4 — demanda semanal determinista:** presupuesto/carga por semana, política
    de insuficiencia y warnings; aún sin recetas detalladas.
-4. **0.8F.5 — biblioteca y colocación de sesiones:** recetas de resistencia v1,
-   restricciones/preferencias y validadores. Posponer fuerza rica/multisport si exige
-   StructuredWorkout v2.
+4. **0.8F.5A — selección y colocación semanal:** taxonomía y recetas v1, colocación
+   determinista, restricciones/preferencias y validadores; sin workouts detallados.
+   **0.8F.5B** puede añadir biblioteca rica sin cambiar el límite de este cierre.
 5. **0.8F.6 — preview/accept y calendario:** provenance, transacción idempotente,
    endpoints y UI.
 6. **0.8F.7 — revisiones/replanificación:** protección, matching de completadas,
