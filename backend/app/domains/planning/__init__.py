@@ -22,6 +22,11 @@ from app.domains.planning.season_structure import (
     CompetitionMarker, SeasonBlock, SeasonGoal, SeasonPhase, SeasonStructure,
     SeasonStructureBuilder, SeasonStructureConfig, SeasonStructureError,
 )
+from app.domains.planning.weekly_budget import (
+    BudgetAdjustment, BudgetConfidence, BudgetDecision, DisciplineBudget,
+    LoadBaseline, WeeklyBudgetConfig, WeeklyBudgetPlan, WeeklyTrainingBudget,
+    build_weekly_budget_plan,
+)
 
 __all__ = [
     "PLANNING_CONTEXT_SCHEMA_VERSION", "AthleteTrainingSnapshot", "AvailabilitySlot",
@@ -34,4 +39,7 @@ __all__ = [
     "CompetitionMarker", "SeasonBlock", "SeasonGoal", "SeasonPhase",
     "SeasonStructure", "SeasonStructureBuilder", "SeasonStructureConfig",
     "SeasonStructureError",
+    "BudgetAdjustment", "BudgetConfidence", "BudgetDecision",
+    "DisciplineBudget", "LoadBaseline", "WeeklyBudgetConfig",
+    "WeeklyBudgetPlan", "WeeklyTrainingBudget", "build_weekly_budget_plan",
 ]

@@ -215,6 +215,11 @@ class PlanningWarning(FrozenModel):
         "LOW_WEEKLY_AVAILABILITY",
         "MULTISPORT_AVAILABILITY_CONSTRAINT",
         "NO_TRAINING_AVAILABILITY",
+        "INSUFFICIENT_LOAD_HISTORY",
+        "LOW_LOAD_COVERAGE",
+        "WEEKLY_LOAD_BASELINE_UNAVAILABLE",
+        "AVAILABILITY_CAP_UNKNOWN",
+        "STRENGTH_LOAD_BASELINE_UNAVAILABLE",
     ]
     severity: Literal["WARNING", "ERROR"] = "WARNING"
     blocking: bool = False

@@ -154,6 +154,97 @@ y conflictos. Los warnings estructurales disponibles son:
 SeasonStructure no calcula carga/volumen semanal, ramp rate, sesiones, días de
 entrenamiento concretos ni workouts, y no se persiste en 0.8F.3.
 
+## Implementación 0.8F.4
+
+### Semántica real de carga
+
+La unidad existente es `load_points`; no se denomina TSS. En resistencia se obtiene
+con distintos métodos (`cycling_power`, frecuencia cardiaca, ritmo de carrera, CSS
+o sólo duración) y se acompaña siempre de método, coverage, quality y versión. Los
+métodos con referencia se escalan aproximadamente alrededor de 100 puntos por hora
+a intensidad de referencia; el fallback de duración usa 50 puntos por hora y baja
+calidad. La fuerza manual usa duración y, cuando existe, RPE, también en puntos.
+
+Los agregados suman resistencia y fuerza como convención interna comparable para el
+motor, pero no afirman equivalencia fisiológica exacta entre deportes. Una carga
+ausente es `None` y no cero: cero sólo es carga conocida cero. `fitness` y `fatigue`
+son estados exponenciales de 42 y 7 días derivados de esa misma carga; `form` es
+`fitness - fatigue`. No son CTL/ATL ni diagnósticos clínicos.
+
+### LoadBaseline y confianza
+
+`LoadBaseline` consume exclusivamente las ventanas congeladas 7/28/42/90 de
+`PlanningContext`. De sus diferencias obtiene cuatro bandas no solapadas y las
+normaliza a equivalentes semanales: días 1–7, 8–28, 29–42 y 43–90. El baseline es
+la mediana de al menos dos bandas válidas, lo que evita que la última semana o un
+outlier aislado dominen. Conserva muestras, ventanas fuente, minutos semanales,
+load/minute robusto, `known_zero`, rationale y confianza `HIGH|MEDIUM|LOW`.
+
+HIGH exige cuatro bandas, al menos 12 días históricos de entrenamiento y buena
+coverage/quality en 90 días; MEDIUM exige al menos dos bandas y cinco días; el resto
+es LOW. Sin dos muestras, el baseline absoluto queda `None`, el plan sigue siendo
+construible y emite warnings de datos insuficientes. No se fabrica carga para un
+atleta nuevo.
+
+Load/minute es la mediana de bandas no solapadas que tienen duración positiva,
+coverage completa y quality alta/media. Sólo entonces se calcula un máximo factible
+como minutos disponibles × load/minute propio × tolerancia configurada. Sin señal
+fiable el cap queda `None` y se emite `AVAILABILITY_CAP_UNKNOWN`; nunca se usa una
+conversión universal carga/minutos.
+
+### WeeklyBudgetPlan
+
+La función pura
+`build_weekly_budget_plan(PlanningContext, SeasonStructure, WeeklyBudgetConfig)`
+produce un `WeeklyBudgetPlan` inmutable, serializable y no persistido. Divide el
+horizonte en semanas ISO locales lunes–domingo, recortando la primera y última.
+Cada `WeeklyTrainingBudget` contiene intervalo, semana ISO, exposición diaria a
+fases, fase dominante, markers de competición, minutos/días/sesiones disponibles,
+baseline, `floor/target/ceiling`, máximo factible, confianza, allocations,
+adjustments y decisions estructurados.
+
+`WeeklyBudgetConfig` centraliza y versiona todos los parámetros. Los defaults son
+límites conservadores de producto, no leyes fisiológicas: progresión preferida 3%,
+máximo semanal ascendente 5%, máximo descendente 20%, crecimiento total 20% y una
+descarga inicial cada cuarta semana de carga con factor 0,80. Taper, recovery y
+competition sustituyen la descarga periódica, nunca se apilan con ella. La
+exposición se pondera por día, evitando saltos artificiales al cruzar un lunes.
+
+Los factores iniciales configurables son taper A/B/C 0,70/0,82/1,00; recovery
+A/B/C 0,55/0,70/0,85; y training budget de semana con competición 0,65. La carrera
+se marca como `competition_reserved_capacity`, pero no se inventa su TrainingLoad.
+`floor/ceiling` usan anchuras por confianza (8%, 15%, 25%) y siempre cumplen
+floor ≤ target ≤ ceiling cuando el baseline es conocido.
+
+TrainingStatus nunca aumenta carga ni se suma al historial: sólo puede moderar una
+vez el primer budget cuando el estado está fuera de warmup, `form` cruza el límite
+configurado y fatigue/fitness supera el ratio configurado. Así funciona como
+guardrail derivado de la misma carga, sin doble contabilización acumulativa.
+
+### Distribución por disciplina
+
+Las allocations parten de `PlanningGoal.segments`; los segmentos repetidos influyen
+en el peso (por ejemplo run/bike/run), pero producen un bucket por disciplina. Se
+mezclan de forma configurable con el historial de 42 días cuando existe. Running,
+cycling y swimming sólo aparecen si están sustentados por goal/historial. Fuerza se
+reserva cuando `strength_sessions_per_week > 0`; sin carga histórica su share/load
+quedan desconocidos y se emite `STRENGTH_LOAD_BASELINE_UNAVAILABLE`.
+
+Cuando todos los shares son conocidos, el último bucket activo absorbe de forma
+determinista el residuo de redondeo: los shares suman exactamente 1,00 y sus cargas
+suman el target semanal. Si fuerza carece de baseline, los shares conocidos suman
+1,00 del presupuesto cuantificable de resistencia y el bucket strength `None` es
+una reserva adicional no cuantificada, no un porcentaje cero.
+
+La disponibilidad actual no especifica deporte por día: por ello
+`DisciplineBudget.available_minutes` queda desconocido y la colocación corresponde
+a 0.8F.5. Tampoco se generan minutos objetivo, kilómetros, sesiones, workouts ni un
+TrainingPlan.
+
+El fingerprint propio es SHA-256 canónico de `PlanningContext.fingerprint`, la
+SeasonStructure completa y `WeeklyBudgetConfig`. Es un fingerprint de inputs: no
+incluye reloj, runtime, ORM ni su propio hash, y el resultado es determinista.
+
 ## A. Estado actual del dominio planning
 
 El dominio está en `backend/app/db/models/planning.py`, sus objetos puros en
