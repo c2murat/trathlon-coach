@@ -628,7 +628,73 @@ queda fuera de 0.8F.5A. El validador comprueba horizonte, disponibilidad, capaci
 diaria/semanal y fecha de competición. El fingerprint depende sólo de los tres inputs
 puros y de la configuración versionada, no del resultado ni de metadata de runtime.
 
-## V. Roadmap
+## V. StructuredWorkout builder determinista (0.8F.5B)
+
+`build_structured_workout(context, session_prescription, config)` materializa el
+**cómo** de una receta sin modificar disciplina, fecha, duración, carga, fase ni
+placement. Es un builder puro: no usa ORM, DB, repositorios, reloj, aleatoriedad o
+servicios. Devuelve `StructuredWorkoutDraft`, que contiene directamente una
+`StructuredWorkoutDefinition(schema_version=1)` validable por el modelo existente,
+provenance del target, warnings, decisiones, versiones y fingerprint input-only.
+
+La auditoría de v1 confirmó soporte para steps `warmup/work/recovery/cooldown`, repeat
+blocks anidados a un nivel, duraciones time/distance/open y targets power, HR, pace,
+swim pace, cadence, RPE o none, mediante zone, rango absoluto o porcentaje de FTP,
+threshold HR, threshold pace y CSS. V1 no modela metadata de provenance ni el caso
+no aplicable; ambos viven en el draft envolvente. El builder usa sólo tiempo para
+preservar exactamente los minutos prescritos y no inventar distancias de natación.
+
+Las familias easy, long, endurance, recovery, technique y fuerza son continuas y no
+se fragmentan artificialmente. Tempo usa warmup/work/cooldown; threshold e interval
+usan warmup, repeat work/recovery y cooldown cuando la duración permite el mínimo.
+Sesiones cortas reducen repeats o degradan a un bloque de trabajo válido, conservan
+la duración total exacta y registran la adaptación. El residuo entero se asigna de
+forma determinista al cooldown. Los ratios, mínimos, repeats, recovery, redondeo y
+rangos de intensidad son defaults de producto centralizados y versionados en
+`WorkoutBuilderConfig`, no leyes fisiológicas universales.
+
+Jerarquía de targets:
+
+- running: threshold pace → threshold HR → RPE;
+- cycling: FTP → threshold HR → RPE;
+- swimming: CSS → RPE;
+- strength: RPE configurado.
+
+Se usa el target `percent_reference` nativo de v1, sin duplicarlo con watts, bpm o
+ritmos absolutos. Para pace en segundos/km y CSS en segundos/100 m, factor mayor que
+uno significa más lento y factor menor que uno significa más rápido; esta inversión
+respecto a potencia está cubierta por tests. Referencias ausentes o no positivas no
+producen valores inventados: generan RPE y warnings estructurados. Fuerza se limita
+a duración, propósito genérico y RPE; no prescribe ejercicios, pesos, sets o reps.
+Competition devuelve explícitamente un draft no construible/no aplicable y nunca un
+workout ficticio.
+
+El validador comprueba aplicabilidad, schema v1, deporte, steps, referencia positiva
+y duración temporal exacta incluyendo repeats. El fingerprint depende sólo del
+fingerprint de contexto, la `SessionPrescription` canónica, la configuración y la
+versión de schema; excluye resultado, hash propio, runtime y IDs nuevos. El builder
+no recalcula load points ni intenta ajustar intervalos para reproducir la carga.
+Cualquier cambio futuro de reglas, templates, targets, redondeo o serialización que
+pueda alterar el output exige incrementar la versión de configuración y, cuando
+cambie el procedimiento, también la versión de algoritmo correspondiente.
+
+La frontera JSON reutiliza el mismo `StructuredWorkoutDefinition.model_validate`
+que invocan el ORM y la aplicación de persistencia. `structured_workout_payload`
+serializa con `mode="json"` y exclusión deliberada de `None`, revalida con schema v1
+y vuelve a serializar; el payload puede reconstruirse sin cambiar steps, repeats,
+targets o duración. Para comparaciones se usa JSON canónico con claves ordenadas,
+no `repr`. La conversión inevitable `Decimal → float` se realiza una sola vez,
+después de cuantizar con precisión configurable y `ROUND_HALF_UP`; rangos no
+positivos, invertidos, NaN o infinitos se rechazan antes de alcanzar v1.
+
+`StructuredWorkoutDefinition` v1 sigue siendo mutable internamente para no alterar
+un contrato estable. El builder crea nodos y targets nuevos, no comparte colecciones
+mutables de contexto, receta o configuración y no modifica el draft tras devolverlo.
+La futura persistencia deberá usar el payload serializado y revalidado, no confiar
+en una referencia mutable conservada durante más tiempo. Provenance, warnings y
+decisiones permanecen en `StructuredWorkoutDraft`, fuera del JSON v1 por diseño.
+
+## W. Roadmap
 
 1. **0.8F.2 — contratos puros + ensamblador de contexto:** DTOs, resolución efectiva,
    snapshots 7/28/42/90, fingerprints y fixtures; sin generador ni DB nueva.
@@ -639,7 +705,8 @@ puros y de la configuración versionada, no del resultado ni de metadata de runt
    de insuficiencia y warnings; aún sin recetas detalladas.
 4. **0.8F.5A — selección y colocación semanal:** taxonomía y recetas v1, colocación
    determinista, restricciones/preferencias y validadores; sin workouts detallados.
-   **0.8F.5B** puede añadir biblioteca rica sin cambiar el límite de este cierre.
+   **0.8F.5B** materializa templates v1 deterministas y targets con fallback RPE,
+   todavía sin persistencia ni exportación de proveedor.
 5. **0.8F.6 — preview/accept y calendario:** provenance, transacción idempotente,
    endpoints y UI.
 6. **0.8F.7 — revisiones/replanificación:** protección, matching de completadas,

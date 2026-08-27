@@ -33,6 +33,14 @@ from app.domains.planning.session_planning import (
     SessionPriority, SessionPurpose, SessionType, WeeklySessionPlan,
     build_session_plan, validate_session_plan,
 )
+from app.domains.planning.workout_builder import (
+    StructuredWorkoutBuilderError, StructuredWorkoutDraft,
+    StructuredWorkoutValidationIssue, WorkoutBuilderConfig, WorkoutDecision,
+    WorkoutDecisionCode, WorkoutTargetProvenance, WorkoutWarning,
+    WorkoutWarningCode, build_structured_workout,
+    structured_workout_canonical_json, structured_workout_payload,
+    validate_structured_workout_draft, workout_duration_seconds,
+)
 
 __all__ = [
     "PLANNING_CONTEXT_SCHEMA_VERSION", "AthleteTrainingSnapshot", "AvailabilitySlot",
@@ -53,4 +61,10 @@ __all__ = [
     "SessionPlanValidationIssue", "SessionPrescription", "SessionPriority",
     "SessionPurpose", "SessionType", "WeeklySessionPlan", "build_session_plan",
     "validate_session_plan",
+    "StructuredWorkoutBuilderError", "StructuredWorkoutDraft",
+    "StructuredWorkoutValidationIssue", "WorkoutBuilderConfig",
+    "WorkoutDecision", "WorkoutDecisionCode", "WorkoutTargetProvenance",
+    "WorkoutWarning", "WorkoutWarningCode", "build_structured_workout",
+    "structured_workout_canonical_json", "structured_workout_payload",
+    "validate_structured_workout_draft", "workout_duration_seconds",
 ]
