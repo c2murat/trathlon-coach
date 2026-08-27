@@ -41,6 +41,10 @@ from app.domains.planning.workout_builder import (
     structured_workout_canonical_json, structured_workout_payload,
     validate_structured_workout_draft, workout_duration_seconds,
 )
+from app.domains.planning.preview import (
+    PREVIEW_ARTIFACT_SCHEMA_VERSION, PreviewSessionArtifact,
+    TrainingPlanPreviewArtifact, build_preview_artifact, preview_artifact_payload,
+)
 
 __all__ = [
     "PLANNING_CONTEXT_SCHEMA_VERSION", "AthleteTrainingSnapshot", "AvailabilitySlot",
@@ -67,4 +71,7 @@ __all__ = [
     "WorkoutWarning", "WorkoutWarningCode", "build_structured_workout",
     "structured_workout_canonical_json", "structured_workout_payload",
     "validate_structured_workout_draft", "workout_duration_seconds",
+    "PREVIEW_ARTIFACT_SCHEMA_VERSION", "PreviewSessionArtifact",
+    "TrainingPlanPreviewArtifact", "build_preview_artifact",
+    "preview_artifact_payload",
 ]

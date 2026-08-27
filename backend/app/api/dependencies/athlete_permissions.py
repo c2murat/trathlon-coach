@@ -33,6 +33,7 @@ class AthleteCapability(str, Enum):
     READ_TRAINING_PLANNING = "read_training_planning"
     MANAGE_PLANNING_PREFERENCES = "manage_planning_preferences"
     MANAGE_COMPETITION_GOALS = "manage_competition_goals"
+    GENERATE_TRAINING_PLAN = "generate_training_plan"
 
 
 _ALL_SPORT_CAPABILITIES = frozenset(AthleteCapability)
@@ -57,6 +58,7 @@ _ATHLETE_SELF_SERVICE_CAPABILITIES = frozenset({
     AthleteCapability.READ_TRAINING_PLANNING,
     AthleteCapability.MANAGE_PLANNING_PREFERENCES,
     AthleteCapability.MANAGE_COMPETITION_GOALS,
+    AthleteCapability.GENERATE_TRAINING_PLAN,
 })
 _COACH_CAPABILITIES = _ALL_SPORT_CAPABILITIES - {
     AthleteCapability.DELETE_MANUAL_STRENGTH,

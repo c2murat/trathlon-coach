@@ -37,8 +37,8 @@ class CompetitionGoalSegment(UUIDPrimaryKeyMixin,Base):
     competition_goal_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("competition_goals.id",ondelete="CASCADE"),nullable=False);position:Mapped[int]=mapped_column(Integer,nullable=False);sport:Mapped[str]=mapped_column(String(16),nullable=False);distance_m:Mapped[int]=mapped_column(Integer,nullable=False);label:Mapped[str|None]=mapped_column(String(100));elevation_gain_m:Mapped[int|None]=mapped_column(Integer);goal:Mapped[CompetitionGoal]=relationship(back_populates="segments")
 
 class TrainingPlan(UUIDPrimaryKeyMixin,TimestampMixin,Base):
-    __tablename__="training_plans";__table_args__=(CheckConstraint("start_date <= end_date",name="training_plan_dates_valid"),CheckConstraint("status IN ('draft','active','completed','archived')",name="training_plan_status_valid"),CheckConstraint("origin IN ('human','ai')",name="training_plan_origin_valid"),CheckConstraint("created_via_role IS NULL OR created_via_role IN ('owner','athlete','coach')",name="training_plan_role_valid"),Index("ix_training_plans_athlete_dates","athlete_profile_id","start_date","end_date"),Index("ix_training_plans_creator","created_by_user_id"))
-    athlete_profile_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("athlete_profiles.id",ondelete="CASCADE"),nullable=False);title:Mapped[str]=mapped_column(String(200),nullable=False);start_date:Mapped[date]=mapped_column(Date,nullable=False);end_date:Mapped[date]=mapped_column(Date,nullable=False);status:Mapped[str]=mapped_column(String(16),nullable=False,default="draft");origin:Mapped[str]=mapped_column(String(16),nullable=False);created_by_user_id:Mapped[UUID|None]=mapped_column(Uuid(as_uuid=True),ForeignKey("users.id",ondelete="SET NULL"));created_via_role:Mapped[str|None]=mapped_column(String(16));algorithm_version:Mapped[str|None]=mapped_column(String(64))
+    __tablename__="training_plans";__table_args__=(CheckConstraint("start_date <= end_date",name="training_plan_dates_valid"),CheckConstraint("status IN ('draft','active','completed','archived')",name="training_plan_status_valid"),CheckConstraint("origin IN ('human','ai')",name="training_plan_origin_valid"),CheckConstraint("created_via_role IS NULL OR created_via_role IN ('owner','athlete','coach')",name="training_plan_role_valid"),UniqueConstraint("source_preview_id",name="uq_training_plans_source_preview"),Index("ix_training_plans_athlete_dates","athlete_profile_id","start_date","end_date"),Index("ix_training_plans_creator","created_by_user_id"))
+    athlete_profile_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("athlete_profiles.id",ondelete="CASCADE"),nullable=False);title:Mapped[str]=mapped_column(String(200),nullable=False);start_date:Mapped[date]=mapped_column(Date,nullable=False);end_date:Mapped[date]=mapped_column(Date,nullable=False);status:Mapped[str]=mapped_column(String(16),nullable=False,default="draft");origin:Mapped[str]=mapped_column(String(16),nullable=False);created_by_user_id:Mapped[UUID|None]=mapped_column(Uuid(as_uuid=True),ForeignKey("users.id",ondelete="SET NULL"));created_via_role:Mapped[str|None]=mapped_column(String(16));algorithm_version:Mapped[str|None]=mapped_column(String(64));source_preview_id:Mapped[UUID|None]=mapped_column(Uuid(as_uuid=True),ForeignKey("training_plan_previews.id",ondelete="RESTRICT",name="fk_training_plans_source_preview_id_training_plan_previews"));source_preview:Mapped[TrainingPlanPreview|None]=relationship(back_populates="accepted_training_plan",foreign_keys=[source_preview_id])
 
 class TrainingPlanGoal(Base):
     __tablename__="training_plan_goals";__table_args__=(CheckConstraint("relationship IN ('primary','supporting')",name="training_plan_goal_relationship_valid"),UniqueConstraint("training_plan_id","competition_goal_id",name="uq_training_plan_goal_pair"),)
@@ -54,3 +54,21 @@ class StructuredWorkout(UUIDPrimaryKeyMixin,TimestampMixin,Base):
     @validates("definition")
     def validate_definition(self,key,value): return StructuredWorkoutDefinition.model_validate(value).model_dump(mode="json")
     def parsed_definition(self): return StructuredWorkoutDefinition.model_validate(self.definition)
+
+class TrainingPlanPreview(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "training_plan_previews"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','accepted')", name="training_plan_preview_status_valid"),
+        Index("ix_training_plan_previews_athlete_created", "athlete_profile_id", "created_at"),
+        Index("ix_training_plan_previews_fingerprint", "artifact_fingerprint"),
+    )
+    athlete_profile_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("athlete_profiles.id", ondelete="CASCADE"), nullable=False)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    accepted_by_user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    artifact: Mapped[dict] = mapped_column(JSON_DOCUMENT, nullable=False)
+    artifact_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    algorithm_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    configuration_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    accepted_training_plan: Mapped[TrainingPlan | None] = relationship(back_populates="source_preview", foreign_keys=[TrainingPlan.source_preview_id], uselist=False)

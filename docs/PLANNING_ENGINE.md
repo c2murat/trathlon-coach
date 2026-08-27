@@ -694,7 +694,75 @@ La futura persistencia deberá usar el payload serializado y revalidado, no conf
 en una referencia mutable conservada durante más tiempo. Provenance, warnings y
 decisiones permanecen en `StructuredWorkoutDraft`, fuera del JSON v1 por diseño.
 
-## W. Roadmap
+## W. Preview, aceptación y persistencia atómica (0.8F.6)
+
+`POST /planning/previews` ejecuta una sola vez la cadena `PlanningContext →
+SeasonStructure → WeeklyBudgetPlan → SessionPlan → StructuredWorkoutDraft` y guarda
+un artefacto completo, inmutable y athlete-scoped. El artefacto contiene sus inputs
+materializados, decisiones, warnings, versiones y un fingerprint SHA-256 canónico
+que excluye el propio fingerprint y cualquier dato de runtime.
+
+`GET /planning/previews/{id}` recupera exactamente ese snapshot. `POST
+/planning/previews/{id}/accept` bloquea la fila, valida atleta, fingerprint, estado y
+vigencia de los goals, y persiste atómicamente `TrainingPlan`, relaciones de goals,
+sesiones y workouts. Accept no vuelve a invocar ningún componente del motor. Un
+retry devuelve el mismo plan; un fallo intermedio revierte todas las filas. Las
+competiciones siguen representadas por `CompetitionGoal` y no se duplican como
+`PlannedTrainingSession`.
+
+La capability de escritura `generate_training_plan` se separa de
+`read_training_planning`; viewer conserva sólo lectura. La migración 0025 añade
+`training_plan_previews` y la única relación persistida
+`TrainingPlan.source_preview_id`; el preview conserva la identidad de
+creador/aceptante. La aceptación produce un plan `draft`
+de origen `ai`; la activación/publicación y toda replanificación quedan fuera de
+0.8F.6.
+
+`generate_training_plan` gobierna tanto la creación como la aceptación del preview.
+La matriz es: owner, athlete, editor y coach pueden generar/aceptar; viewer sólo
+puede leer. Un coach opera siempre sobre el atleta resuelto por su membership: el
+preview registra al coach como creador/aceptante, mientras que el plan y las sesiones
+conservan `origin=ai` y autor humano nulo. Aquí `ai` significa generado por el motor
+determinista de TriCoach, no una llamada a un LLM.
+
+`SeasonGoal.role` admite `primary`, `supporting` y `training`, mientras que el contrato
+histórico persistido de `TrainingPlanGoal.relationship` sólo admite `primary` y
+`supporting`. La adaptación explícita `persistence_goal_role` conserva primary y
+mapea supporting/training a supporting; el artefacto no se altera y retiene el rol
+training de una prueba C.
+
+La única fuente de verdad exactly-once es `TrainingPlan.source_preview_id`, único y
+con FK, que impide que otro camino cree dos planes para el mismo preview. La relación
+ORM inversa `TrainingPlanPreview.accepted_training_plan` se deriva de esa FK y no
+añade columna ni estado duplicado. La API deriva igualmente
+`accepted_training_plan_id` cuando lo expone. La aplicación valida además que preview
+y plan sean del mismo atleta. Pending no tiene plan; accepted exige y devuelve
+siempre el mismo. Los únicos estados actuales son `pending` y `accepted`; no hay
+expiry.
+
+Los datos de goal, estructura, prescripciones y workouts son snapshot. Al aceptar se
+comprueba que cada FK de goal siga existiendo, activa y en el mismo atleta, pero no se
+leen de nuevo nombre, prioridad, distancia ni otros atributos para regenerar el plan.
+Goals añadidos después no entran. Si uno desaparece o deja de estar activo, accept se
+bloquea atómicamente y el preview continúa pending.
+
+La proyección de sesión conserva fecha local, timezone, disciplina, duración, estado
+planned, origin ai, rol de creación y versión. `SessionPrescription` no contiene hora
+de inicio ni distancia objetivo, por lo que esos campos permanecen nulos; target load,
+purpose e intensidad quedan en el artefacto y la descripción mínima. El JSON de cada
+workout buildable se serializa y revalida con schema v1 sin reconstruirlo. Accept sólo
+cambia status y metadata de aceptación: artifact, fingerprint y versiones permanecen
+idénticos.
+
+La migración 0025 y el flujo completo se validaron sobre PostgreSQL real con un
+preview de simulación: preview pending sin filas de plan, aceptación exacta, retry
+con el mismo plan, counts estables, competición no duplicada, workout v1 válido y
+auditor multiatleta sin incidencias. El artefacto y el plan resultantes se conservan
+como `VALIDATION / SIMULATION ARTIFACT`; no representan disponibilidad deportiva
+confirmada. `GET /training-plans/{id}` no expone por ahora `source_preview_id`; la
+trazabilidad se obtiene internamente por la FK y desde el ID derivado del GET preview.
+
+## X. Roadmap
 
 1. **0.8F.2 — contratos puros + ensamblador de contexto:** DTOs, resolución efectiva,
    snapshots 7/28/42/90, fingerprints y fixtures; sin generador ni DB nueva.
@@ -707,8 +775,8 @@ decisiones permanecen en `StructuredWorkoutDraft`, fuera del JSON v1 por diseño
    determinista, restricciones/preferencias y validadores; sin workouts detallados.
    **0.8F.5B** materializa templates v1 deterministas y targets con fallback RPE,
    todavía sin persistencia ni exportación de proveedor.
-5. **0.8F.6 — preview/accept y calendario:** provenance, transacción idempotente,
-   endpoints y UI.
+5. **0.8F.6 — preview/accept:** artifact persistente, transacción idempotente y
+   endpoints backend. La UI/calendario queda diferida.
 6. **0.8F.7 — revisiones/replanificación:** protección, matching de completadas,
    supersesión y diff explicable.
 
