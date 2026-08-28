@@ -18,6 +18,10 @@ from app.application.planning_preview import (
     PlanningPreviewGoalInvalidError, PlanningPreviewNotFoundError,
     TrainingPlanOverlapError, VISIBLE_TRAINING_PLAN_STATUSES,
 )
+from app.application.training_plan_lifecycle import (
+    TrainingPlanActiveConflictError, TrainingPlanInvalidTransitionError,
+    TrainingPlanLifecycleApplication, TrainingPlanNotFoundError,
+)
 from app.db.session import get_db_session
 from app.db.models import PlannedTrainingSession, StructuredWorkout, TrainingPlan, TrainingPlanGoal
 from app.domains.planning.contracts import PlanningRequest
@@ -55,6 +59,45 @@ def _raise(error: Exception):
         }) from None
     code = getattr(error, "code", "planning_preview_invalid")
     raise HTTPException(status_code=422, detail={"code": code}) from None
+
+
+def _raise_lifecycle(error: Exception):
+    if isinstance(error, TrainingPlanNotFoundError):
+        raise HTTPException(status_code=404, detail={"code": error.code}) from None
+    if isinstance(error, TrainingPlanActiveConflictError):
+        raise HTTPException(status_code=409, detail={
+            "code": error.code,
+            "existing_training_plan_id": str(error.existing_training_plan_id),
+            "existing_start_date": error.existing_start_date.isoformat(),
+            "existing_end_date": error.existing_end_date.isoformat(),
+        }) from None
+    if isinstance(error, TrainingPlanInvalidTransitionError):
+        raise HTTPException(status_code=409, detail={
+            "code": error.code,
+            "training_plan_id": str(error.training_plan_id),
+            "current_status": error.current_status,
+            "requested_action": error.requested_action,
+        }) from None
+
+
+def _training_plan_response(session: Session, plan: TrainingPlan):
+    goals = session.scalars(select(TrainingPlanGoal).where(TrainingPlanGoal.training_plan_id == plan.id).order_by(TrainingPlanGoal.competition_goal_id)).all()
+    planned = session.scalars(select(PlannedTrainingSession).where(PlannedTrainingSession.training_plan_id == plan.id).order_by(PlannedTrainingSession.scheduled_date, PlannedTrainingSession.id)).all()
+    workout_rows = session.scalars(select(StructuredWorkout).where(StructuredWorkout.planned_training_session_id.in_(tuple(item.id for item in planned)))).all() if planned else ()
+    workouts = {item.planned_training_session_id: item for item in workout_rows}
+    return {
+        "id": plan.id, "athlete_profile_id": plan.athlete_profile_id,
+        "title": plan.title, "start_date": plan.start_date, "end_date": plan.end_date,
+        "status": plan.status, "origin": plan.origin,
+        "algorithm_version": plan.algorithm_version,
+        "goals": [{"competition_goal_id": item.competition_goal_id, "relationship": item.relationship} for item in goals],
+        "sessions": [{
+            "id": item.id, "scheduled_date": item.scheduled_date, "sport": item.sport,
+            "title": item.title, "description": item.description,
+            "planned_duration_seconds": item.planned_duration_seconds,
+            "workout": workouts[item.id].definition if item.id in workouts else None,
+        } for item in planned],
+    }
 
 
 @router.post("", response_model=PlanningPreviewResponse, status_code=status.HTTP_201_CREATED)
@@ -123,25 +166,32 @@ def list_planned_training_sessions(start_date: date, end_date: date, current: Cu
 
 @training_plans_router.get("/{plan_id}")
 def get_training_plan(plan_id: UUID, current: CurrentAthleteContext = Depends(read), session: Session = Depends(get_db_session)):
-    plan = session.get(TrainingPlan, plan_id)
+    plan = session.scalar(select(TrainingPlan).where(TrainingPlan.id == plan_id, TrainingPlan.athlete_profile_id == current.athlete_id))
     if plan is None:
         raise HTTPException(status_code=404, detail={"code": "training_plan_not_found"})
-    if plan.athlete_profile_id != current.athlete_id:
-        raise HTTPException(status_code=403, detail={"code": "training_plan_athlete_mismatch"})
-    goals = session.scalars(select(TrainingPlanGoal).where(TrainingPlanGoal.training_plan_id == plan.id).order_by(TrainingPlanGoal.competition_goal_id)).all()
-    planned = session.scalars(select(PlannedTrainingSession).where(PlannedTrainingSession.training_plan_id == plan.id).order_by(PlannedTrainingSession.scheduled_date, PlannedTrainingSession.id)).all()
-    workout_rows = session.scalars(select(StructuredWorkout).where(StructuredWorkout.planned_training_session_id.in_(tuple(item.id for item in planned)))).all() if planned else ()
-    workouts = {item.planned_training_session_id: item for item in workout_rows}
-    return {
-        "id": plan.id, "athlete_profile_id": plan.athlete_profile_id,
-        "title": plan.title, "start_date": plan.start_date, "end_date": plan.end_date,
-        "status": plan.status, "origin": plan.origin,
-        "algorithm_version": plan.algorithm_version,
-        "goals": [{"competition_goal_id": item.competition_goal_id, "relationship": item.relationship} for item in goals],
-        "sessions": [{
-            "id": item.id, "scheduled_date": item.scheduled_date, "sport": item.sport,
-            "title": item.title, "description": item.description,
-            "planned_duration_seconds": item.planned_duration_seconds,
-            "workout": workouts[item.id].definition if item.id in workouts else None,
-        } for item in planned],
-    }
+    return _training_plan_response(session, plan)
+
+
+def _transition_training_plan(plan_id: UUID, action: str, current: CurrentAthleteContext, session: Session):
+    try:
+        plan = TrainingPlanLifecycleApplication(session).transition(
+            plan_id=plan_id, athlete_id=current.athlete_id, action=action,
+        )
+        return _training_plan_response(session, plan)
+    except (TrainingPlanNotFoundError, TrainingPlanInvalidTransitionError, TrainingPlanActiveConflictError) as error:
+        _raise_lifecycle(error)
+
+
+@training_plans_router.post("/{plan_id}/activate")
+def activate_training_plan(plan_id: UUID, current: CurrentAthleteContext = Depends(generate), session: Session = Depends(get_db_session)):
+    return _transition_training_plan(plan_id, "activate", current, session)
+
+
+@training_plans_router.post("/{plan_id}/complete")
+def complete_training_plan(plan_id: UUID, current: CurrentAthleteContext = Depends(generate), session: Session = Depends(get_db_session)):
+    return _transition_training_plan(plan_id, "complete", current, session)
+
+
+@training_plans_router.post("/{plan_id}/archive")
+def archive_training_plan(plan_id: UUID, current: CurrentAthleteContext = Depends(generate), session: Session = Depends(get_db_session)):
+    return _transition_training_plan(plan_id, "archive", current, session)

@@ -64,6 +64,9 @@ export interface ApiClient {
   planningPreview?(id:string):Promise<PlanningPreview>;
   acceptPlanningPreview?(id:string,fingerprint:string):Promise<AcceptedTrainingPlan>;
   trainingPlan?(id:string):Promise<TrainingPlan>;
+  activateTrainingPlan?(id:string):Promise<TrainingPlan>;
+  completeTrainingPlan?(id:string):Promise<TrainingPlan>;
+  archiveTrainingPlan?(id:string):Promise<TrainingPlan>;
   plannedTrainingSessions?(startDate:string,endDate:string):Promise<TrainingPlanSession[]>;
   competitionCatalogProviders?():Promise<CatalogProvider[]>;
   searchCompetitionCatalog?(filters:CatalogSearchFilters):Promise<CatalogEvent[]>;
@@ -147,6 +150,9 @@ export class FetchApiClient implements ApiClient {
   planningPreview(id:string){return this.request<PlanningPreview>(`/planning/previews/${encodeURIComponent(id)}`)}
   acceptPlanningPreview(id:string,fingerprint:string){return this.request<AcceptedTrainingPlan>(`/planning/previews/${encodeURIComponent(id)}/accept`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({expected_fingerprint:fingerprint})})}
   trainingPlan(id:string){return this.request<TrainingPlan>(`/training-plans/${encodeURIComponent(id)}`)}
+  activateTrainingPlan(id:string){return this.request<TrainingPlan>(`/training-plans/${encodeURIComponent(id)}/activate`,{method:"POST"})}
+  completeTrainingPlan(id:string){return this.request<TrainingPlan>(`/training-plans/${encodeURIComponent(id)}/complete`,{method:"POST"})}
+  archiveTrainingPlan(id:string){return this.request<TrainingPlan>(`/training-plans/${encodeURIComponent(id)}/archive`,{method:"POST"})}
   plannedTrainingSessions(startDate:string,endDate:string){return this.request<TrainingPlanSession[]>(`/training-plans/sessions?${new URLSearchParams({start_date:startDate,end_date:endDate})}`)}
   competitionCatalogProviders(){return this.request<CatalogProvider[]>("/competition-catalog/providers")}
   searchCompetitionCatalog(filters:CatalogSearchFilters){const params=new URLSearchParams();Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,String(value))});return this.request<CatalogEvent[]>(`/competition-catalog/search?${params}`)}

@@ -9,7 +9,8 @@ import {AthleteProfilePage} from "../features/athleteProfile/AthleteProfilePage"
 import {ConnectionsPage} from "../features/connections/ConnectionsPage";
 import {CoachAssignmentsPage} from "../features/coachAssignments/CoachAssignmentsPage";
 import {CalendarPage} from "../features/calendar/CalendarPage";
-import {PlanGeneratorPage,PlanningPreviewPage,TrainingPlanPage} from "../features/calendar/PlanningFlowPages";
+import {PlanGeneratorPage,PlanningPreviewPage} from "../features/calendar/PlanningFlowPages";
+import {TrainingPlanPage} from "../features/calendar/TrainingPlanPage";
 import {TrainingLoadPage} from "../features/trainingLoad/TrainingLoadPage";
 import {TrainingStatusPage} from "../features/trainingStatus/TrainingStatusPage";
 import {apiClient,type ApiClient} from "../services/apiClient";
@@ -36,7 +37,7 @@ function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapabi
  if(path==="/activities")return <ActivitiesPage client={client}/>;
  if(path==="/calendar/planning/new")return <PlanGeneratorPage client={client} athleteId={athlete?.athlete_id??""} athleteName={athlete?.label} canGenerate={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
  if(/^\/calendar\/planning\/previews\/[^/]+$/.test(path))return <PlanningPreviewPage client={client} athleteId={athlete?.athlete_id??""} canAccept={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
- if(/^\/calendar\/training-plans\/[^/]+$/.test(path))return <TrainingPlanPage client={client} athleteId={athlete?.athlete_id??""}/>;
+ if(/^\/calendar\/training-plans\/[^/]+$/.test(path))return <TrainingPlanPage client={client} athleteId={athlete?.athlete_id??""} canManage={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
  if(path==="/calendar")return <CalendarPage client={client} athleteId={athlete?.athlete_id??null} athleteName={athlete?.label} canManage={has(ATHLETE_CAPABILITIES.MANAGE_GOALS)} canGenerate={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
  if(path==="/activities/strength")return <ManualStrengthPage client={client} canCreate={has(ATHLETE_CAPABILITIES.CREATE_STRENGTH)} canUpdate={has(ATHLETE_CAPABILITIES.UPDATE_STRENGTH)} canDelete={has(ATHLETE_CAPABILITIES.DELETE_STRENGTH)} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
  if(path==="/settings/account")return <AccountPage client={client}/>;

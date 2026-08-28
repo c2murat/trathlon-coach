@@ -1,0 +1,30 @@
+import {useEffect,useMemo,useRef,useState} from "react";
+import {AppLink} from "../../app/usePathname";
+import type {ApiClient} from "../../services/apiClient";
+import type {TrainingPlan} from "../../types/planning";
+import {dateLabel} from "./competitionLabels";
+import {durationLabel,errorMessage,sportLabel} from "./planningFormat";
+
+const statusLabels:Record<string,string>={draft:"Borrador",active:"Activo",completed:"Completado",archived:"Archivado"};
+const idFromPath=()=>window.location.pathname.split("/").filter(Boolean).at(-1)??"";
+
+export function TrainingPlanPage({client,athleteId,canManage=false}:{client:ApiClient;athleteId:string;canManage?:boolean}){
+ const id=idFromPath(),[plan,setPlan]=useState<TrainingPlan|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState<"activate"|"complete"|"archive"|null>(null);
+ const generation=useRef(0),submitLock=useRef(false);
+ useEffect(()=>{const run=++generation.current;setPlan(null);setError("");setBusy(null);submitLock.current=false;(client.trainingPlan?.(id)??Promise.reject(new Error("404"))).then(value=>{if(run===generation.current)setPlan(value)}).catch(cause=>{if(run===generation.current)setError(errorMessage(cause))});return()=>{generation.current++}},[client,id,athleteId]);
+ const weeks=useMemo(()=>{const map=new Map<string,TrainingPlan["sessions"]>();for(const session of plan?.sessions??[]){const date=new Date(`${session.scheduled_date}T12:00:00`),day=(date.getDay()+6)%7,monday=new Date(date);monday.setDate(date.getDate()-day);const key=monday.toLocaleDateString("en-CA");map.set(key,[...(map.get(key)??[]),session])}return [...map]},[plan]);
+ const transition=async(action:"activate"|"complete"|"archive")=>{if(!plan||busy||submitLock.current)return;if(action!=="activate"&&!window.confirm(action==="complete"?"¿Marcar este plan como completado?":"¿Archivar este plan?"))return;const request=action==="activate"?client.activateTrainingPlan:action==="complete"?client.completeTrainingPlan:client.archiveTrainingPlan;if(!request)return;submitLock.current=true;setBusy(action);setError("");try{setPlan(await request.call(client,id))}catch(cause){setError(errorMessage(cause))}finally{submitLock.current=false;setBusy(null)}};
+ if(error&&!plan)return <p role="alert" className="error-banner">{error}</p>;
+ if(!plan)return <p role="status">Cargando plan…</p>;
+ const mutable=plan.status==="draft"||plan.status==="active";
+ return <section className="planning-page">
+  <header><p className="eyebrow">PLAN CREADO</p><h1>{plan.title}</h1><p>{dateLabel(plan.start_date)} — {dateLabel(plan.end_date)} · Estado: {statusLabels[plan.status]??plan.status}</p></header>
+  {error&&<p role="alert" className="error-banner">{error}</p>}
+  {plan.status==="completed"&&<p role="status" className="success-banner">Plan completado</p>}
+  {plan.status==="archived"&&<p role="status" className="info-banner">Plan archivado</p>}
+  {canManage&&mutable&&<div className="planning-actions">{plan.status==="draft"&&<button type="button" className="button button--primary" disabled={Boolean(busy)} onClick={()=>void transition("activate")}>{busy==="activate"?"Activando…":"Activar plan"}</button>}{plan.status==="active"&&<button type="button" className="button button--primary" disabled={Boolean(busy)} onClick={()=>void transition("complete")}>{busy==="complete"?"Completando…":"Marcar como completado"}</button>}<button type="button" className="button" disabled={Boolean(busy)} onClick={()=>void transition("archive")}>{busy==="archive"?"Archivando…":"Archivar"}</button></div>}
+  {!canManage&&mutable&&<p className="read-only-note">Vista de solo lectura. No tienes permiso para cambiar el estado del plan.</p>}
+  {weeks.map(([week,sessions])=><section className="preview-week" key={week}><h2>Semana del {dateLabel(week)}</h2>{sessions.map(session=><article className={`preview-session preview-session--${session.sport}`} key={session.id}><time dateTime={session.scheduled_date}>{dateLabel(session.scheduled_date)}</time><div><h3>{session.title}</h3><p>{sportLabel(session.sport)} · {durationLabel(session.planned_duration_seconds)}</p>{session.description&&<p>{session.description}</p>}{session.workout?<details><summary>Ver entrenamiento</summary><p>{session.workout.steps.length} bloques estructurados</p></details>:<p className="workout-unavailable">Entrenamiento estructurado no disponible.</p>}</div></article>)}</section>)}
+  <AppLink className="button" to="/calendar">Volver al calendario</AppLink>
+ </section>;
+}
