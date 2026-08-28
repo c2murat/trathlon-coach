@@ -9,6 +9,7 @@ import {AthleteProfilePage} from "../features/athleteProfile/AthleteProfilePage"
 import {ConnectionsPage} from "../features/connections/ConnectionsPage";
 import {CoachAssignmentsPage} from "../features/coachAssignments/CoachAssignmentsPage";
 import {CalendarPage} from "../features/calendar/CalendarPage";
+import {PlanGeneratorPage,PlanningPreviewPage,TrainingPlanPage} from "../features/calendar/PlanningFlowPages";
 import {TrainingLoadPage} from "../features/trainingLoad/TrainingLoadPage";
 import {TrainingStatusPage} from "../features/trainingStatus/TrainingStatusPage";
 import {apiClient,type ApiClient} from "../services/apiClient";
@@ -33,7 +34,10 @@ function greeting(){const hour=new Date().getHours();return hour<12?"Buenos día
 function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapability)=>boolean,athlete?:{athlete_id:string;label:string;role:string}|null){
  if(path==="/dashboard")return <DashboardPage client={client} showSync canManageStrava={has(ATHLETE_CAPABILITIES.CONNECT_STRAVA)} currentAthleteName={athlete?.label} currentAthleteRole={athlete?.role as AthleteRole|undefined} canEditAthleteProfile={has(ATHLETE_CAPABILITIES.EDIT_PROFILE)}/>;
  if(path==="/activities")return <ActivitiesPage client={client}/>;
- if(path==="/calendar")return <CalendarPage client={client} athleteId={athlete?.athlete_id??null} athleteName={athlete?.label} canManage={has(ATHLETE_CAPABILITIES.MANAGE_GOALS)}/>;
+ if(path==="/calendar/planning/new")return <PlanGeneratorPage client={client} athleteId={athlete?.athlete_id??""} athleteName={athlete?.label} canGenerate={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
+ if(/^\/calendar\/planning\/previews\/[^/]+$/.test(path))return <PlanningPreviewPage client={client} athleteId={athlete?.athlete_id??""} canAccept={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
+ if(/^\/calendar\/training-plans\/[^/]+$/.test(path))return <TrainingPlanPage client={client} athleteId={athlete?.athlete_id??""}/>;
+ if(path==="/calendar")return <CalendarPage client={client} athleteId={athlete?.athlete_id??null} athleteName={athlete?.label} canManage={has(ATHLETE_CAPABILITIES.MANAGE_GOALS)} canGenerate={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
  if(path==="/activities/strength")return <ManualStrengthPage client={client} canCreate={has(ATHLETE_CAPABILITIES.CREATE_STRENGTH)} canUpdate={has(ATHLETE_CAPABILITIES.UPDATE_STRENGTH)} canDelete={has(ATHLETE_CAPABILITIES.DELETE_STRENGTH)} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
  if(path==="/settings/account")return <AccountPage client={client}/>;
  if(path==="/settings/coaches")return <CoachAssignmentsPage client={client}/>;

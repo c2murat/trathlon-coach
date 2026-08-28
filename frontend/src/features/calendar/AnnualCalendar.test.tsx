@@ -1,11 +1,34 @@
-﻿import {render,screen} from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {describe,expect,it,vi} from "vitest";
-import {AnnualCalendar,daysInMonth,mondayOffset} from "./AnnualCalendar";
-import type {CompetitionGoal} from "../../types/planning";
-const goal={id:"g1",athlete_profile_id:"a",name:"Evento",event_date:"2028-02-29",event_start_time:null,timezone:"UTC",event_category:"running",event_format:"10k",priority:"A",segments:[],distance_m:10000,swim_distance_m:null,bike_distance_m:null,run_distance_m:10000,target_finish_time_seconds:null,notes:null,city:null,region:null,country:null,source_provider:null,source_external_id:null,source_url:null,source_retrieved_at:null,status:"active",created_by_user_id:"u",created_at:"2026-01-01T00:00:00Z",updated_at:"2026-01-01T00:00:00Z"} satisfies CompetitionGoal;
-describe("AnnualCalendar",()=>{
- it("calculates month lengths, leap years and Monday alignment",()=>{expect(daysInMonth(2028,1)).toBe(29);expect(daysInMonth(2027,1)).toBe(28);expect(mondayOffset(2026,7)).toBe(5)});
- it("renders twelve Spanish months and accessible one/multiple goal indicators",async()=>{const select=vi.fn();render(<AnnualCalendar goals={[{...goal,event_date:"2028-02-29"},{...goal,id:"g2",event_date:"2028-02-29"},{...goal,id:"g3",event_date:"2028-03-01"}]} year={2028} onYearChange={vi.fn()} onSelectDate={select}/>);expect(screen.getAllByRole("region")).toHaveLength(13);const multiple=screen.getByRole("button",{name:/29 de febrero de 2028, 2 objetivos/});expect(multiple).toHaveTextContent("2");expect(screen.getByRole("button",{name:/1 de marzo de 2028, 1 objetivo/})).toBeVisible();await userEvent.click(multiple);expect(select).toHaveBeenCalledWith("2028-02-29")});
- it("navigates previous, next and current year",async()=>{const change=vi.fn();render(<AnnualCalendar goals={[]} year={2028} onYearChange={change} onSelectDate={vi.fn()}/>);await userEvent.click(screen.getByRole("button",{name:"Año anterior"}));await userEvent.click(screen.getByRole("button",{name:"Año siguiente"}));await userEvent.click(screen.getByRole("button",{name:"Año actual"}));expect(change).toHaveBeenNthCalledWith(1,2027);expect(change).toHaveBeenNthCalledWith(2,2029);expect(change).toHaveBeenLastCalledWith(new Date().getFullYear())});
+import { describe, expect, it, vi } from "vitest";
+import type { CalendarItem } from "./calendarItems";
+import { AnnualCalendar, daysInMonth, mondayOffset } from "./AnnualCalendar";
+
+const item = (id: string, title: string, variant: CalendarItem["variant"], kind: CalendarItem["kind"] = "training"): CalendarItem => ({ id, date: "2028-02-29", kind, sport: variant, title, subtitle: "45 min", status: "planned", durationSeconds: 2700, sourceId: id, variant });
+
+describe("AnnualCalendar", () => {
+  it("calculates leap years and Monday alignment", () => { expect(daysInMonth(2028, 1)).toBe(29); expect(daysInMonth(2027, 1)).toBe(28); expect(mondayOffset(2026, 7)).toBe(5); });
+  it("renders competition and training together", async () => {
+    const select = vi.fn();
+    render(<AnnualCalendar items={[item("goal", "10K Villanueva", "competition", "competition"), item("run", "Carrera suave", "running")]} year={2028} onYearChange={vi.fn()} onSelectDate={select} />);
+    const day = screen.getByRole("button", { name: /29 de febrero de 2028, 2 eventos/ });
+    expect(day.querySelector(".calendar-item--competition")).toHaveTextContent("10K Villanueva");
+    expect(day.querySelector(".calendar-item--running")).toHaveTextContent("Carrera suave");
+    expect(document.querySelector(".calendar-legend")).toHaveTextContent("Carrera");
+    await userEvent.click(day); expect(select).toHaveBeenCalledWith("2028-02-29");
+  });
+  it("shows two daily items and announces additional ones", () => {
+    render(<AnnualCalendar items={[item("1", "Uno", "running"), item("2", "Dos", "cycling"), item("3", "Tres", "strength")]} year={2028} onYearChange={vi.fn()} onSelectDate={vi.fn()} />);
+    const day = screen.getByRole("button", { name: /3 eventos/ });
+    expect(day.querySelectorAll(".calendar-event")).toHaveLength(2); expect(day).toHaveTextContent("+1");
+  });
+  it.each(["running", "cycling", "swimming", "strength", "competition"] as const)("renders the %s semantic variant", (variant) => {
+    render(<AnnualCalendar items={[item(variant, variant, variant, variant === "competition" ? "competition" : "training")]} year={2028} onYearChange={vi.fn()} onSelectDate={vi.fn()} />);
+    expect(document.querySelector(`.calendar-event.calendar-item--${variant}`)).toBeVisible();
+  });
+  it("navigates previous, next and current year", async () => {
+    const change = vi.fn(); render(<AnnualCalendar items={[]} year={2028} onYearChange={change} onSelectDate={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: /anterior/ })); await userEvent.click(screen.getByRole("button", { name: /siguiente/ })); await userEvent.click(screen.getByRole("button", { name: /actual/ }));
+    expect(change).toHaveBeenNthCalledWith(1, 2027); expect(change).toHaveBeenNthCalledWith(2, 2029); expect(change).toHaveBeenLastCalledWith(new Date().getFullYear());
+  });
 });

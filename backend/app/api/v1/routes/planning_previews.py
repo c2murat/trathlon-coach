@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -15,6 +16,7 @@ from app.application.planning_preview import (
     PlanningPreviewApplication, PlanningPreviewAthleteMismatchError,
     PlanningPreviewBlockedError, PlanningPreviewFingerprintMismatchError,
     PlanningPreviewGoalInvalidError, PlanningPreviewNotFoundError,
+    TrainingPlanOverlapError, VISIBLE_TRAINING_PLAN_STATUSES,
 )
 from app.db.session import get_db_session
 from app.db.models import PlannedTrainingSession, StructuredWorkout, TrainingPlan, TrainingPlanGoal
@@ -44,6 +46,13 @@ def _raise(error: Exception):
         raise HTTPException(status_code=403, detail={"code": error.code}) from None
     if isinstance(error, PlanningPreviewFingerprintMismatchError):
         raise HTTPException(status_code=409, detail={"code": error.code}) from None
+    if isinstance(error, TrainingPlanOverlapError):
+        raise HTTPException(status_code=409, detail={
+            "code": error.code,
+            "existing_training_plan_id": str(error.existing_training_plan_id),
+            "existing_start_date": error.existing_start_date.isoformat(),
+            "existing_end_date": error.existing_end_date.isoformat(),
+        }) from None
     code = getattr(error, "code", "planning_preview_invalid")
     raise HTTPException(status_code=422, detail={"code": code}) from None
 
@@ -83,8 +92,33 @@ def accept_preview(preview_id: UUID, payload: PlanningPreviewAccept, current: Cu
             expected_fingerprint=payload.expected_fingerprint,
         )
         return TrainingPlanAcceptedResponse(training_plan_id=plan.id, preview_id=preview_id, status=plan.status)
-    except (PlanningPreviewNotFoundError, PlanningPreviewAthleteMismatchError, PlanningPreviewFingerprintMismatchError, PlanningPreviewGoalInvalidError) as error:
+    except (PlanningPreviewNotFoundError, PlanningPreviewAthleteMismatchError, PlanningPreviewFingerprintMismatchError, PlanningPreviewGoalInvalidError, TrainingPlanOverlapError) as error:
         _raise(error)
+
+
+@training_plans_router.get("/sessions")
+def list_planned_training_sessions(start_date: date, end_date: date, current: CurrentAthleteContext = Depends(read), session: Session = Depends(get_db_session)):
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail={"code": "invalid_date_range"})
+    rows = session.scalars(
+        select(PlannedTrainingSession)
+        .join(TrainingPlan, TrainingPlan.id == PlannedTrainingSession.training_plan_id)
+        .where(
+            TrainingPlan.athlete_profile_id == current.athlete_id,
+            TrainingPlan.status.in_(VISIBLE_TRAINING_PLAN_STATUSES),
+            PlannedTrainingSession.scheduled_date >= start_date,
+            PlannedTrainingSession.scheduled_date <= end_date,
+        )
+        .order_by(PlannedTrainingSession.scheduled_date, PlannedTrainingSession.id)
+    ).all()
+    workout_rows = session.scalars(select(StructuredWorkout).where(StructuredWorkout.planned_training_session_id.in_(tuple(item.id for item in rows)))).all() if rows else ()
+    workouts = {item.planned_training_session_id: item for item in workout_rows}
+    return [{
+        "id": item.id, "scheduled_date": item.scheduled_date, "sport": item.sport,
+        "title": item.title, "description": item.description,
+        "planned_duration_seconds": item.planned_duration_seconds,
+        "workout": workouts[item.id].definition if item.id in workouts else None,
+    } for item in rows]
 
 
 @training_plans_router.get("/{plan_id}")

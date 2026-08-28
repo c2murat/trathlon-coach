@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.application.planning_context import PlanningContextAssembler
 from app.db.models import (
+    AthleteProfile,
     CompetitionGoal, PlannedTrainingSession, StructuredWorkout, TrainingPlan,
     TrainingPlanGoal, TrainingPlanPreview,
 )
@@ -28,6 +29,19 @@ class PlanningPreviewAthleteMismatchError(PlanningPreviewError): code = "plannin
 class PlanningPreviewFingerprintMismatchError(PlanningPreviewError): code = "preview_fingerprint_mismatch"
 class PlanningPreviewGoalInvalidError(PlanningPreviewError): code = "planning_preview_goal_invalid"
 class PlanningPreviewBlockedError(PlanningPreviewError): code = "planning_preview_blocked"
+
+
+VISIBLE_TRAINING_PLAN_STATUSES = ("draft", "active")
+
+
+class TrainingPlanOverlapError(PlanningPreviewError):
+    code = "training_plan_overlap"
+
+    def __init__(self, plan: TrainingPlan):
+        self.existing_training_plan_id = plan.id
+        self.existing_start_date = plan.start_date
+        self.existing_end_date = plan.end_date
+        super().__init__(self.code)
 
 
 def persistence_goal_role(season_role: str) -> str:
@@ -117,6 +131,29 @@ class PlanningPreviewApplication:
             goals = tuple(self.session.scalars(select(CompetitionGoal).where(CompetitionGoal.id.in_(goal_ids)).order_by(CompetitionGoal.id)).all())
             if len(goals) != len(goal_ids) or any(item.athlete_profile_id != athlete_id or item.status != "active" for item in goals):
                 raise PlanningPreviewGoalInvalidError()
+            # Serialize accept operations for this athlete. PostgreSQL holds this
+            # row lock until commit/rollback, so a concurrent accept cannot pass
+            # the overlap check using a stale view of the athlete's plans.
+            locked_athlete = self.session.scalar(
+                select(AthleteProfile)
+                .where(AthleteProfile.id == athlete_id)
+                .with_for_update()
+            )
+            if locked_athlete is None:
+                raise PlanningPreviewAthleteMismatchError()
+            overlap = self.session.scalar(
+                select(TrainingPlan)
+                .where(
+                    TrainingPlan.athlete_profile_id == athlete_id,
+                    TrainingPlan.status.in_(VISIBLE_TRAINING_PLAN_STATUSES),
+                    TrainingPlan.start_date <= artifact.plan_end,
+                    TrainingPlan.end_date >= artifact.plan_start,
+                )
+                .order_by(TrainingPlan.start_date, TrainingPlan.id)
+                .limit(1)
+            )
+            if overlap is not None:
+                raise TrainingPlanOverlapError(overlap)
             plan = TrainingPlan(
                 athlete_profile_id=athlete_id,
                 title=f"Generated training plan {artifact.plan_start.isoformat()}–{artifact.plan_end.isoformat()}",

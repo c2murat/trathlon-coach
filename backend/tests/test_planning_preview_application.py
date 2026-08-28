@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.exc import IntegrityError
@@ -8,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.application.planning_preview import (
     PlanningPreviewApplication, PlanningPreviewAthleteMismatchError,
     PlanningPreviewFingerprintMismatchError, PlanningPreviewGoalInvalidError,
-    persistence_goal_role,
+    TrainingPlanOverlapError, persistence_goal_role,
 )
 from app.db.base import Base
 from app.db.models import (
@@ -75,6 +76,86 @@ def test_two_logical_callers_receive_the_same_plan_without_duplicates():
         second_id = PlanningPreviewApplication(second_session).accept(preview_id=preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete").id
         assert second_id == first_id
         assert second_session.scalar(select(func.count()).select_from(TrainingPlan)) == 1
+
+
+@pytest.mark.parametrize("status", ("draft", "active"))
+def test_relevant_overlapping_plan_blocks_accept_atomically(status):
+    engine, preview_id, athlete_id, user_id, source = seeded()
+    with Session(engine) as session:
+        existing = TrainingPlan(
+            athlete_profile_id=athlete_id, title="Existing",
+            start_date=source.plan_start, end_date=source.plan_end,
+            status=status, origin="human",
+        )
+        session.add(existing); session.commit()
+        with pytest.raises(TrainingPlanOverlapError) as caught:
+            PlanningPreviewApplication(session).accept(preview_id=preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete")
+        assert caught.value.existing_training_plan_id == existing.id
+        assert session.scalar(select(func.count()).select_from(TrainingPlan)) == 1
+        assert session.scalar(select(func.count()).select_from(TrainingPlanGoal)) == 0
+        assert session.scalar(select(func.count()).select_from(PlannedTrainingSession)) == 0
+        assert session.scalar(select(func.count()).select_from(StructuredWorkout)) == 0
+        assert session.get(TrainingPlanPreview, preview_id).status == "pending"
+
+
+@pytest.mark.parametrize("status", ("completed", "archived"))
+def test_non_current_or_adjacent_plan_does_not_block_accept(status):
+    engine, preview_id, athlete_id, user_id, source = seeded()
+    with Session(engine) as session:
+        session.add(TrainingPlan(
+            athlete_profile_id=athlete_id, title="Non-current",
+            start_date=source.plan_start, end_date=source.plan_end,
+            status=status, origin="human",
+        ))
+        session.add(TrainingPlan(
+            athlete_profile_id=athlete_id, title="Adjacent",
+            start_date=source.plan_end + timedelta(days=1),
+            end_date=source.plan_end + timedelta(days=1),
+            status="draft", origin="human",
+        ))
+        session.commit()
+        accepted = PlanningPreviewApplication(session).accept(preview_id=preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete")
+        assert accepted.source_preview_id == preview_id
+
+
+def test_other_athlete_overlapping_plan_does_not_block_accept():
+    engine, preview_id, athlete_id, user_id, source = seeded()
+    with Session(engine) as session:
+        other = AthleteProfile(display_name="Other overlap", timezone="Europe/Madrid", unit_system="metric")
+        session.add(other); session.flush()
+        session.add(TrainingPlan(
+            athlete_profile_id=other.id, title="Other plan",
+            start_date=source.plan_start, end_date=source.plan_end,
+            status="draft", origin="human",
+        )); session.commit()
+        assert PlanningPreviewApplication(session).accept(preview_id=preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete").id
+
+
+def test_idempotent_retry_precedes_overlap_check():
+    engine, preview_id, athlete_id, user_id, _ = seeded()
+    with Session(engine) as session:
+        app = PlanningPreviewApplication(session)
+        plan = app.accept(preview_id=preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete")
+        assert app.accept(preview_id=preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete").id == plan.id
+
+
+def test_two_distinct_previews_for_same_horizon_create_at_most_one_plan():
+    engine, first_preview_id, athlete_id, user_id, source = seeded()
+    with Session(engine) as session:
+        second = TrainingPlanPreview(
+            athlete_profile_id=athlete_id, created_by_user_id=user_id,
+            status="pending", artifact=source.model_dump(mode="json", exclude_none=True),
+            artifact_fingerprint=source.fingerprint,
+            algorithm_version=source.algorithm_version,
+            configuration_version=source.configuration_version,
+        )
+        session.add(second); session.commit()
+        app = PlanningPreviewApplication(session)
+        app.accept(preview_id=first_preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete")
+        with pytest.raises(TrainingPlanOverlapError):
+            app.accept(preview_id=second.id, athlete_id=athlete_id, user_id=user_id, role="athlete")
+        assert session.scalar(select(func.count()).select_from(TrainingPlan)) == 1
+        assert session.get(TrainingPlanPreview, second.id).status == "pending"
 
 
 def test_accept_rolls_back_everything_on_midway_failure():

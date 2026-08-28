@@ -111,7 +111,7 @@ it("marks profile and reference actions as denied for read-only capabilities",as
       await screen.findByRole("heading", { name: "Calendario" }),
     ).toBeInTheDocument();
 
-    expect(await screen.findByText("Todavía no tienes objetivos de competición.")).toBeVisible();
+    expect(await screen.findByText("Todavía no tienes objetivos ni sesiones planificadas.")).toBeVisible();
   });
 
   it("shows a time-aware Spanish greeting", async () => {
