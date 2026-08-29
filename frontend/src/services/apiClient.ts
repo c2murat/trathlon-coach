@@ -24,7 +24,7 @@ import type {AuthenticatedUser,LoginCredentials,RegistrationInput} from "../type
 import type {Account,AccountUpdateRequest,PasswordChangeRequest} from "../features/account/accountTypes";
 import type {AthleteCreateRequest,AthleteCreateResponse} from "../types/athlete";
 import type {AthleteProfile,AthleteProfileUpdateRequest} from "../features/athleteProfile/athleteProfileTypes";
-import type {AcceptedTrainingPlan,CatalogEvent,CatalogProvider,CatalogSearchFilters,CompetitionGoal,CompetitionGoalCreate,CompetitionGoalUpdate,PlanningPreferences,PlanningPreferencesVersion,PlanningPreview,PlanningPreviewRequest,TrainingPlan,TrainingPlanSession,WebCompetitionSearchResponse} from "../types/planning";
+import type {AcceptedTrainingPlan,ActivityLinkCandidate,AutoMatchResult,CatalogEvent,CatalogProvider,CatalogSearchFilters,CompetitionGoal,CompetitionGoalCreate,CompetitionGoalUpdate,PlannedSessionActivityLink,PlanningPreferences,PlanningPreferencesVersion,PlanningPreview,PlanningPreviewRequest,TrainingPlan,TrainingPlanSession,WebCompetitionSearchResponse} from "../types/planning";
 
 export const CSRF_COOKIE_NAME="tricoach_csrf";
 export const CSRF_HEADER_NAME="X-CSRF-Token";
@@ -68,6 +68,11 @@ export interface ApiClient {
   completeTrainingPlan?(id:string):Promise<TrainingPlan>;
   archiveTrainingPlan?(id:string):Promise<TrainingPlan>;
   plannedTrainingSessions?(startDate:string,endDate:string):Promise<TrainingPlanSession[]>;
+  plannedSessionActivityLinks?(sessionId:string):Promise<PlannedSessionActivityLink[]>;
+  plannedSessionActivityCandidates?(sessionId:string):Promise<ActivityLinkCandidate[]>;
+  linkPlannedSessionActivity?(sessionId:string,activityId:string):Promise<PlannedSessionActivityLink>;
+  unlinkPlannedSessionActivity?(sessionId:string,activityId:string):Promise<void>;
+  autoMatchPlannedSessionActivity?(sessionId:string):Promise<AutoMatchResult>;
   competitionCatalogProviders?():Promise<CatalogProvider[]>;
   searchCompetitionCatalog?(filters:CatalogSearchFilters):Promise<CatalogEvent[]>;
   searchWebCompetitions?(filters:CatalogSearchFilters,phase?:"initial"|"more"):Promise<WebCompetitionSearchResponse>;
@@ -154,6 +159,11 @@ export class FetchApiClient implements ApiClient {
   completeTrainingPlan(id:string){return this.request<TrainingPlan>(`/training-plans/${encodeURIComponent(id)}/complete`,{method:"POST"})}
   archiveTrainingPlan(id:string){return this.request<TrainingPlan>(`/training-plans/${encodeURIComponent(id)}/archive`,{method:"POST"})}
   plannedTrainingSessions(startDate:string,endDate:string){return this.request<TrainingPlanSession[]>(`/training-plans/sessions?${new URLSearchParams({start_date:startDate,end_date:endDate})}`)}
+  plannedSessionActivityLinks(sessionId:string){return this.request<PlannedSessionActivityLink[]>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-links`)}
+  plannedSessionActivityCandidates(sessionId:string){return this.request<ActivityLinkCandidate[]>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-candidates`)}
+  linkPlannedSessionActivity(sessionId:string,activityId:string){return this.request<PlannedSessionActivityLink>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-links`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({completed_activity_id:activityId})})}
+  unlinkPlannedSessionActivity(sessionId:string,activityId:string){return this.request<void>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-links/${encodeURIComponent(activityId)}`,{method:"DELETE"})}
+  autoMatchPlannedSessionActivity(sessionId:string){return this.request<AutoMatchResult>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/auto-match`,{method:"POST"})}
   competitionCatalogProviders(){return this.request<CatalogProvider[]>("/competition-catalog/providers")}
   searchCompetitionCatalog(filters:CatalogSearchFilters){const params=new URLSearchParams();Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,String(value))});return this.request<CatalogEvent[]>(`/competition-catalog/search?${params}`)}
   searchWebCompetitions(filters:CatalogSearchFilters,phase:"initial"|"more"="initial"){const params=new URLSearchParams({phase});Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,String(value))});return this.request<WebCompetitionSearchResponse>(`/competition-catalog/web-search?${params}`)}

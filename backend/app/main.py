@@ -13,6 +13,7 @@ from app.api.v1.routes.competition_goals import router as competition_goals_rout
 from app.api.v1.routes.competition_catalog import router as competition_catalog_router
 from app.api.v1.routes.planning_preferences import router as planning_preferences_router
 from app.api.v1.routes.planning_previews import router as planning_previews_router, training_plans_router
+from app.api.v1.routes.planned_session_activity_links import router as planned_session_activity_links_router
 from app.api.v1.routes.athletes import router as athletes_router
 from app.api.v1.routes.athlete_profile import router as athlete_profile_router
 from app.application.login_rate_limit import InMemoryLoginRateLimiter, LoginRateLimitPolicy
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     application.include_router(planning_preferences_router)
     application.include_router(planning_previews_router)
     application.include_router(training_plans_router)
+    application.include_router(planned_session_activity_links_router)
     application.include_router(athletes_router)
     application.include_router(athlete_profile_router)
     application.include_router(auth_router)

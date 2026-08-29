@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from uuid import UUID
 from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
@@ -47,6 +47,24 @@ class TrainingPlanGoal(Base):
 class PlannedTrainingSession(UUIDPrimaryKeyMixin,TimestampMixin,Base):
     __tablename__="planned_training_sessions";__table_args__=(CheckConstraint("status IN ('planned','completed','skipped','cancelled')",name="planned_session_status_valid"),CheckConstraint("origin IN ('human','ai')",name="planned_session_origin_valid"),CheckConstraint("created_via_role IS NULL OR created_via_role IN ('owner','athlete','coach')",name="planned_session_role_valid"),CheckConstraint("planned_duration_seconds IS NULL OR planned_duration_seconds >= 0",name="planned_session_duration_nonnegative"),CheckConstraint("planned_distance_meters IS NULL OR planned_distance_meters >= 0",name="planned_session_distance_nonnegative"),Index("ix_planned_sessions_athlete_date","athlete_profile_id","scheduled_date"),Index("ix_planned_sessions_plan","training_plan_id"),Index("ix_planned_sessions_creator","created_by_user_id"))
     athlete_profile_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("athlete_profiles.id",ondelete="CASCADE"),nullable=False);training_plan_id:Mapped[UUID|None]=mapped_column(Uuid(as_uuid=True),ForeignKey("training_plans.id",ondelete="SET NULL"));scheduled_date:Mapped[date]=mapped_column(Date,nullable=False);scheduled_start_time:Mapped[time|None]=mapped_column(Time);timezone:Mapped[str]=mapped_column(String(64),nullable=False);sport:Mapped[str]=mapped_column(String(24),nullable=False);title:Mapped[str]=mapped_column(String(200),nullable=False);description:Mapped[str|None]=mapped_column(Text);planned_duration_seconds:Mapped[int|None]=mapped_column(Integer);planned_distance_meters:Mapped[int|None]=mapped_column(Integer);status:Mapped[str]=mapped_column(String(16),nullable=False,default="planned");origin:Mapped[str]=mapped_column(String(16),nullable=False);created_by_user_id:Mapped[UUID|None]=mapped_column(Uuid(as_uuid=True),ForeignKey("users.id",ondelete="SET NULL"));created_via_role:Mapped[str|None]=mapped_column(String(16));algorithm_version:Mapped[str|None]=mapped_column(String(64))
+
+class PlannedSessionActivityLink(UUIDPrimaryKeyMixin,Base):
+    __tablename__="planned_session_activity_links"
+    __table_args__=(
+      CheckConstraint("match_source IN ('automatic','manual')",name="planned_session_activity_link_source_valid"),
+      CheckConstraint("match_confidence IN ('high','medium','low')",name="planned_session_activity_link_confidence_valid"),
+      CheckConstraint("(match_source = 'automatic' AND algorithm_version IS NOT NULL) OR (match_source = 'manual' AND algorithm_version IS NULL)",name="planned_session_activity_link_algorithm_valid"),
+      UniqueConstraint("planned_training_session_id","completed_activity_id",name="uq_planned_session_activity_link_pair"),
+      Index("ix_planned_session_activity_links_athlete","athlete_profile_id"),
+      Index("ix_planned_session_activity_links_session","planned_training_session_id"),
+      Index("ix_planned_session_activity_links_activity","completed_activity_id"),)
+    athlete_profile_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("athlete_profiles.id",ondelete="CASCADE"),nullable=False)
+    planned_training_session_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("planned_training_sessions.id",ondelete="CASCADE"),nullable=False)
+    completed_activity_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("completed_activities.id",ondelete="CASCADE"),nullable=False)
+    match_source:Mapped[str]=mapped_column(String(16),nullable=False)
+    match_confidence:Mapped[str]=mapped_column(String(16),nullable=False)
+    algorithm_version:Mapped[str|None]=mapped_column(String(32))
+    created_at:Mapped[datetime]=mapped_column(UTCDateTime(),nullable=False,default=lambda:datetime.now(timezone.utc))
 
 class StructuredWorkout(UUIDPrimaryKeyMixin,TimestampMixin,Base):
     __tablename__="structured_workouts";__table_args__=(CheckConstraint("schema_version = 1",name="structured_workout_schema_version_valid"),UniqueConstraint("planned_training_session_id",name="uq_structured_workout_session"),)
