@@ -110,7 +110,7 @@ class PlanningGoal(FrozenModel):
     category: str
     event_format: str
     priority: Literal["A", "B", "C"]
-    role: Literal["primary", "supporting"] | None = None
+    role: Literal["primary", "supporting", "training"] | None = None
     segments: tuple[PlanningGoalSegment, ...]
     target_finish_time_seconds: int | None = Field(default=None, gt=0)
     city: str | None = None
@@ -228,6 +228,8 @@ class PlanningWarning(FrozenModel):
         "SESSION_LOAD_TARGET_UNAVAILABLE",
         "WEEKLY_LOAD_BUDGET_UNDERSHOT",
         "WEEKLY_LOAD_BUDGET_OVERSHOT",
+        "PREFERRED_REST_DAY_UNAVAILABLE",
+        "PREFERRED_LONG_DAY_UNAVAILABLE",
     ]
     severity: Literal["WARNING", "ERROR"] = "WARNING"
     blocking: bool = False

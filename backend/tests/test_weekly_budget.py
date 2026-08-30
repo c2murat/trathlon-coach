@@ -212,10 +212,20 @@ def test_single_cycling_swimming_and_custom_segments_are_not_invented():
     cycling = allocation(("bike",))
     swimming = allocation(("swim",))
     custom = allocation(("swim", "run", "bike", "run"))
-    assert cycling["cycling"].target_share > cycling["running"].target_share
-    assert swimming["swimming"].target_share > swimming["running"].target_share
-    assert custom["running"].target_share > custom["cycling"].target_share
-    assert custom["running"].target_share > custom["swimming"].target_share
+    assert set(cycling) == {"cycling"}
+    assert set(swimming) == {"swimming"}
+    assert set(custom) == {"running", "cycling", "swimming"}
+
+
+def test_segment_time_not_raw_load_points_drives_multisport_share():
+    source = goal(sports=("swim", "bike", "run")).model_copy(update={"segments":(
+        PlanningGoalSegment(position=1, sport="swim", distance_m=1900),
+        PlanningGoalSegment(position=2, sport="bike", distance_m=82000),
+        PlanningGoalSegment(position=3, sport="run", distance_m=21000),
+    )})
+    budgets = plan(context(goals=(source,))).budgets[0].disciplines
+    shares = {item.discipline:item.target_share for item in budgets}
+    assert shares["cycling"] > shares["running"] > shares["swimming"]
 
 
 def test_strength_is_reserved_without_invented_load_and_uses_history_when_known():

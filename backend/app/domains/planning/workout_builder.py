@@ -188,6 +188,23 @@ def _target_float(value: Decimal, config: WorkoutBuilderConfig) -> float:
     return result
 
 
+def _resolved_target(metric, reference, bounds, reference_value, unit, config):
+    reference_decimal = Decimal(str(reference_value))
+    resolved = tuple(
+        reference_decimal * bound for bound in bounds
+    )
+    # Athlete-facing power and pace values are snapshotted at their executable
+    # precision: whole watts or whole seconds per distance, using HALF_UP in both
+    # backend and serialized artifacts.
+    rounded = tuple(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP) for value in resolved)
+    return WorkoutTarget(
+        metric=metric, mode="percent_reference", reference=reference,
+        minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config),
+        reference_value=float(reference_decimal), reference_unit=unit,
+        resolved_minimum=float(rounded[0]), resolved_maximum=float(rounded[1]), resolved_unit=unit,
+    )
+
+
 def _target(context: PlanningContext, session: SessionPrescription, config: WorkoutBuilderConfig):
     family = _family(session.session_type)
     performance = context.performance
@@ -195,19 +212,19 @@ def _target(context: PlanningContext, session: SessionPrescription, config: Work
     provenance: WorkoutTargetProvenance
     if session.discipline == "running" and _positive(performance.running_threshold_pace_seconds_per_km):
         bounds = _range(config, "run_pace", family)
-        target = WorkoutTarget(metric="pace", mode="percent_reference", reference="threshold_pace", minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config))
+        target = _resolved_target("pace", "threshold_pace", bounds, performance.running_threshold_pace_seconds_per_km, "seconds_per_km", config)
         decision = WorkoutDecisionCode.TARGET_FROM_THRESHOLD_PACE
         provenance = WorkoutTargetProvenance(metric="pace", source_kind="threshold_pace", reference_value=performance.running_threshold_pace_seconds_per_km, reference_unit="seconds_per_km", reference_id=_reference_id(context, "running", {"threshold_pace", "pace"}), profile_version_id=performance.profile_version_id, derivation_rule=f"threshold_pace_x_{bounds[0]}_{bounds[1]}", config_version=config.version)
         return target, provenance, decision, ()
     if session.discipline == "cycling" and _positive(performance.cycling_ftp_watts):
         bounds = _range(config, "bike_power", family)
-        target = WorkoutTarget(metric="power", mode="percent_reference", reference="FTP", minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config))
+        target = _resolved_target("power", "FTP", bounds, performance.cycling_ftp_watts, "watts", config)
         decision = WorkoutDecisionCode.TARGET_FROM_FTP
         provenance = WorkoutTargetProvenance(metric="power", source_kind="FTP", reference_value=performance.cycling_ftp_watts, reference_unit="watts", reference_id=_reference_id(context, "cycling", {"ftp", "FTP"}), profile_version_id=performance.profile_version_id, derivation_rule=f"ftp_x_{bounds[0]}_{bounds[1]}", config_version=config.version)
         return target, provenance, decision, ()
     if session.discipline == "swimming" and _positive(performance.swimming_css_seconds_per_100m):
         bounds = _range(config, "swim_css", family)
-        target = WorkoutTarget(metric="swim_pace", mode="percent_reference", reference="CSS", minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config))
+        target = _resolved_target("swim_pace", "CSS", bounds, performance.swimming_css_seconds_per_100m, "seconds_per_100m", config)
         decision = WorkoutDecisionCode.TARGET_FROM_CSS
         provenance = WorkoutTargetProvenance(metric="swim_pace", source_kind="CSS", reference_value=performance.swimming_css_seconds_per_100m, reference_unit="seconds_per_100m", reference_id=_reference_id(context, "swimming", {"css", "CSS"}), profile_version_id=performance.profile_version_id, derivation_rule=f"css_x_{bounds[0]}_{bounds[1]}", config_version=config.version)
         return target, provenance, decision, ()

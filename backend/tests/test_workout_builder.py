@@ -128,6 +128,29 @@ def test_swim_css_semantics_fallback_and_technique_are_safe():
     assert targets(build_structured_workout(ctx, prescription(session, SessionType.SWIM_AEROBIC, "swimming"), CONFIG).definition)[0].metric == "rpe"
 
 
+def test_relative_targets_snapshot_resolved_power_run_and_css_ranges():
+    performance = PerformanceSnapshot(
+        cycling_ftp_watts=Decimal("250"),
+        running_threshold_pace_seconds_per_km=Decimal("240"),
+        swimming_css_seconds_per_100m=Decimal("100"),
+    )
+    ctx, session = source(performance)
+    power = targets(build_structured_workout(ctx, prescription(session, SessionType.BIKE_EASY, "cycling"), CONFIG).definition)[0]
+    run = targets(build_structured_workout(ctx, prescription(session, SessionType.RUN_EASY), CONFIG).definition)[0]
+    swim = targets(build_structured_workout(ctx, prescription(session, SessionType.SWIM_EASY, "swimming"), CONFIG).definition)[0]
+    assert (power.reference_value, power.resolved_minimum, power.resolved_maximum, power.resolved_unit) == (250, 125, 163, "watts")
+    assert (run.reference_value, run.resolved_minimum, run.resolved_maximum, run.resolved_unit) == (240, 276, 324, "seconds_per_km")
+    assert (swim.reference_value, swim.resolved_minimum, swim.resolved_maximum, swim.resolved_unit) == (100, 110, 125, "seconds_per_100m")
+
+
+def test_missing_references_never_create_zero_resolved_targets():
+    ctx, session = source(PerformanceSnapshot())
+    for kind, discipline in ((SessionType.BIKE_EASY, "cycling"), (SessionType.RUN_EASY, "running"), (SessionType.SWIM_EASY, "swimming")):
+        target = targets(build_structured_workout(ctx, prescription(session, kind, discipline), CONFIG).definition)[0]
+        assert target.reference_value is None
+        assert target.resolved_minimum is None and target.resolved_maximum is None
+
+
 def test_strength_is_generic_and_does_not_invent_exercises_sets_or_weight():
     ctx, session = source()
     draft = build_structured_workout(ctx, prescription(session, SessionType.GENERAL_STRENGTH, "strength", 40), CONFIG)

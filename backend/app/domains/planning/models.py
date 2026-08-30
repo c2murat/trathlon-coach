@@ -64,6 +64,11 @@ class WorkoutTarget(BaseModel):
     maximum: float | None = Field(default=None, ge=0)
     zone_min: int | None = Field(default=None, ge=1, le=10)
     zone_max: int | None = Field(default=None, ge=1, le=10)
+    reference_value: float | None = Field(default=None, gt=0)
+    reference_unit: Literal["watts", "seconds_per_km", "seconds_per_100m"] | None = None
+    resolved_minimum: float | None = Field(default=None, ge=0)
+    resolved_maximum: float | None = Field(default=None, ge=0)
+    resolved_unit: Literal["watts", "seconds_per_km", "seconds_per_100m"] | None = None
     @model_validator(mode="after")
     def valid_range(self):
         if self.mode == "none":
@@ -75,6 +80,12 @@ class WorkoutTarget(BaseModel):
         else:
             if self.minimum is None or self.maximum is None or self.minimum > self.maximum: raise ValueError("invalid target range")
         if self.mode == "percent_reference" and self.reference is None: raise ValueError("reference required")
+        resolved = (self.reference_value, self.reference_unit, self.resolved_minimum, self.resolved_maximum, self.resolved_unit)
+        if any(item is not None for item in resolved):
+            if any(item is None for item in resolved): raise ValueError("resolved target snapshot must be complete")
+            if self.mode != "percent_reference": raise ValueError("resolved target requires percent reference mode")
+            if self.resolved_minimum > self.resolved_maximum: raise ValueError("invalid resolved target range")
+            if self.reference_unit != self.resolved_unit: raise ValueError("reference and resolved units must match")
         return self
 
 class WorkoutNode(BaseModel):

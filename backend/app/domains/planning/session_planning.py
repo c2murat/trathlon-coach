@@ -139,6 +139,16 @@ class SessionPlanningConfig(FrozenModel):
     preferred_day_score: int = 100
     rest_day_penalty: int = 40
     key_spacing_score: int = 30
+    discipline_minimum_share_for_second_session: Decimal = Field(default=Decimal("0.20"), ge=0, le=1)
+    underrepresentation_tolerance: Decimal = Field(default=Decimal("0.15"), ge=0, le=Decimal("0.50"))
+    long_bike_progression_minutes: int = Field(default=15, ge=0, le=30)
+    long_run_progression_minutes: int = Field(default=10, ge=0, le=20)
+    taper_long_duration_factor: Decimal = Field(default=Decimal("0.65"), gt=0, le=1)
+    deload_long_duration_factor: Decimal = Field(default=Decimal("0.85"), gt=0, le=1)
+    long_bike_objective_fraction: Decimal = Field(default=Decimal("0.95"), gt=0, le=1)
+    long_run_objective_fraction: Decimal = Field(default=Decimal("0.90"), gt=0, le=1)
+    long_bike_safety_cap_minutes: int = Field(default=180, ge=60)
+    long_run_safety_cap_minutes: int = Field(default=120, ge=45)
 
 
 class SessionPlanValidationIssue(FrozenModel):
@@ -174,19 +184,34 @@ def _historical_sport(context, discipline):
 def _frequency(context, budget: WeeklyTrainingBudget, config: SessionPlanningConfig):
     active = [item for item in budget.disciplines if item.discipline != "strength" and (item.target_share or 0) > 0]
     requested_strength = context.preferences.strength_sessions_per_week if any(item.discipline == "strength" for item in budget.disciplines) else 0
-    counts = {}
-    for item in active:
-        history = _historical_sport(context, item.discipline)
-        historical_weekly = ceil(history.activity_count / 4) if history and history.activity_count else 0
-        counts[item.discipline] = 1 if historical_weekly == 0 else historical_weekly + min(
-            config.maximum_frequency_increase_per_discipline, 1,
-        )
+    counts = {item.discipline: 1 for item in active}
     counts["strength"] = requested_strength
     competition_sessions = len(budget.competition_goal_ids)
     capacity = min(
         budget.max_sessions,
         max(0, context.preferences.max_sessions_per_week - competition_sessions),
     )
+    # If every day in the horizon is trainable, reserve one complete recovery day.
+    # Existing unavailable days already provide that recovery opportunity.
+    if budget.available_days_in_horizon >= 6 and budget.available_days == budget.available_days_in_horizon:
+        capacity = min(capacity, max(0, budget.available_days_in_horizon - 1 - competition_sessions))
+    if len(active) == 1 and budget.dominant_phase not in {SeasonPhase.TAPER, SeasonPhase.RECOVERY}:
+        counts[active[0].discipline] = min(3, capacity)
+    if budget.dominant_phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC}:
+        for item in sorted(active, key=lambda value: (-(value.target_share or 0), value.discipline)):
+            if (item.target_share or 0) < config.discipline_minimum_share_for_second_session:
+                continue
+            if sum(counts.values()) >= capacity:
+                break
+            counts[item.discipline] += 1
+    if budget.dominant_phase is SeasonPhase.TAPER:
+        counts["strength"] = min(counts["strength"], 1)
+        nearby_primary = any(
+            goal.priority == "A" and budget.week_start <= goal.event_date <= budget.week_end + timedelta(days=7)
+            for goal in context.goals
+        )
+        if not nearby_primary and len(active) == 1 and sum(counts.values()) < capacity:
+            counts[active[0].discipline] += 1
     while sum(counts.values()) > capacity:
         candidates = [key for key in counts if counts[key] > (1 if key != "strength" else 0)]
         if not candidates:
@@ -239,14 +264,45 @@ def _metadata(session_type):
     return SessionPurpose.AEROBIC_BASE, IntensityClass.EASY, SessionPriority.SUPPORT, False
 
 
-def _duration(context, discipline, session_type, config):
+def _objective_long_cap(context, discipline, week_start, config):
+    sport = "bike" if discipline == "cycling" else "run"
+    candidates = []
+    for goal in context.goals:
+        if goal.event_date < week_start:
+            continue
+        distance = sum(item.distance_m for item in goal.segments if item.sport == sport)
+        if distance:
+            priority = {"A": 3, "B": 2, "C": 1}[goal.priority]
+            candidates.append((priority, -((goal.event_date - week_start).days), distance))
+    distance = max(candidates)[2] if candidates else 0
+    if not distance:
+        return config.default_long_bike_minutes if discipline == "cycling" else config.default_long_run_minutes
+    seconds_per_meter = Decimal("0.125") if discipline == "cycling" else Decimal("0.30")
+    # Defaults are baselines/fallbacks. Objective relevance, documented safety
+    # bounds and athlete availability form the actual progression ceiling.
+    fraction = config.long_bike_objective_fraction if discipline == "cycling" else config.long_run_objective_fraction
+    lower = 60 if discipline == "cycling" else 45
+    upper = config.long_bike_safety_cap_minutes if discipline == "cycling" else config.long_run_safety_cap_minutes
+    return max(lower, min(upper, int(Decimal(distance) * seconds_per_meter * fraction / Decimal(60))))
+
+
+def _duration(context, budget, discipline, session_type, config, previous_long):
     defaults = {"running": config.default_run_minutes, "cycling": config.default_bike_minutes, "swimming": config.default_swim_minutes, "strength": config.default_strength_minutes}
     value = defaults[discipline]
     history = _historical_sport(context, discipline)
     if session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}:
         fallback = config.default_long_run_minutes if discipline == "running" else config.default_long_bike_minutes
         historical_minutes = Decimal(history.longest_duration_seconds) / Decimal(60) if history and history.longest_duration_seconds else None
-        value = min(fallback, int(historical_minutes * (Decimal(1) + config.long_duration_growth_limit))) if historical_minutes else fallback
+        baseline = int(historical_minutes) if historical_minutes else fallback
+        prior = previous_long.get(discipline, baseline)
+        step = config.long_bike_progression_minutes if discipline == "cycling" else config.long_run_progression_minutes
+        value = min(_objective_long_cap(context, discipline, budget.week_start, config), prior + step)
+        if "DELOAD" in {item.code for item in budget.adjustments}:
+            value = int(prior * config.deload_long_duration_factor)
+        if budget.dominant_phase is SeasonPhase.TAPER:
+            value = int(prior * config.taper_long_duration_factor)
+        available = max((slot.available_minutes for _, slot in _slots(context, budget) if slot is not None), default=0)
+        value = min(value, available)
     elif history and history.activity_count and history.duration_seconds:
         historical_average = round(history.duration_seconds / 60 / history.activity_count)
         value = max(config.minimum_session_minutes, min(value, historical_average))
@@ -255,11 +311,17 @@ def _duration(context, discipline, session_type, config):
     return value
 
 
-def _needs(context, budget, config):
+def _needs(context, budget, config, previous_long):
     counts = _frequency(context, budget, config)
     discipline_map = {item.discipline: item for item in budget.disciplines}
     needs = []
-    key_count = 0
+    structural_long_count = sum(
+        counts.get(discipline, 0) > 0
+        for discipline in ("running", "cycling")
+        if budget.dominant_phase not in {SeasonPhase.TAPER, SeasonPhase.RECOVERY}
+    )
+    non_long_key_limit = max(0, config.max_key_sessions_per_week - structural_long_count)
+    non_long_key_count = 0
     for discipline in ("running", "cycling", "swimming", "strength"):
         types = _type_sequence(discipline, budget.dominant_phase, counts.get(discipline, 0))
         allocation = discipline_map.get(discipline)
@@ -275,10 +337,11 @@ def _needs(context, budget, config):
             loads = [None] * len(types)
         for index, session_type in enumerate(types):
             purpose, intensity, priority, key = _metadata(session_type)
-            if key and key_count >= config.max_key_sessions_per_week:
+            structural_long = session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}
+            if key and not structural_long and non_long_key_count >= non_long_key_limit:
                 session_type = {"running": SessionType.RUN_EASY, "cycling": SessionType.BIKE_ENDURANCE, "swimming": SessionType.SWIM_AEROBIC}[discipline]
                 purpose, intensity, priority, key = _metadata(session_type)
-            key_count += int(key)
+            non_long_key_count += int(key and not structural_long)
             history = _historical_sport(context, discipline)
             historical_weekly = ceil(history.activity_count / 4) if history and history.activity_count else 0
             optional = discipline != "strength" and index >= max(1, historical_weekly)
@@ -287,7 +350,7 @@ def _needs(context, budget, config):
             needs.append(_Need(
                 discipline, session_type, purpose, intensity, priority, key,
                 optional,
-                _duration(context, discipline, session_type, config),
+                _duration(context, budget, discipline, session_type, config, previous_long),
                 allocation.target_share if allocation else None, loads[index],
                 tuple(item.competition_goal_id for item in context.goals), budget.dominant_phase,
             ))
@@ -303,8 +366,13 @@ def _place(context, budget, needs, occupied, config):
     sessions = []; warnings = []; used_minutes = {}; used_count = {}; key_dates = list(occupied)
     rank = {SessionPriority.REQUIRED: 0, SessionPriority.KEY: 1, SessionPriority.SUPPORT: 2, SessionPriority.OPTIONAL: 3}
     needs = sorted(needs, key=lambda item: (rank[item.priority], not item.session_type.name.endswith("LONG"), item.discipline, item.session_type.value))
+    horizon_days = {day for day, _ in _slots(context, budget)}
+    preferred_rest = {day for day in horizon_days if day.weekday() in context.preferences.preferred_rest_days}
+    primary_dates = sorted(goal.event_date for goal in context.goals if goal.priority == "A")
+    pre_primary_rest = {event - timedelta(days=1) for event in primary_dates if event - timedelta(days=1) in horizon_days}
+    reserved_rest = preferred_rest | pre_primary_rest
     for need in needs:
-        candidates = []
+        candidates = []; fallback_candidates = []
         preferred = context.preferences.preferred_long_run_day if need.session_type is SessionType.RUN_LONG else context.preferences.preferred_long_bike_day if need.session_type is SessionType.BIKE_LONG else None
         for day, slot in _slots(context, budget):
             if day in occupied or slot is None or slot.available_minutes <= 0 or slot.max_sessions <= 0:
@@ -314,12 +382,19 @@ def _place(context, budget, needs, occupied, config):
                 max_count = min(max_count, 1)
             if used_count.get(day, 0) >= max_count or used_minutes.get(day, 0) + need.duration > slot.available_minutes:
                 continue
+            if need.discipline == "strength" and any(timedelta(0) < event - day <= timedelta(days=2) for event in primary_dates):
+                continue
             gap = min((abs((day - other).days) for other in key_dates), default=99)
             score = (config.preferred_day_score if preferred == day.weekday() else 0)
             score -= config.rest_day_penalty if day.weekday() in context.preferences.preferred_rest_days else 0
             score += config.key_spacing_score if need.key and gap >= config.minimum_gap_between_key_sessions_days else 0
             score += slot.available_minutes - used_minutes.get(day, 0) - need.duration
-            candidates.append((score, day, preferred == day.weekday(), gap))
+            candidate = (score, day, preferred == day.weekday(), gap)
+            fallback_candidates.append(candidate)
+            if day not in reserved_rest:
+                candidates.append(candidate)
+        if not candidates and fallback_candidates:
+            candidates = fallback_candidates
         if not candidates:
             warnings.append(PlanningWarning(code="WEEKLY_SESSION_LIMIT_REACHED" if need.optional else "SESSION_PLACEMENT_CONSTRAINT", context={"discipline": need.discipline, "session_type": need.session_type.value}))
             continue
@@ -423,7 +498,7 @@ def validate_session_plan(plan: SessionPlan, context: PlanningContext, season: S
             or (budget.load_floor is not None and expected_planned < budget.load_floor)
             or (budget.load_ceiling is not None and expected_planned > budget.load_ceiling)
         )
-        if outside_materialization:
+        if outside_materialization and budget.available_days_in_horizon == 7:
             expected_warning = "WEEKLY_LOAD_BUDGET_UNDERSHOT" if expected_delta < 0 else "WEEKLY_LOAD_BUDGET_OVERSHOT"
             if expected_warning not in {item.code for item in week.warnings}:
                 issues.append(SessionPlanValidationIssue(code="WEEKLY_LOAD_WARNING_MISSING", date=week.week_start))
@@ -438,12 +513,15 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
         or len(budgets.budgets) == 0
     ):
         raise ValueError("session planning inputs are incompatible")
-    weeks = []; plan_warnings = []
+    weeks = []; plan_warnings = []; previous_long = {}
     for budget in budgets.budgets:
         competitions = _competition_sessions(context, season, budget, config)
-        needs = _needs(context, budget, config)
+        needs = _needs(context, budget, config, previous_long)
         sessions, warnings = _place(context, budget, needs, {item.date for item in competitions}, config)
         sessions = tuple(sorted((*competitions, *sessions), key=lambda item: (item.date, item.session_type.value, item.discipline)))
+        for session in sessions:
+            if session.session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}:
+                previous_long[session.discipline] = session.target_duration_minutes
         planned_values = [item.target_load for item in sessions if item.target_load is not None]
         planned = _round(sum(planned_values, Decimal(0))) if budget.target_load is not None else None
         delta = _round(planned - budget.target_load) if planned is not None and budget.target_load is not None else None
@@ -452,6 +530,22 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
         unavailable = tuple(day for day, slot in _slots(context, budget) if slot is None or slot.available_minutes <= 0 or slot.max_sessions <= 0)
         rest = tuple(day for day in dates if day not in session_dates)
         week_warnings = list(warnings)
+        partial_week = budget.available_days_in_horizon < 7
+        preferred_rest_dates = {day for day in dates if day.weekday() in context.preferences.preferred_rest_days}
+        training_session_dates = {item.date for item in sessions if item.session_type is not SessionType.COMPETITION}
+        occupied_preferred_rest = preferred_rest_dates & training_session_dates
+        if not partial_week and occupied_preferred_rest:
+            week_warnings.append(PlanningWarning(
+                code="PREFERRED_REST_DAY_UNAVAILABLE",
+                context={"weekdays": ",".join(str(day.weekday()) for day in sorted(occupied_preferred_rest))},
+            ))
+        for session in (() if partial_week else sessions):
+            preferred = context.preferences.preferred_long_run_day if session.session_type is SessionType.RUN_LONG else context.preferences.preferred_long_bike_day if session.session_type is SessionType.BIKE_LONG else None
+            if preferred is not None and session.date.weekday() != preferred:
+                week_warnings.append(PlanningWarning(
+                    code="PREFERRED_LONG_DAY_UNAVAILABLE",
+                    context={"discipline": session.discipline, "preferred_weekday": preferred},
+                ))
         if not sessions and any((item.target_share or 0) > 0 for item in budget.disciplines):
             week_warnings.append(PlanningWarning(
                 code="SESSION_PLACEMENT_CONSTRAINT",
@@ -464,7 +558,7 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
             or (budget.load_floor is not None and planned < budget.load_floor)
             or (budget.load_ceiling is not None and planned > budget.load_ceiling)
         )
-        if outside_materialization:
+        if outside_materialization and not partial_week:
             week_warnings.append(PlanningWarning(
                 code="WEEKLY_LOAD_BUDGET_UNDERSHOT" if delta < 0 else "WEEKLY_LOAD_BUDGET_OVERSHOT",
                 context={"load_delta": str(delta), "iso_week": budget.iso_week},
@@ -478,9 +572,27 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
                         context={"discipline": session.discipline},
                     ))
         represented = {item.discipline for item in sessions}
+        training = [item for item in sessions if item.discipline not in {"competition", "strength"}]
+        counts = {discipline: sum(item.discipline == discipline for item in training) for discipline in represented}
+        total_count = max(1, len(training))
         for allocation in budget.disciplines:
-            if allocation.target_share and allocation.discipline not in represented:
+            if allocation.discipline == "strength" or partial_week:
+                continue
+            actual_share = Decimal(counts.get(allocation.discipline, 0)) / Decimal(total_count)
+            materially_low = (
+                allocation.target_share is not None
+                and allocation.target_share - actual_share > config.underrepresentation_tolerance
+                and budget.dominant_phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC}
+            )
+            if allocation.target_share and (allocation.discipline not in represented or materially_low):
                 week_warnings.append(PlanningWarning(code="DISCIPLINE_UNDERREPRESENTED", context={"discipline": allocation.discipline}))
+        requested_strength = context.preferences.strength_sessions_per_week
+        actual_strength = sum(item.discipline == "strength" for item in sessions)
+        if not partial_week and requested_strength > actual_strength:
+            week_warnings.append(PlanningWarning(
+                code="DISCIPLINE_UNDERREPRESENTED",
+                context={"discipline": "strength", "requested_sessions": requested_strength, "planned_sessions": actual_strength},
+            ))
         week_warnings = tuple(sorted({(item.code, str(item.context)): item for item in week_warnings}.values(), key=lambda item: (item.code, str(item.context))))
         plan_warnings.extend(week_warnings)
         weeks.append(WeeklySessionPlan(

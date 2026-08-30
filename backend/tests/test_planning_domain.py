@@ -26,6 +26,13 @@ def test_workout_rejects_invalid_root(change):
 @pytest.mark.parametrize("reference",["threshold_hr","threshold_pace","CSS"])
 def test_percent_references(reference):
  value=definition();value["steps"][1]["steps"][0]["target"].update(reference=reference);assert StructuredWorkoutDefinition.model_validate(value)
+def test_v1_target_accepts_optional_complete_resolved_snapshot_and_old_payload():
+ value=definition();target=value["steps"][1]["steps"][0]["target"]
+ assert StructuredWorkoutDefinition.model_validate(value)
+ target.update(reference_value=250,reference_unit="watts",resolved_minimum=225,resolved_maximum=238,resolved_unit="watts")
+ assert StructuredWorkoutDefinition.model_validate(value).steps[1].steps[0].target.resolved_maximum==238
+ target.pop("resolved_maximum")
+ with pytest.raises(ValidationError):StructuredWorkoutDefinition.model_validate(value)
 def test_invalid_ranges_and_negative_duration():
  value=definition();value["steps"][0]["target"].update(zone_min=4,zone_max=2)
  with pytest.raises(ValidationError):StructuredWorkoutDefinition.model_validate(value)

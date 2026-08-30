@@ -17,7 +17,7 @@ export interface PlanningPreferencesVersion {id:string;athlete_profile_id:string
 export interface PlanningPreviewRequest {planning_date:string;start_date:string;horizon_end_date?:string;goal_ids:string[];preferences:PlanningPreferences}
 export interface PlanningWarning {code:string;severity:"WARNING"|"ERROR";blocking:boolean;context:Record<string,string|number|boolean|null>}
 export interface PreviewPrescription {date:string;discipline:string;session_type:string;purpose:string;intensity:string;priority:string;key_session:boolean;optional:boolean;target_duration_minutes:number|null;target_load:number|null;phase:string;related_goal_ids:string[]}
-export interface WorkoutTarget {metric:string;mode:string;reference?:string;minimum?:number;maximum?:number}
+export interface WorkoutTarget {metric:string;mode:string;reference?:string;minimum?:number;maximum?:number;reference_value?:number;reference_unit?:string;resolved_minimum?:number;resolved_maximum?:number;resolved_unit?:string}
 export interface WorkoutNode {kind:"step"|"repeat";phase?:string;duration?:{mode:string;seconds?:number};target?:WorkoutTarget;instructions?:string;repetitions?:number;steps?:WorkoutNode[]}
 export interface StructuredWorkoutDefinition {schema_version:number;sport:string;steps:WorkoutNode[]}
 export interface PreviewWorkout {buildable:boolean;definition:StructuredWorkoutDefinition|null;warnings?:Array<{code:string;context?:Record<string,unknown>}>;decisions?:Array<{code:string;context?:Record<string,unknown>}>}

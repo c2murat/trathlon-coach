@@ -65,15 +65,17 @@ class PlanningPreviewApplication:
         if any(warning.blocking for warning in season.warnings):
             raise PlanningPreviewBlockedError()
         budgets = build_weekly_budget_plan(context, season, WeeklyBudgetConfig(version="0.8F.4", algorithm_version="0.8F.4"))
-        session_plan = build_session_plan(context, season, budgets, SessionPlanningConfig(version="0.8F.5A", algorithm_version="0.8F.5A"))
-        workout_config = WorkoutBuilderConfig(version="0.8F.5B", algorithm_version="0.8F.5B")
+        session_plan = build_session_plan(context, season, budgets, SessionPlanningConfig(version="0.8F.8", algorithm_version="0.8F.8"))
+        workout_config = WorkoutBuilderConfig(version="0.8F.8B", algorithm_version="0.8F.8B")
         prescriptions = tuple(item for week in session_plan.weeks for item in week.sessions)
         drafts = tuple(build_structured_workout(context, item, workout_config) for item in prescriptions)
+        roles = {item.goal_id: item.role for item in season.goals}
+        artifact_goals = tuple(goal.model_copy(update={"role": roles[goal.competition_goal_id]}) for goal in context.goals)
         artifact = build_preview_artifact(
             athlete_id=request.athlete_id, timezone_name=request.timezone_name,
             context_fingerprint_value=context.fingerprint, season=season, budgets=budgets,
-            session_plan=session_plan, goals=context.goals, workout_drafts=drafts,
-            algorithm_version="0.8F.6", configuration_version="0.8F.6",
+            session_plan=session_plan, goals=artifact_goals, workout_drafts=drafts,
+            algorithm_version="0.8F.8B", configuration_version="0.8F.8B",
         )
         row = TrainingPlanPreview(
             athlete_profile_id=request.athlete_id, created_by_user_id=user_id,

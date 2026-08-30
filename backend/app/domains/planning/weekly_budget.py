@@ -146,6 +146,7 @@ class WeeklyBudgetConfig(FrozenModel):
     status_moderation_factor: Decimal = Field(default=Decimal("0.90"), gt=0, le=1)
     goal_allocation_weight: Decimal = Field(default=Decimal("0.75"), ge=0, le=1)
     maximum_strength_share: Decimal = Field(default=Decimal("0.25"), ge=0, le=1)
+    historical_frequency_adjustment: Decimal = Field(default=Decimal("0.10"), ge=0, le=Decimal("0.20"))
 
 
 class WeeklyBudgetPlan(FrozenModel):
@@ -322,27 +323,52 @@ def _residual_round(values: tuple[Decimal, ...], total: Decimal) -> tuple[Decima
     return (*rounded, _round(total - sum(rounded, Decimal(0))))
 
 
+_SEGMENT_SECONDS_PER_METER = {
+    # Conservative reference speeds used only for relative planning shares.
+    "swim": Decimal("1.35"),
+    "bike": Decimal("0.125"),
+    "run": Decimal("0.30"),
+}
+_PRIORITY_WEIGHT = {"A": Decimal("3.0"), "B": Decimal("1.5"), "C": Decimal("0.75")}
+
+
+def _goal_weight(goal, left):
+    weeks = max(0, (goal.event_date - left).days) // 7
+    return _PRIORITY_WEIGHT[goal.priority] / (Decimal(1) + Decimal(weeks) / Decimal(8))
+
+
 def _discipline_budgets(context, season, left, target, config):
-    active = _block_for_day(season, left)
-    goal_by_id = {item.competition_goal_id: item for item in context.goals}
-    goals = [goal_by_id[item] for item in active.target_goal_ids if item in goal_by_id]
+    goals = [goal for goal in context.goals if goal.event_date >= left]
     if not goals:
         goals = list(context.goals)
     counts = {discipline: Decimal(0) for discipline in ("running", "cycling", "swimming")}
     mapped = {"run": "running", "bike": "cycling", "swim": "swimming"}
     for goal in goals:
+        weight = _goal_weight(goal, left)
         for segment in goal.segments:
-            counts[mapped[segment.sport]] += 1
+            counts[mapped[segment.sport]] += Decimal(segment.distance_m) * _SEGMENT_SECONDS_PER_METER[segment.sport] * weight
     if not any(counts.values()):
+        active = _block_for_day(season, left)
         for discipline in getattr(active, "disciplines", ()):
             counts[discipline] += 1
     total_goal = sum(counts.values(), Decimal(0))
     goal_shares = {key: value / total_goal if total_goal else Decimal(0) for key, value in counts.items()}
+    # History adjusts conservatism only within a small bounded range. Raw load points
+    # are deliberately not compared across sports because their scales differ.
     history = _window(context, 42)
-    history_loads = {key: (_sport(history, key).training_load or Decimal(0)) if _sport(history, key) else Decimal(0) for key in counts}
-    history_total = sum(history_loads.values(), Decimal(0))
-    history_weight = Decimal(1) - config.goal_allocation_weight if history_total else Decimal(0)
-    shares = {key: goal_shares[key] * (Decimal(1) - history_weight) + (history_loads[key] / history_total if history_total else Decimal(0)) * history_weight for key in counts}
+    frequencies = {key: Decimal((_sport(history, key).activity_count if _sport(history, key) else 0)) for key in counts}
+    active_frequencies = [value for key, value in frequencies.items() if goal_shares[key] > 0]
+    average_frequency = sum(active_frequencies, Decimal(0)) / len(active_frequencies) if active_frequencies else Decimal(0)
+    adjusted = {}
+    for key, share in goal_shares.items():
+        if share == 0 or average_frequency == 0:
+            adjusted[key] = share
+            continue
+        relative = frequencies[key] / average_frequency
+        bounded = max(Decimal("-1"), min(Decimal("1"), relative - Decimal("1")))
+        adjusted[key] = share * (Decimal("1") + bounded * config.historical_frequency_adjustment)
+    adjusted_total = sum(adjusted.values(), Decimal(0))
+    shares = {key: value / adjusted_total if adjusted_total else Decimal(0) for key, value in adjusted.items()}
     strength = _sport(history, "strength")
     strength_share = None
     if (
@@ -353,7 +379,7 @@ def _discipline_budgets(context, season, left, target, config):
         strength_share = min(config.maximum_strength_share, strength.training_load / history.total_training_load)
         shares = {key: value * (Decimal(1) - strength_share) for key, value in shares.items()}
     allocations = [
-        (key, value, "GOAL_SEGMENTS_WITH_HISTORY_BLEND" if history_total else "GOAL_SEGMENTS")
+        (key, value, "GOAL_SEGMENT_TIME_WITH_HISTORY_FREQUENCY_ADJUSTMENT" if average_frequency else "GOAL_SEGMENT_TIME")
         for key, value in shares.items() if value > 0
     ]
     if strength_share is not None:

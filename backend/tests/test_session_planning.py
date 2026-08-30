@@ -250,14 +250,14 @@ def test_competition_consumes_weekly_capacity_and_keeps_day_exclusive():
         version="sessions-1", algorithm_version="sessions-algorithm-1", allow_double_sessions=True,
     ))
     week = result.weeks[0]
-    assert len(week.sessions) == 4
+    assert len(week.sessions) < 4  # A taper reduces frequency instead of filling the limit.
     competition = next(item for item in week.sessions if item.session_type is SessionType.COMPETITION)
     assert sum(item.date == competition.date for item in week.sessions) == 1
 
     extra = next(item for item in week.sessions if item.session_type is not SessionType.COMPETITION).model_copy(
         update={"date": competition.date},
     )
-    invalid_week = week.model_copy(update={"sessions": (*week.sessions, extra)})
+    invalid_week = week.model_copy(update={"sessions": (*week.sessions, extra, extra, extra)})
     invalid = result.model_copy(update={"weeks": (invalid_week,)})
     codes = {item.code for item in validate_session_plan(invalid, ctx, season, budgets, config)}
     assert "WEEKLY_SESSION_LIMIT_EXCEEDED" in codes
