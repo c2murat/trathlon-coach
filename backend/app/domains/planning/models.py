@@ -48,11 +48,12 @@ class WorkoutDuration(BaseModel):
     mode: Literal["time", "distance", "open"]
     seconds: int | None = Field(default=None, gt=0)
     meters: int | None = Field(default=None, gt=0)
+    estimated_seconds: int | None = Field(default=None, gt=0)
     @model_validator(mode="after")
     def valid_value(self):
-        if self.mode == "time" and (self.seconds is None or self.meters is not None): raise ValueError("time duration requires seconds")
+        if self.mode == "time" and (self.seconds is None or self.meters is not None or self.estimated_seconds is not None): raise ValueError("time duration requires seconds")
         if self.mode == "distance" and (self.meters is None or self.seconds is not None): raise ValueError("distance duration requires meters")
-        if self.mode == "open" and (self.seconds is not None or self.meters is not None): raise ValueError("open duration has no value")
+        if self.mode == "open" and (self.seconds is not None or self.meters is not None or self.estimated_seconds is not None): raise ValueError("open duration has no value")
         return self
 
 class WorkoutTarget(BaseModel):
@@ -91,16 +92,25 @@ class WorkoutTarget(BaseModel):
 class WorkoutNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["step", "repeat"]
-    phase: Literal["warmup", "work", "recovery", "cooldown"] | None = None
+    phase: Literal["warmup", "work", "recovery", "cooldown", "drill", "strength"] | None = None
     duration: WorkoutDuration | None = None
     target: WorkoutTarget | None = None
     instructions: str | None = Field(default=None, max_length=1000)
+    title: str | None = Field(default=None, max_length=120)
+    movement_pattern: Literal["KNEE_DOMINANT", "HIP_HINGE", "UNILATERAL_LOWER", "CALF", "SOLEUS", "HORIZONTAL_PULL", "HORIZONTAL_PUSH", "CORE_ANTI_EXTENSION", "CORE_ANTI_ROTATION", "CORE_LATERAL"] | None = None
+    sets: int | None = Field(default=None, ge=1, le=10)
+    reps: int | None = Field(default=None, ge=1, le=100)
+    rest_seconds: int | None = Field(default=None, ge=0, le=600)
+    unilateral: bool | None = None
     repetitions: int | None = Field(default=None, ge=2, le=100)
     steps: list[WorkoutNode] | None = None
     @model_validator(mode="after")
     def valid_node(self):
         if self.kind == "step":
             if self.phase is None or self.duration is None or self.repetitions is not None or self.steps is not None: raise ValueError("invalid workout step")
+            strength = (self.movement_pattern, self.sets, self.reps, self.rest_seconds, self.unilateral)
+            if any(item is not None for item in strength) and self.phase != "strength": raise ValueError("exercise fields require strength phase")
+            if self.phase == "strength" and any(item is None for item in (self.title, self.movement_pattern, self.sets, self.rest_seconds)): raise ValueError("strength exercise snapshot must be complete")
         elif self.repetitions is None or not self.steps or self.phase is not None or self.duration is not None or self.target is not None:
             raise ValueError("invalid repeat block")
         return self
@@ -109,4 +119,6 @@ class StructuredWorkoutDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal[1]
     sport: Literal["running", "cycling", "swimming", "strength", "multisport"]
+    title: str | None = Field(default=None, max_length=200)
+    purpose: str | None = Field(default=None, max_length=100)
     steps: list[WorkoutNode] = Field(min_length=1)

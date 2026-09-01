@@ -32,6 +32,9 @@ class PlanningPreviewBlockedError(PlanningPreviewError): code = "planning_previe
 
 
 VISIBLE_TRAINING_PLAN_STATUSES = ("draft", "active")
+SESSION_PLANNING_VERSION = "0.8F.9"
+WORKOUT_BUILDER_VERSION = "0.8F.9"
+PREVIEW_ARTIFACT_VERSION = "0.8F.9"
 
 
 class TrainingPlanOverlapError(PlanningPreviewError):
@@ -65,8 +68,8 @@ class PlanningPreviewApplication:
         if any(warning.blocking for warning in season.warnings):
             raise PlanningPreviewBlockedError()
         budgets = build_weekly_budget_plan(context, season, WeeklyBudgetConfig(version="0.8F.4", algorithm_version="0.8F.4"))
-        session_plan = build_session_plan(context, season, budgets, SessionPlanningConfig(version="0.8F.8", algorithm_version="0.8F.8"))
-        workout_config = WorkoutBuilderConfig(version="0.8F.8B", algorithm_version="0.8F.8B")
+        session_plan = build_session_plan(context, season, budgets, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION))
+        workout_config = WorkoutBuilderConfig(version=WORKOUT_BUILDER_VERSION, algorithm_version=WORKOUT_BUILDER_VERSION)
         prescriptions = tuple(item for week in session_plan.weeks for item in week.sessions)
         drafts = tuple(build_structured_workout(context, item, workout_config) for item in prescriptions)
         roles = {item.goal_id: item.role for item in season.goals}
@@ -75,7 +78,7 @@ class PlanningPreviewApplication:
             athlete_id=request.athlete_id, timezone_name=request.timezone_name,
             context_fingerprint_value=context.fingerprint, season=season, budgets=budgets,
             session_plan=session_plan, goals=artifact_goals, workout_drafts=drafts,
-            algorithm_version="0.8F.8B", configuration_version="0.8F.8B",
+            algorithm_version=PREVIEW_ARTIFACT_VERSION, configuration_version=PREVIEW_ARTIFACT_VERSION,
         )
         row = TrainingPlanPreview(
             athlete_profile_id=request.athlete_id, created_by_user_id=user_id,

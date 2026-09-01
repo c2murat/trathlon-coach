@@ -109,7 +109,11 @@ class SeasonStructureBuilder:
         end = context.request.horizon_end_date or last_goal
         if end < last_goal:
             raise SeasonStructureError("planning horizon excludes a requested goal")
-        goals = tuple(self._season_goal(goal) for goal in context.goals)
+        primary_goal = min(
+            context.goals,
+            key=lambda goal: ({"A": 0, "B": 1, "C": 2}[goal.priority], goal.event_date, str(goal.competition_goal_id)),
+        )
+        goals = tuple(self._season_goal(goal, primary_goal.competition_goal_id) for goal in context.goals)
         warnings, conflicts = self._warnings(context, goals, start)
         markers = tuple(CompetitionMarker(
             goal_id=goal.goal_id, date=goal.date, priority=goal.priority, role=goal.role,
@@ -140,8 +144,8 @@ class SeasonStructureBuilder:
             }.get(goal.category, set())
         return tuple(sorted(disciplines))
 
-    def _season_goal(self, goal: PlanningGoal) -> SeasonGoal:
-        role = {"A": "primary", "B": "supporting", "C": "training"}[goal.priority]
+    def _season_goal(self, goal: PlanningGoal, primary_goal_id) -> SeasonGoal:
+        role = "primary" if goal.competition_goal_id == primary_goal_id else "supporting" if goal.priority in {"A", "B"} else "training"
         return SeasonGoal(goal_id=goal.competition_goal_id, date=goal.event_date,
                           priority=goal.priority, role=role, disciplines=self._disciplines(goal))
 

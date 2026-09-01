@@ -13,6 +13,7 @@ from app.domains.planning.models import (
     StructuredWorkoutDefinition, WorkoutDuration, WorkoutNode, WorkoutTarget,
 )
 from app.domains.planning.session_planning import SessionPrescription, SessionType
+from app.domains.planning.workout_labels import STRENGTH_VARIANTS, SWIM_DRILLS, WORKOUT_ROLE_LABELS
 
 
 STRUCTURED_WORKOUT_SCHEMA_VERSION = 1
@@ -90,16 +91,29 @@ class WorkoutBuilderConfig(FrozenModel):
     minimum_interval_repeats: int = Field(default=2, ge=2, le=10)
     rounding_seconds: int = Field(default=5, ge=1, le=60)
     target_precision_places: int = Field(default=3, ge=1, le=6)
-    run_pace_easy: tuple[Decimal, Decimal] = (Decimal("1.15"), Decimal("1.35"))
-    run_pace_tempo: tuple[Decimal, Decimal] = (Decimal("0.98"), Decimal("1.08"))
+    run_pace_easy: tuple[Decimal, Decimal] = (Decimal("1.15"), Decimal("1.30"))
+    run_pace_aerobic: tuple[Decimal, Decimal] = (Decimal("1.12"), Decimal("1.25"))
+    run_pace_warmup: tuple[Decimal, Decimal] = (Decimal("1.20"), Decimal("1.35"))
+    run_pace_recovery: tuple[Decimal, Decimal] = (Decimal("1.30"), Decimal("1.40"))
+    run_pace_cooldown: tuple[Decimal, Decimal] = (Decimal("1.22"), Decimal("1.40"))
+    run_pace_tempo: tuple[Decimal, Decimal] = (Decimal("1.03"), Decimal("1.08"))
     run_pace_threshold: tuple[Decimal, Decimal] = (Decimal("0.97"), Decimal("1.03"))
-    run_pace_interval: tuple[Decimal, Decimal] = (Decimal("0.85"), Decimal("0.95"))
+    run_pace_interval: tuple[Decimal, Decimal] = (Decimal("0.90"), Decimal("0.96"))
     bike_power_easy: tuple[Decimal, Decimal] = (Decimal("0.50"), Decimal("0.65"))
-    bike_power_endurance: tuple[Decimal, Decimal] = (Decimal("0.60"), Decimal("0.75"))
+    bike_power_warmup: tuple[Decimal, Decimal] = (Decimal("0.45"), Decimal("0.60"))
+    bike_power_recovery: tuple[Decimal, Decimal] = (Decimal("0.45"), Decimal("0.55"))
+    bike_power_cooldown: tuple[Decimal, Decimal] = (Decimal("0.45"), Decimal("0.55"))
+    bike_power_endurance: tuple[Decimal, Decimal] = (Decimal("0.60"), Decimal("0.72"))
+    bike_power_aerobic: tuple[Decimal, Decimal] = (Decimal("0.60"), Decimal("0.70"))
     bike_power_tempo: tuple[Decimal, Decimal] = (Decimal("0.76"), Decimal("0.88"))
-    bike_power_threshold: tuple[Decimal, Decimal] = (Decimal("0.92"), Decimal("1.05"))
+    bike_power_sweet_spot: tuple[Decimal, Decimal] = (Decimal("0.88"), Decimal("0.94"))
+    bike_power_threshold: tuple[Decimal, Decimal] = (Decimal("0.95"), Decimal("1.05"))
     bike_power_interval: tuple[Decimal, Decimal] = (Decimal("1.05"), Decimal("1.20"))
     swim_css_easy: tuple[Decimal, Decimal] = (Decimal("1.10"), Decimal("1.25"))
+    swim_css_warmup: tuple[Decimal, Decimal] = (Decimal("1.18"), Decimal("1.30"))
+    swim_css_drill: tuple[Decimal, Decimal] = (Decimal("1.20"), Decimal("1.35"))
+    swim_css_recovery: tuple[Decimal, Decimal] = (Decimal("1.25"), Decimal("1.40"))
+    swim_css_cooldown: tuple[Decimal, Decimal] = (Decimal("1.22"), Decimal("1.35"))
     swim_css_aerobic: tuple[Decimal, Decimal] = (Decimal("1.05"), Decimal("1.15"))
     swim_css_threshold: tuple[Decimal, Decimal] = (Decimal("0.97"), Decimal("1.03"))
     swim_css_interval: tuple[Decimal, Decimal] = (Decimal("0.85"), Decimal("0.95"))
@@ -117,9 +131,9 @@ class WorkoutBuilderConfig(FrozenModel):
     @model_validator(mode="after")
     def validate_target_ranges(self):
         range_fields = (
-            "run_pace_easy", "run_pace_tempo", "run_pace_threshold", "run_pace_interval",
-            "bike_power_easy", "bike_power_endurance", "bike_power_tempo",
-            "bike_power_threshold", "bike_power_interval", "swim_css_easy",
+            "run_pace_easy", "run_pace_aerobic", "run_pace_warmup", "run_pace_recovery", "run_pace_cooldown", "run_pace_tempo", "run_pace_threshold", "run_pace_interval",
+            "bike_power_easy", "bike_power_warmup", "bike_power_recovery", "bike_power_cooldown", "bike_power_endurance", "bike_power_aerobic", "bike_power_tempo",
+            "bike_power_sweet_spot", "bike_power_threshold", "bike_power_interval", "swim_css_easy", "swim_css_warmup", "swim_css_drill", "swim_css_recovery", "swim_css_cooldown",
             "swim_css_aerobic", "swim_css_threshold", "swim_css_interval",
             "heart_rate_easy", "heart_rate_tempo", "heart_rate_threshold",
             "heart_rate_interval", "rpe_easy", "rpe_aerobic", "rpe_tempo",
@@ -152,10 +166,12 @@ def _reference_id(context: PlanningContext, sport: str, metric_types: set[str]) 
     return item.reference_id if item else None
 
 
-def _family(session_type: SessionType) -> Literal["easy", "aerobic", "tempo", "threshold", "interval", "strength"]:
+def _family(session_type: SessionType) -> Literal["recovery", "easy", "aerobic", "tempo", "threshold", "interval", "strength"]:
     name = session_type.value
     if session_type is SessionType.GENERAL_STRENGTH:
         return "strength"
+    if name.endswith("RECOVERY"):
+        return "recovery"
     if name.endswith("INTERVAL"):
         return "interval"
     if name.endswith("THRESHOLD"):
@@ -205,8 +221,8 @@ def _resolved_target(metric, reference, bounds, reference_value, unit, config):
     )
 
 
-def _target(context: PlanningContext, session: SessionPrescription, config: WorkoutBuilderConfig):
-    family = _family(session.session_type)
+def _target(context: PlanningContext, session: SessionPrescription, config: WorkoutBuilderConfig, family_override=None):
+    family = family_override or _family(session.session_type)
     performance = context.performance
     decision: WorkoutDecisionCode
     provenance: WorkoutTargetProvenance
@@ -235,7 +251,12 @@ def _target(context: PlanningContext, session: SessionPrescription, config: Work
         decision = WorkoutDecisionCode.TARGET_FROM_THRESHOLD_HR
         provenance = WorkoutTargetProvenance(metric="heart_rate", source_kind="threshold_hr", reference_value=threshold_hr, reference_unit="bpm", reference_id=_reference_id(context, session.discipline, {"threshold_hr"}), profile_version_id=performance.profile_version_id, derivation_rule=f"threshold_hr_x_{bounds[0]}_{bounds[1]}", config_version=config.version)
         return target, provenance, decision, ()
-    rpe_family = "strength" if family == "strength" else family
+    rpe_family = (
+        "strength" if family == "strength" else
+        "easy" if family == "recovery" else
+        "aerobic" if family == "endurance" else
+        "tempo" if family == "sweet_spot" else family
+    )
     bounds = getattr(config, f"rpe_{rpe_family}")
     target = WorkoutTarget(metric="rpe", mode="absolute_range", minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config))
     provenance = WorkoutTargetProvenance(metric="rpe", source_kind="RPE_CONFIG", derivation_rule=f"rpe_{bounds[0]}_{bounds[1]}", config_version=config.version)
@@ -247,8 +268,14 @@ def _target(context: PlanningContext, session: SessionPrescription, config: Work
     return target, provenance, decision, warnings
 
 
-def _step(phase: str, seconds: int, target: WorkoutTarget, instructions: str | None = None) -> WorkoutNode:
-    return WorkoutNode(kind="step", phase=phase, duration=WorkoutDuration(mode="time", seconds=seconds), target=target, instructions=instructions)
+def _step(phase: str, seconds: int, target: WorkoutTarget, instructions: str | None = None, title: str | None = None) -> WorkoutNode:
+    return WorkoutNode(kind="step", phase=phase, title=title or WORKOUT_ROLE_LABELS[phase], duration=WorkoutDuration(mode="time", seconds=seconds), target=target, instructions=instructions)
+
+
+def _distance_step(phase, meters, estimated_seconds, target, instructions=None, title=None):
+    return WorkoutNode(kind="step", phase=phase, title=title or WORKOUT_ROLE_LABELS[phase], duration=WorkoutDuration(
+        mode="distance", meters=meters, estimated_seconds=estimated_seconds,
+    ), target=target, instructions=instructions)
 
 
 def _none_target() -> WorkoutTarget:
@@ -306,10 +333,221 @@ def _quality_steps(total: int, target: WorkoutTarget, session: SessionPrescripti
     ), tuple(warnings), tuple(decisions)
 
 
+def _progression_level(context: PlanningContext, session: SessionPrescription) -> int:
+    # Relative planning age makes progression stable without tying it only to the
+    # calendar week number. Recovery/taper deliberately collapse the progression.
+    if session.phase.value in {"RECOVERY", "TAPER"}:
+        return 0
+    weeks = max(0, (session.date - context.request.planning_date).days // 7)
+    return weeks % 3
+
+
+def _target_for(context, session, config, family):
+    return _target(context, session, config, family_override=family)[0]
+
+
+def _target_for_step(context, session, config, role, family):
+    """Resolve a provider-neutral executable target from sport + type + role."""
+    base = _target_for(context, session, config, family)
+    prefix = {"running": "run_pace", "cycling": "bike_power", "swimming": "swim_css"}.get(session.discipline)
+    role_family = role if role in {"warmup", "recovery", "cooldown", "drill"} else family
+    if prefix is None or not hasattr(config, f"{prefix}_{role_family}"):
+        return base
+    bounds = getattr(config, f"{prefix}_{role_family}")
+    if base.mode == "percent_reference" and base.reference:
+        if base.reference_value and base.reference_unit:
+            return _resolved_target(base.metric, base.reference, bounds, base.reference_value, base.reference_unit, config)
+        return WorkoutTarget(
+            metric=base.metric, mode="percent_reference", reference=base.reference,
+            minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config),
+        )
+    if base.metric == "rpe":
+        rpe_family = "easy" if role_family in {"warmup", "recovery", "cooldown", "drill"} else family
+        rpe_bounds = getattr(config, f"rpe_{rpe_family}", config.rpe_easy)
+        return WorkoutTarget(metric="rpe", mode="absolute_range", minimum=_target_float(rpe_bounds[0], config), maximum=_target_float(rpe_bounds[1], config))
+    return base
+
+
+def _time_endurance_steps(context, session, config, total, progression):
+    warmup_target = _target_for_step(context, session, config, "warmup", "easy")
+    cooldown_target = _target_for_step(context, session, config, "cooldown", "easy")
+    recovery_target = _target_for_step(context, session, config, "recovery", "easy")
+    work_family = "endurance" if session.session_type in {SessionType.BIKE_ENDURANCE, SessionType.BIKE_LONG} else "aerobic" if session.session_type is SessionType.RUN_LONG else "recovery" if session.session_type.name.endswith("RECOVERY") else "easy"
+    aerobic = _target_for_step(context, session, config, "work", work_family)
+    warmup = min(900, max(300, total // 8)); cooldown = min(600, max(300, total // 12))
+    middle = total - warmup - cooldown
+    if session.phase.value == "TAPER" and session.discipline in {"running", "cycling"}:
+        if session.discipline == "cycling":
+            repeats, work, recovery, activation_family = 3, 60, 180, "threshold"
+        else:
+            repeats, work, recovery, activation_family = 4, 20, 100, "interval"
+        activation_total = repeats * (work + recovery)
+        steady = middle - activation_total
+        if steady > 0:
+            return (
+                _step("warmup", warmup, warmup_target),
+                _step("work", steady, aerobic, title="Trabajo aeróbico suave"),
+                WorkoutNode(kind="repeat", repetitions=repeats, steps=[
+                    _step("work", work, _target_for_step(context, session, config, "work", activation_family), title="Activación corta"),
+                    _step("recovery", recovery, recovery_target, title="Recuperación completa"),
+                ]),
+                _step("cooldown", cooldown, cooldown_target),
+            )
+    quality_family = (
+        "sweet_spot" if session.discipline == "cycling" else "tempo"
+    ) if session.phase.value in {"BUILD", "SPECIFIC"} else None
+    quality = quality_family and session.session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG} and total >= 4500
+    if not quality:
+        return (_step("warmup", warmup, warmup_target), _step("work", middle, aerobic), _step("cooldown", cooldown, cooldown_target))
+    work = (600, 720, 900)[progression]
+    recovery = 300; repeats = 2 if progression < 2 else 3
+    required = repeats * (work + recovery)
+    if required > middle * 45 // 100:
+        repeats = 2; work = max(300, middle // 8)
+    endurance = middle - repeats * (work + recovery)
+    blocks = [_step("warmup", warmup, warmup_target)]
+    if endurance > 0: blocks.append(_step("work", endurance, aerobic, "Resistencia aeróbica"))
+    blocks.append(WorkoutNode(kind="repeat", repetitions=repeats, steps=[
+        _step("work", work, _target_for_step(context, session, config, "work", quality_family), title="Sweet spot" if quality_family == "sweet_spot" else "Bloque tempo"),
+        _step("recovery", recovery, recovery_target, "Recuperación activa"),
+    ]))
+    blocks.append(_step("cooldown", cooldown, cooldown_target))
+    return tuple(blocks)
+
+
+def _quality_catalog_steps(context, session, config, total, progression):
+    family = _family(session.session_type)
+    patterns = {
+        "tempo": ((2, 600, 180), (3, 480, 150), (2, 900, 240)),
+        "threshold": ((4, 300, 120), (3, 480, 150), (2, 600, 180)),
+        "interval": ((8, 120, 60), (6, 180, 75), (5, 240, 90)),
+    }
+    if session.discipline == "cycling":
+        patterns = {
+            **patterns,
+            "threshold": ((4, 300, 180), (3, 480, 240), (2, 900, 300)),
+            "interval": ((5, 180, 180), (6, 180, 180), (5, 240, 240)),
+        }
+    repeats, work, recovery = patterns[family][progression]
+    warmup = min(900, max(300, total // 5)); cooldown = min(600, max(300, total // 8))
+    while repeats > 2 and warmup + cooldown + repeats * (work + recovery) > total:
+        repeats -= 1
+    cycle = repeats * (work + recovery)
+    if warmup + cooldown + cycle > total:
+        return _quality_steps(total, _target_for(context, session, config, family), session, config)[0]
+    cooldown += total - warmup - cooldown - cycle
+    warmup_target = _target_for_step(context, session, config, "warmup", "easy")
+    recovery_target = _target_for_step(context, session, config, "recovery", "easy")
+    cooldown_target = _target_for_step(context, session, config, "cooldown", "easy")
+    label = "Fartlek rápido" if session.session_type is SessionType.RUN_INTERVAL else "Trabajo de calidad"
+    return (
+        _step("warmup", warmup, warmup_target),
+        WorkoutNode(kind="repeat", repetitions=repeats, steps=[
+            _step("work", work, _target_for_step(context, session, config, "work", family), label),
+            _step("recovery", recovery, recovery_target, "Recuperación activa"),
+        ]),
+        _step("cooldown", cooldown, cooldown_target),
+    )
+
+
+def _swim_steps(context, session, config, total, progression):
+    family = _family(session.session_type)
+    css = context.performance.swimming_css_seconds_per_100m
+    pace = Decimal(str(css)) if _positive(css) else Decimal("125")
+    main_target = _target_for_step(context, session, config, "work", family)
+    warmup_target = _target_for_step(context, session, config, "warmup", "easy")
+    drill_target = _target_for_step(context, session, config, "drill", "easy")
+    recovery_target = _target_for_step(context, session, config, "recovery", "easy")
+    cooldown_target = _target_for_step(context, session, config, "cooldown", "easy")
+    easy = _target_for_step(context, session, config, "work", "easy")
+    warm_m = (200, 300, 400)[progression] if total >= 2400 else 200
+    cool_m = 200
+    warm_s = int(Decimal(warm_m) * pace * Decimal("1.20") / 100)
+    cool_s = int(Decimal(cool_m) * pace * Decimal("1.20") / 100)
+    remaining = max(300, total - warm_s - cool_s)
+    if session.session_type is SessionType.SWIM_TECHNIQUE:
+        reps, meters, recovery = (4 + progression, 50, 20)
+        work_s = max(20, int(Decimal(meters) * pace * Decimal("1.20") / 100))
+        repeat_total = reps * (work_s + recovery)
+        residual = max(1, remaining - repeat_total)
+        drill_title, drill_note = SWIM_DRILLS[progression]
+        return (
+            _distance_step("warmup", warm_m, warm_s, warmup_target),
+            WorkoutNode(kind="repeat", repetitions=reps, steps=[
+                _distance_step("drill", meters, work_s, drill_target, drill_note, drill_title),
+                _step("recovery", recovery, recovery_target),
+            ]),
+            _step("work", residual, easy, "Nado aeróbico relajado"),
+            _distance_step("cooldown", cool_m, cool_s, cooldown_target),
+        )
+    if session.session_type is SessionType.SWIM_AEROBIC and session.phase.value == "SPECIFIC":
+        threshold_target = _target_for_step(context, session, config, "work", "threshold")
+        meters = 100
+        work_s = max(20, int(Decimal(meters) * pace * Decimal(str(threshold_target.minimum or 1)) / 100))
+        recovery = 30
+        repeats = max(2, min(4, remaining // (work_s + recovery)))
+        residual = remaining - repeats * (work_s + recovery)
+        return (
+            _distance_step("warmup", warm_m, warm_s, warmup_target),
+            WorkoutNode(kind="repeat", repetitions=repeats, steps=[
+                _distance_step("work", meters, work_s, threshold_target, "Mantén un ritmo controlado próximo al CSS.", "Series a ritmo CSS"),
+                _step("recovery", recovery, recovery_target),
+            ]),
+            _step("work", residual, main_target, "Nado aeróbico estable"),
+            _distance_step("cooldown", cool_m, cool_s, cooldown_target),
+        )
+    meters = {"easy": 200, "aerobic": (200, 300, 400)[progression], "threshold": (100, 200, 300)[progression], "interval": 50}.get(family, 200)
+    recovery = 20 if family in {"easy", "aerobic"} else 30
+    multiplier = Decimal(str(main_target.minimum or 1)) if main_target.mode == "percent_reference" else Decimal("1.15")
+    work_s = max(20, int(Decimal(meters) * pace * multiplier / 100))
+    reps = max(2, min(10, remaining // (work_s + recovery)))
+    residual = remaining - reps * (work_s + recovery)
+    if residual < 1:
+        reps = max(2, reps - 1); residual = remaining - reps * (work_s + recovery)
+    return (
+        _distance_step("warmup", warm_m, warm_s, warmup_target),
+        WorkoutNode(kind="repeat", repetitions=reps, steps=[
+            _distance_step("work", meters, work_s, main_target, "Serie principal"),
+            _step("recovery", recovery, recovery_target),
+        ]),
+        _step("work", residual, easy, "Nado aeróbico de ajuste"),
+        _distance_step("cooldown", cool_m, cool_s, cooldown_target),
+    )
+
+
+def _strength_steps(context, session, config, total, progression):
+    variant = ((session.date - context.request.planning_date).days // 7) % 2
+    phase_profiles = {
+        "RECOVERY": (2, 10, 4, (Decimal("4"), Decimal("6")), 60),
+        "TAPER": (2, 6, 3, (Decimal("4"), Decimal("6")), 60),
+        "SPECIFIC": (3, 8, 5, config.rpe_strength, 90),
+    }
+    sets, reps, exercise_count, rpe_bounds, rest = phase_profiles.get(
+        session.phase.value, (3, 10 if progression == 0 else 8, 6, config.rpe_strength, 90)
+    )
+    exercises = STRENGTH_VARIANTS[variant][:exercise_count]
+    target = WorkoutTarget(
+        metric="rpe", mode="absolute_range",
+        minimum=_target_float(rpe_bounds[0], config), maximum=_target_float(rpe_bounds[1], config),
+    )
+    base, residual = divmod(total, len(exercises))
+    result = []
+    for index, (title, pattern, unilateral) in enumerate(exercises):
+        seconds = base + (1 if index < residual else 0)
+        result.append(WorkoutNode(
+            kind="step", phase="strength", duration=WorkoutDuration(mode="time", seconds=seconds),
+            target=target, title=title, movement_pattern=pattern, sets=sets, reps=reps,
+            rest_seconds=rest, unilateral=unilateral,
+            instructions="Mantén una técnica limpia y deja las repeticiones indicadas en reserva.",
+        ))
+    return tuple(result)
+
+
 def workout_duration_seconds(definition: StructuredWorkoutDefinition) -> int | None:
     def node_seconds(node: WorkoutNode) -> int | None:
         if node.kind == "step":
-            return node.duration.seconds if node.duration and node.duration.mode == "time" else None
+            if not node.duration: return None
+            return node.duration.seconds if node.duration.mode == "time" else node.duration.estimated_seconds if node.duration.mode == "distance" else None
         values = [node_seconds(item) for item in node.steps or ()]
         return node.repetitions * sum(values) if all(value is not None for value in values) else None
     values = [node_seconds(item) for item in definition.steps]
@@ -342,6 +580,24 @@ def validate_structured_workout_draft(draft: StructuredWorkoutDraft, session: Se
         issues.append(StructuredWorkoutValidationIssue(code="WORKOUT_DURATION_MISMATCH", context={"expected": expected, "actual": actual}))
     if not draft.definition.steps:
         issues.append(StructuredWorkoutValidationIssue(code="WORKOUT_STEPS_REQUIRED"))
+    def visit(nodes):
+        for node in nodes:
+            if node.kind == "repeat":
+                if not node.steps or node.repetitions is None:
+                    issues.append(StructuredWorkoutValidationIssue(code="INVALID_REPEAT_STEP"))
+                yield from visit(node.steps or ())
+            else:
+                if node.duration is None or node.target is None or node.phase is None or not (node.title or "").strip():
+                    issues.append(StructuredWorkoutValidationIssue(code="NON_PORTABLE_WORKOUT_STEP"))
+                yield node
+    leaves = list(visit(draft.definition.steps))
+    def quality_target(node):
+        if not node.target or node.target.mode != "percent_reference": return False
+        minimum = node.target.minimum or 0
+        return (node.target.metric == "power" and minimum >= .76) or (node.target.metric in {"pace", "swim_pace"} and minimum <= 1.03)
+    quality = sum((node.duration.seconds or node.duration.estimated_seconds or 0) for node in leaves if node.phase == "work" and quality_target(node))
+    if session.intensity.value == "EASY" and actual and quality > actual // 2:
+        issues.append(StructuredWorkoutValidationIssue(code="EASY_WORKOUT_QUALITY_DENSITY_EXCEEDED"))
     if draft.target_provenance and draft.target_provenance.source_kind != "RPE_CONFIG" and (draft.target_provenance.reference_value is None or draft.target_provenance.reference_value <= 0):
         issues.append(StructuredWorkoutValidationIssue(code="INVALID_PERFORMANCE_REFERENCE"))
     return tuple(issues)
@@ -367,14 +623,25 @@ def build_structured_workout(context: PlanningContext, session: SessionPrescript
     target, provenance, target_decision, target_warnings = _target(context, session, config)
     total = session.target_duration_minutes * 60
     family = _family(session.session_type)
-    if family in {"tempo", "threshold", "interval"}:
-        steps, template_warnings, template_decisions = _quality_steps(total, target, session, config)
+    progression = _progression_level(context, session)
+    if session.discipline == "swimming":
+        steps = _swim_steps(context, session, config, total, progression)
+        template_warnings = (); template_decisions = (WorkoutDecision(code=WorkoutDecisionCode.QUALITY_TEMPLATE if family in {"threshold", "interval"} else WorkoutDecisionCode.CONTINUOUS_TEMPLATE, context={"progression_level": progression}),)
+    elif session.discipline == "strength":
+        steps = _strength_steps(context, session, config, total, progression)
+        template_warnings = (); template_decisions = (WorkoutDecision(code=WorkoutDecisionCode.CONTINUOUS_TEMPLATE, context={"progression_level": progression}),)
+    elif family in {"tempo", "threshold", "interval"}:
+        steps = _quality_catalog_steps(context, session, config, total, progression)
+        template_warnings = (); template_decisions = (WorkoutDecision(code=WorkoutDecisionCode.QUALITY_TEMPLATE, context={"progression_level": progression}),)
     else:
-        instructions = "technique" if session.session_type is SessionType.SWIM_TECHNIQUE else "general strength" if session.session_type is SessionType.GENERAL_STRENGTH else None
-        steps = (_step("work", total, target, instructions),)
+        steps = _time_endurance_steps(context, session, config, total, progression)
         template_warnings = ()
-        template_decisions = (WorkoutDecision(code=WorkoutDecisionCode.CONTINUOUS_TEMPLATE),)
-    definition = StructuredWorkoutDefinition(schema_version=1, sport=session.discipline, steps=list(steps))
+        template_decisions = (WorkoutDecision(code=WorkoutDecisionCode.CONTINUOUS_TEMPLATE, context={"progression_level": progression}),)
+    definition = StructuredWorkoutDefinition(
+        schema_version=1, sport=session.discipline,
+        title=session.session_type.value, purpose=session.purpose.value,
+        steps=list(steps),
+    )
     draft = StructuredWorkoutDraft(
         buildable=True, sport=session.discipline, session_type=session.session_type,
         definition=definition, target_provenance=provenance,

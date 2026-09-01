@@ -125,6 +125,7 @@ class SessionPlanningConfig(FrozenModel):
     algorithm_version: str = Field(min_length=1)
     maximum_frequency_increase_per_discipline: int = Field(default=1, ge=0, le=3)
     max_key_sessions_per_week: int = Field(default=2, ge=0, le=4)
+    max_quality_sessions_per_week: int = Field(default=1, ge=0, le=2)
     minimum_gap_between_key_sessions_days: int = Field(default=2, ge=0, le=6)
     allow_double_sessions: bool = False
     load_tolerance: Decimal = Field(default=Decimal("0.15"), ge=0, le=Decimal("0.50"))
@@ -149,6 +150,23 @@ class SessionPlanningConfig(FrozenModel):
     long_run_objective_fraction: Decimal = Field(default=Decimal("0.90"), gt=0, le=1)
     long_bike_safety_cap_minutes: int = Field(default=180, ge=60)
     long_run_safety_cap_minutes: int = Field(default=120, ge=45)
+    swim_progression_minutes: int = Field(default=5, ge=0, le=15)
+    # Floor for the objective-derived reference before phase/type factors; it
+    # is deliberately not a final-session minimum.
+    swim_objective_baseline_floor_minutes: int = Field(default=25, ge=15, le=60)
+    swim_safety_cap_minutes: int = Field(default=90, ge=30, le=180)
+    swim_objective_overhead_factor: Decimal = Field(default=Decimal("1.35"), ge=1, le=Decimal("2.00"))
+    swim_recovery_factor: Decimal = Field(default=Decimal("0.65"), gt=0, le=1)
+    swim_maintenance_factor: Decimal = Field(default=Decimal("0.80"), gt=0, le=1)
+    swim_build_factor: Decimal = Field(default=Decimal("0.90"), gt=0, le=Decimal("1.25"))
+    swim_specific_factor: Decimal = Field(default=Decimal("1.00"), gt=0, le=Decimal("1.50"))
+    swim_taper_factor: Decimal = Field(default=Decimal("0.60"), gt=0, le=1)
+    swim_technique_factor: Decimal = Field(default=Decimal("0.90"), gt=0, le=1)
+    swim_easy_factor: Decimal = Field(default=Decimal("0.80"), gt=0, le=1)
+    swim_aerobic_factor: Decimal = Field(default=Decimal("1.00"), gt=0, le=Decimal("1.25"))
+    swim_threshold_factor: Decimal = Field(default=Decimal("1.05"), gt=0, le=Decimal("1.25"))
+    swim_interval_factor: Decimal = Field(default=Decimal("1.00"), gt=0, le=Decimal("1.25"))
+    minimum_same_long_spacing_days: int = Field(default=5, ge=3, le=7)
 
 
 class SessionPlanValidationIssue(FrozenModel):
@@ -225,24 +243,41 @@ def _frequency(context, budget: WeeklyTrainingBudget, config: SessionPlanningCon
     return counts
 
 
-def _type_sequence(discipline, phase, count):
+def _type_sequence(discipline, phase, count, progression=0):
     recovery = phase is SeasonPhase.RECOVERY
     taper = phase is SeasonPhase.TAPER
     if discipline == "running":
         if taper:
             return [SessionType.RUN_EASY, *([SessionType.RUN_RECOVERY] * count)][:count]
-        quality = SessionType.RUN_THRESHOLD if phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC, SeasonPhase.TAPER} else SessionType.RUN_TEMPO
+        quality = (
+            (SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_THRESHOLD)[progression]
+            if phase is SeasonPhase.BUILD else
+            (SessionType.RUN_THRESHOLD, SessionType.RUN_INTERVAL, SessionType.RUN_THRESHOLD)[progression]
+            if phase is SeasonPhase.SPECIFIC else SessionType.RUN_TEMPO
+        )
         return ([SessionType.RUN_RECOVERY] * count if recovery else [SessionType.RUN_LONG, quality, *([SessionType.RUN_EASY] * count)])[:count]
     if discipline == "cycling":
         if taper:
             return [SessionType.BIKE_ENDURANCE, *([SessionType.BIKE_RECOVERY] * count)][:count]
-        quality = SessionType.BIKE_THRESHOLD if phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC, SeasonPhase.TAPER} else SessionType.BIKE_TEMPO
+        quality = (
+            (SessionType.BIKE_TEMPO, SessionType.BIKE_THRESHOLD, SessionType.BIKE_TEMPO)[progression]
+            if phase is SeasonPhase.BUILD else
+            (SessionType.BIKE_THRESHOLD, SessionType.BIKE_TEMPO, SessionType.BIKE_INTERVAL)[progression]
+            if phase is SeasonPhase.SPECIFIC else SessionType.BIKE_TEMPO
+        )
         return ([SessionType.BIKE_RECOVERY] * count if recovery else [SessionType.BIKE_LONG, quality, *([SessionType.BIKE_ENDURANCE] * count)])[:count]
     if discipline == "swimming":
         if taper:
             return [SessionType.SWIM_TECHNIQUE, *([SessionType.SWIM_EASY] * count)][:count]
-        quality = SessionType.SWIM_THRESHOLD if phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC, SeasonPhase.TAPER} else SessionType.SWIM_AEROBIC
-        return ([SessionType.SWIM_EASY] * count if recovery else [SessionType.SWIM_TECHNIQUE, quality, *([SessionType.SWIM_AEROBIC] * count)])[:count]
+        if recovery:
+            return [SessionType.SWIM_EASY] * count
+        rotation = (
+            (SessionType.SWIM_AEROBIC, SessionType.SWIM_THRESHOLD, SessionType.SWIM_TECHNIQUE)
+            if phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC} else
+            (SessionType.SWIM_TECHNIQUE, SessionType.SWIM_AEROBIC, SessionType.SWIM_TECHNIQUE)
+        )
+        first = rotation[progression]
+        return [first, *([SessionType.SWIM_AEROBIC, SessionType.SWIM_TECHNIQUE] * count)][:count]
     return [SessionType.GENERAL_STRENGTH] * count
 
 
@@ -286,10 +321,64 @@ def _objective_long_cap(context, discipline, week_start, config):
     return max(lower, min(upper, int(Decimal(distance) * seconds_per_meter * fraction / Decimal(60))))
 
 
+def _swim_objective_minutes(context, week_start, config):
+    css = context.performance.swimming_css_seconds_per_100m
+    if css is None or css <= 0:
+        return None
+    candidates = []
+    for goal in context.goals:
+        if goal.event_date < week_start:
+            continue
+        distance = sum(item.distance_m for item in goal.segments if item.sport == "swim")
+        if distance:
+            candidates.append(({"A": 3, "B": 2, "C": 1}[goal.priority], -((goal.event_date - week_start).days), distance))
+    if not candidates:
+        return None
+    distance = max(candidates)[2]
+    race_reference = Decimal(distance) * Decimal(str(css)) / Decimal(100 * 60)
+    useful_session = ceil(race_reference * config.swim_objective_overhead_factor)
+    return max(config.swim_objective_baseline_floor_minutes, min(config.swim_safety_cap_minutes, useful_session))
+
+
+def _swim_duration(context, budget, session_type, config, previous_duration):
+    history = _historical_sport(context, "swimming")
+    historical_average = round(history.duration_seconds / 60 / history.activity_count) if history and history.activity_count and history.duration_seconds else None
+    objective = _swim_objective_minutes(context, budget.week_start, config)
+    baseline = historical_average or config.default_swim_minutes
+    if objective is not None:
+        baseline = min(baseline, objective)
+    phase_factor = {
+        SeasonPhase.RECOVERY: config.swim_recovery_factor,
+        SeasonPhase.PREPARATION: config.swim_maintenance_factor,
+        SeasonPhase.BASE: config.swim_maintenance_factor,
+        SeasonPhase.MAINTENANCE: config.swim_maintenance_factor,
+        SeasonPhase.BUILD: config.swim_build_factor,
+        SeasonPhase.SPECIFIC: config.swim_specific_factor,
+        SeasonPhase.TAPER: config.swim_taper_factor,
+        SeasonPhase.COMPETITION: config.swim_taper_factor,
+    }[budget.dominant_phase]
+    type_factor = (
+        config.swim_technique_factor if session_type is SessionType.SWIM_TECHNIQUE else
+        config.swim_easy_factor if session_type is SessionType.SWIM_EASY else
+        config.swim_threshold_factor if session_type is SessionType.SWIM_THRESHOLD else
+        config.swim_interval_factor if session_type is SessionType.SWIM_INTERVAL else
+        config.swim_aerobic_factor
+    )
+    objective_target = Decimal(objective or baseline) * phase_factor
+    candidate = max(Decimal(baseline) * phase_factor, objective_target) * type_factor
+    if budget.dominant_phase in {SeasonPhase.PREPARATION, SeasonPhase.BASE, SeasonPhase.MAINTENANCE, SeasonPhase.BUILD, SeasonPhase.SPECIFIC}:
+        prior = previous_duration or baseline
+        candidate = min(candidate, Decimal(prior + config.swim_progression_minutes))
+    available = max((slot.available_minutes for _, slot in _slots(context, budget) if slot is not None), default=0)
+    return max(config.minimum_session_minutes, min(config.swim_safety_cap_minutes, available, int(candidate.quantize(Decimal("1"), rounding=ROUND_HALF_UP))))
+
+
 def _duration(context, budget, discipline, session_type, config, previous_long):
     defaults = {"running": config.default_run_minutes, "cycling": config.default_bike_minutes, "swimming": config.default_swim_minutes, "strength": config.default_strength_minutes}
     value = defaults[discipline]
     history = _historical_sport(context, discipline)
+    if discipline == "swimming":
+        return _swim_duration(context, budget, session_type, config, previous_long.get("swimming"))
     if session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}:
         fallback = config.default_long_run_minutes if discipline == "running" else config.default_long_bike_minutes
         historical_minutes = Decimal(history.longest_duration_seconds) / Decimal(60) if history and history.longest_duration_seconds else None
@@ -311,7 +400,8 @@ def _duration(context, budget, discipline, session_type, config, previous_long):
     return value
 
 
-def _needs(context, budget, config, previous_long):
+def _needs(context, budget, config, previous_long, quality_exposure=None):
+    quality_exposure = quality_exposure or {}
     counts = _frequency(context, budget, config)
     discipline_map = {item.discipline: item for item in budget.disciplines}
     needs = []
@@ -320,10 +410,41 @@ def _needs(context, budget, config, previous_long):
         for discipline in ("running", "cycling")
         if budget.dominant_phase not in {SeasonPhase.TAPER, SeasonPhase.RECOVERY}
     )
-    non_long_key_limit = max(0, config.max_key_sessions_per_week - structural_long_count)
+    week_ordinal = max(0, (budget.week_start - context.request.planning_date).days // 7)
+    progression = week_ordinal % 3
+    sequences = {
+        discipline: _type_sequence(discipline, budget.dominant_phase, counts.get(discipline, 0), progression)
+        for discipline in ("running", "cycling", "swimming", "strength")
+    }
+    quality_candidates = [
+        discipline for discipline, types in sequences.items()
+        if any(_metadata(item)[3] and item not in {SessionType.RUN_LONG, SessionType.BIKE_LONG} for item in types)
+    ]
+    quality_candidates.sort(key=lambda discipline: (
+        quality_exposure.get(discipline, 0),
+        -(discipline_map.get(discipline).target_share or 0) if discipline_map.get(discipline) else 0,
+        discipline,
+    ))
+    selected_quality = quality_candidates[0] if quality_candidates else None
+    non_long_key_limit = min(
+        config.max_quality_sessions_per_week,
+        max(0, config.max_key_sessions_per_week - max(0, structural_long_count - 1)),
+    )
     non_long_key_count = 0
+    effective_sequences = {}
     for discipline in ("running", "cycling", "swimming", "strength"):
-        types = _type_sequence(discipline, budget.dominant_phase, counts.get(discipline, 0))
+        effective = []
+        for session_type in sequences[discipline]:
+            key = _metadata(session_type)[3]
+            structural_long = session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}
+            if key and not structural_long and (discipline != selected_quality or non_long_key_count >= non_long_key_limit):
+                session_type = {"running": SessionType.RUN_EASY, "cycling": SessionType.BIKE_ENDURANCE, "swimming": SessionType.SWIM_AEROBIC}[discipline]
+                key = False
+            non_long_key_count += int(key and not structural_long)
+            effective.append(session_type)
+        effective_sequences[discipline] = effective
+    for discipline in ("running", "cycling", "swimming", "strength"):
+        types = effective_sequences[discipline]
         allocation = discipline_map.get(discipline)
         weights = [Decimal("1.35") if item.name.endswith("LONG") else Decimal("1.10") if item.name.endswith(("THRESHOLD", "TEMPO", "INTERVAL")) else Decimal("1") for item in types]
         load_total = allocation.target_load if allocation else None
@@ -337,11 +458,6 @@ def _needs(context, budget, config, previous_long):
             loads = [None] * len(types)
         for index, session_type in enumerate(types):
             purpose, intensity, priority, key = _metadata(session_type)
-            structural_long = session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}
-            if key and not structural_long and non_long_key_count >= non_long_key_limit:
-                session_type = {"running": SessionType.RUN_EASY, "cycling": SessionType.BIKE_ENDURANCE, "swimming": SessionType.SWIM_AEROBIC}[discipline]
-                purpose, intensity, priority, key = _metadata(session_type)
-            non_long_key_count += int(key and not structural_long)
             history = _historical_sport(context, discipline)
             historical_weekly = ceil(history.activity_count / 4) if history and history.activity_count else 0
             optional = discipline != "strength" and index >= max(1, historical_weekly)
@@ -362,13 +478,14 @@ def _slots(context, budget):
     return [(budget.week_start + timedelta(days=offset), by_weekday.get((budget.week_start + timedelta(days=offset)).weekday())) for offset in range(budget.available_days_in_horizon)]
 
 
-def _place(context, budget, needs, occupied, config):
+def _place(context, budget, needs, occupied, config, previous_long_dates):
     sessions = []; warnings = []; used_minutes = {}; used_count = {}; key_dates = list(occupied)
     rank = {SessionPriority.REQUIRED: 0, SessionPriority.KEY: 1, SessionPriority.SUPPORT: 2, SessionPriority.OPTIONAL: 3}
     needs = sorted(needs, key=lambda item: (rank[item.priority], not item.session_type.name.endswith("LONG"), item.discipline, item.session_type.value))
     horizon_days = {day for day, _ in _slots(context, budget)}
     preferred_rest = {day for day in horizon_days if day.weekday() in context.preferences.preferred_rest_days}
     primary_dates = sorted(goal.event_date for goal in context.goals if goal.priority == "A")
+    competition_dates = sorted(goal.event_date for goal in context.goals)
     pre_primary_rest = {event - timedelta(days=1) for event in primary_dates if event - timedelta(days=1) in horizon_days}
     reserved_rest = preferred_rest | pre_primary_rest
     for need in needs:
@@ -382,7 +499,10 @@ def _place(context, budget, needs, occupied, config):
                 max_count = min(max_count, 1)
             if used_count.get(day, 0) >= max_count or used_minutes.get(day, 0) + need.duration > slot.available_minutes:
                 continue
-            if need.discipline == "strength" and any(timedelta(0) < event - day <= timedelta(days=2) for event in primary_dates):
+            if need.discipline == "strength" and any(timedelta(0) < event - day <= timedelta(days=2) for event in competition_dates):
+                continue
+            prior_long = previous_long_dates.get(need.discipline) if need.session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG} else None
+            if prior_long is not None and 0 < (day - prior_long).days < config.minimum_same_long_spacing_days:
                 continue
             gap = min((abs((day - other).days) for other in key_dates), default=99)
             score = (config.preferred_day_score if preferred == day.weekday() else 0)
@@ -513,15 +633,26 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
         or len(budgets.budgets) == 0
     ):
         raise ValueError("session planning inputs are incompatible")
-    weeks = []; plan_warnings = []; previous_long = {}
+    weeks = []; plan_warnings = []; previous_long = {}; previous_long_dates = {}; quality_exposure = {}
     for budget in budgets.budgets:
         competitions = _competition_sessions(context, season, budget, config)
-        needs = _needs(context, budget, config, previous_long)
-        sessions, warnings = _place(context, budget, needs, {item.date for item in competitions}, config)
+        needs = _needs(context, budget, config, previous_long, quality_exposure)
+        sessions, warnings = _place(context, budget, needs, {item.date for item in competitions}, config, previous_long_dates)
         sessions = tuple(sorted((*competitions, *sessions), key=lambda item: (item.date, item.session_type.value, item.discipline)))
         for session in sessions:
             if session.session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}:
                 previous_long[session.discipline] = session.target_duration_minutes
+                previous_long_dates[session.discipline] = session.date
+            elif session.discipline == "swimming" and session.phase not in {SeasonPhase.RECOVERY, SeasonPhase.TAPER, SeasonPhase.COMPETITION}:
+                previous_long["swimming"] = session.target_duration_minutes
+            explicit_quality = session.session_type.name.endswith(("TEMPO", "THRESHOLD", "INTERVAL"))
+            embedded_long_quality = (
+                session.session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG}
+                and session.phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC}
+                and (session.target_duration_minutes or 0) >= 75
+            )
+            if explicit_quality or embedded_long_quality:
+                quality_exposure[session.discipline] = quality_exposure.get(session.discipline, 0) + 1
         planned_values = [item.target_load for item in sessions if item.target_load is not None]
         planned = _round(sum(planned_values, Decimal(0))) if budget.target_load is not None else None
         delta = _round(planned - budget.target_load) if planned is not None and budget.target_load is not None else None

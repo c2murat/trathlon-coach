@@ -64,10 +64,10 @@ def builder():
     return SeasonStructureBuilder(SeasonStructureConfig(version="season-config-1", algorithm_version="season-structure-1"))
 
 
-@pytest.mark.parametrize("priority,role,taper,recovery", [("A", "primary", 14, 7), ("B", "supporting", 7, 3), ("C", "training", 0, 1)])
-def test_priority_has_deterministic_structural_role(priority, role, taper, recovery):
+@pytest.mark.parametrize("priority,taper,recovery", [("A", 14, 7), ("B", 7, 3), ("C", 0, 1)])
+def test_single_goal_is_primary_without_changing_priority_policy(priority, taper, recovery):
     result = builder().build(context([goal(1, 90, priority)]))
-    assert result.goals[0].role == role
+    assert result.goals[0].role == "primary"
     assert result.competition_markers[0].taper_days == taper
     assert result.competition_markers[0].recovery_days == recovery
     assert SeasonPhase.COMPETITION in {block.phase for block in result.blocks}
@@ -83,8 +83,15 @@ def test_a_b_c_and_b_after_a_remain_one_ordered_season():
 
 def test_two_separated_a_have_two_peaks_without_close_warning():
     result = builder().build(context([goal(1, 60), goal(2, 150)]))
-    assert [item.role for item in result.goals] == ["primary", "primary"]
+    assert [item.role for item in result.goals] == ["primary", "supporting"]
     assert "MULTIPLE_PRIMARY_GOALS_CLOSE" not in {item.code for item in result.warnings}
+
+
+def test_relative_roles_choose_highest_priority_then_earliest_deterministically():
+    b_plus_c=builder().build(context([goal(1,50,"C"),goal(2,80,"B")]))
+    assert [item.role for item in b_plus_c.goals]==["training","primary"]
+    two_b=builder().build(context([goal(2,80,"B"),goal(1,50,"B")]))
+    assert next(item for item in two_b.goals if item.role=="primary").date==min(item.date for item in two_b.goals)
 
 
 def test_close_a_and_b_during_taper_create_structured_conflicts():

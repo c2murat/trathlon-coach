@@ -155,6 +155,27 @@ def test_fingerprint_is_stable_input_only_and_config_versioned():
     }
 
 
+def test_0_8f_9_version_metadata_does_not_change_functional_output():
+    ctx = context(windows=with_running_frequency())
+    legacy, _, _, _ = build(ctx, SessionPlanningConfig(version="0.8F.8", algorithm_version="0.8F.8"))
+    current, _, _, _ = build(ctx, SessionPlanningConfig(version="0.8F.9", algorithm_version="0.8F.9"))
+
+    def without_version_metadata(plan):
+        payload = plan.model_dump(mode="json")
+        payload.pop("algorithm_version")
+        payload.pop("configuration_version")
+        payload.pop("fingerprint")
+        for week in payload["weeks"]:
+            for session in week["sessions"]:
+                session.pop("rule_version")
+        return payload
+
+    assert current.configuration_version == "0.8F.9"
+    assert current.algorithm_version == "0.8F.9"
+    assert {session.rule_version for week in current.weeks for session in week.sessions} == {"0.8F.9"}
+    assert without_version_metadata(current) == without_version_metadata(legacy)
+
+
 def test_validator_detects_unavailable_overbook_excess_and_bad_competition():
     result, season, budgets, config = build(context())
     week = result.weeks[0]

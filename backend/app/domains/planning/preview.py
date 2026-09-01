@@ -15,6 +15,27 @@ from app.domains.planning.workout_builder import StructuredWorkoutDraft, structu
 PREVIEW_ARTIFACT_SCHEMA_VERSION = 1
 
 
+def _validate_new_workout_leaf_titles(workout_drafts: tuple[StructuredWorkoutDraft, ...]) -> None:
+    """Reject newly generated previews with non-portable leaf headings.
+
+    This deliberately lives on the generation path rather than the artifact
+    model validator so stored schema-v1 artifacts without titles remain
+    readable.
+    """
+    for draft in workout_drafts:
+        if draft.definition is None:
+            continue
+        pending = list(draft.definition.steps)
+        while pending:
+            node = pending.pop()
+            if node.kind == "repeat":
+                pending.extend(node.steps or ())
+            elif not (node.title or "").strip():
+                raise ValueError(
+                    f"new preview workout leaf requires title: {draft.session_type.value}"
+                )
+
+
 class PreviewSessionArtifact(FrozenModel):
     prescription: SessionPrescription
     workout: StructuredWorkoutDraft
@@ -68,6 +89,7 @@ def build_preview_artifact(*, athlete_id, timezone_name, context_fingerprint_val
     prescriptions = tuple(item for week in session_plan.weeks for item in week.sessions)
     if len(prescriptions) != len(workout_drafts):
         raise ValueError("one workout draft is required per prescription")
+    _validate_new_workout_leaf_titles(workout_drafts)
     sessions = tuple(PreviewSessionArtifact(prescription=item, workout=workout) for item, workout in zip(prescriptions, workout_drafts))
     values = dict(
         athlete_id=athlete_id, timezone_name=timezone_name,
