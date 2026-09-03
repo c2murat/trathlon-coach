@@ -37,6 +37,7 @@ from app.domains.planning.contracts import (
     context_fingerprint,
 )
 from app.application.planning_preferences import PlanningPreferencesApplication, preferences_from_row
+from app.application.athlete_capability import AthleteCapabilityContextAssembler
 
 
 class PlanningContextError(ValueError):
@@ -154,6 +155,17 @@ class PlanningContextAssembler:
             "warnings": warnings,
         }
         return PlanningContext(**payload, fingerprint=context_fingerprint(payload))
+
+    def assemble_capability(self, request: PlanningRequest):
+        """Read-only 0.8G.2A integration; intentionally excluded from planning and its fingerprint."""
+        performance_exclusive = datetime.combine(request.planning_date + timedelta(days=1), time.min, ZoneInfo(request.timezone_name)).astimezone(timezone.utc)
+        performance = self._performance(request.athlete_id, performance_exclusive)
+        sports = {"run": "running", "bike": "cycling", "swim": "swimming"}
+        relevant = tuple(sports[item.sport] for goal in self._goals(request) if goal.event_date >= request.planning_date for item in goal.segments)
+        return AthleteCapabilityContextAssembler(
+            self.session, training_load_algorithm_version=self.load_version,
+            training_status_algorithm_version=self.status_version,
+        ).assemble(athlete_profile_id=request.athlete_id, as_of_date=request.planning_date, timezone_name=request.timezone_name, performance=performance, relevant_future_sports=relevant)
 
     def _goals(self, request: PlanningRequest) -> tuple[PlanningGoal, ...]:
         rows = tuple(
