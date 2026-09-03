@@ -63,7 +63,7 @@ class PlanningPreviewApplication:
             load_aggregation_algorithm_version="0.7c.1",
             manual_strength_algorithm_version="0.7e.1",
             training_status_algorithm_version="0.7f.1",
-        ).assemble(request)
+        ).assemble(request, include_capability=True)
         season = SeasonStructureBuilder(SeasonStructureConfig(version="0.8F.3", algorithm_version="0.8F.3")).build(context)
         if any(warning.blocking for warning in season.warnings):
             raise PlanningPreviewBlockedError()

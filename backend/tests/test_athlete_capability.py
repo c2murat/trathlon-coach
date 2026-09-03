@@ -247,3 +247,21 @@ def test_planning_context_and_fingerprint_do_not_change_after_read_only_capabili
     after=assembler(db).assemble(request)
     assert before == after and before.fingerprint == after.fingerprint
     assert capability.athlete_profile_id == athlete.id
+
+
+def test_adaptive_planning_context_computes_capability_once_and_fingerprints_snapshot(db, monkeypatch):
+    athlete, goal = seed_identity_goal(db)
+    request = make_request(athlete, goal)
+    service = assembler(db)
+    baseline = service.assemble(request)
+    original = AthleteCapabilityContextAssembler.assemble
+    calls = []
+    def counted(self, **kwargs):
+        calls.append(kwargs["athlete_profile_id"])
+        return original(self, **kwargs)
+    monkeypatch.setattr(AthleteCapabilityContextAssembler, "assemble", counted)
+    adaptive = service.assemble(request, include_capability=True)
+    assert calls == [athlete.id]
+    assert adaptive.adaptive_capability is not None
+    assert adaptive.adaptive_capability.cutoff_date == request.planning_date
+    assert adaptive.fingerprint != baseline.fingerprint

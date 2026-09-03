@@ -56,6 +56,29 @@ class WorkoutDuration(BaseModel):
         if self.mode == "open" and (self.seconds is not None or self.meters is not None or self.estimated_seconds is not None): raise ValueError("open duration has no value")
         return self
 
+class WorkoutTargetAdaptation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    algorithm_version: str
+    reference_based_minimum: float = Field(gt=0)
+    reference_based_maximum: float = Field(gt=0)
+    capability_dimension: int = Field(gt=0)
+    capability_value: float = Field(gt=0)
+    confidence: Literal["HIGH", "MEDIUM"]
+    days_since_evidence: int = Field(ge=0, le=83)
+    blend_factor: float = Field(gt=0, le=1)
+    repeat_factor: float = Field(gt=0, le=1)
+    repeat_evidence_used: bool = False
+    repeat_source_overlap: bool | None = None
+    final_minimum: float = Field(gt=0)
+    final_maximum: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def valid_adaptation_ranges(self):
+        if self.reference_based_minimum > self.reference_based_maximum or self.final_minimum > self.final_maximum:
+            raise ValueError("invalid adaptive target range")
+        return self
+
+
 class WorkoutTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
     metric: Literal["power", "heart_rate", "pace", "swim_pace", "cadence", "rpe", "none"]
@@ -70,6 +93,7 @@ class WorkoutTarget(BaseModel):
     resolved_minimum: float | None = Field(default=None, ge=0)
     resolved_maximum: float | None = Field(default=None, ge=0)
     resolved_unit: Literal["watts", "seconds_per_km", "seconds_per_100m"] | None = None
+    adaptation: WorkoutTargetAdaptation | None = None
     @model_validator(mode="after")
     def valid_range(self):
         if self.mode == "none":
@@ -87,6 +111,11 @@ class WorkoutTarget(BaseModel):
             if self.mode != "percent_reference": raise ValueError("resolved target requires percent reference mode")
             if self.resolved_minimum > self.resolved_maximum: raise ValueError("invalid resolved target range")
             if self.reference_unit != self.resolved_unit: raise ValueError("reference and resolved units must match")
+        if self.adaptation is not None:
+            if self.resolved_minimum is None or self.resolved_maximum is None:
+                raise ValueError("adaptation requires resolved target snapshot")
+            if self.adaptation.final_minimum != self.resolved_minimum or self.adaptation.final_maximum != self.resolved_maximum:
+                raise ValueError("adaptation final target must match resolved target")
         return self
 
 class WorkoutNode(BaseModel):

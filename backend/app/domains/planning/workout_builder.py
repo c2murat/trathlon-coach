@@ -14,6 +14,7 @@ from app.domains.planning.models import (
 )
 from app.domains.planning.session_planning import SessionPrescription, SessionType
 from app.domains.planning.workout_labels import STRENGTH_VARIANTS, SWIM_DRILLS, WORKOUT_ROLE_LABELS
+from app.domains.planning.adaptive_targets import adapt_target
 
 
 STRUCTURED_WORKOUT_SCHEMA_VERSION = 1
@@ -39,6 +40,7 @@ class WorkoutDecisionCode(str, Enum):
     REPEAT_COUNT_REDUCED_FOR_DURATION = "REPEAT_COUNT_REDUCED_FOR_DURATION"
     RESIDUAL_ASSIGNED_TO_COOLDOWN = "RESIDUAL_ASSIGNED_TO_COOLDOWN"
     COMPETITION_REQUIRES_NO_WORKOUT = "COMPETITION_REQUIRES_NO_WORKOUT"
+    TARGET_ADAPTED_FROM_CAPABILITY = "TARGET_ADAPTED_FROM_CAPABILITY"
 
 
 class WorkoutWarning(FrozenModel):
@@ -346,7 +348,7 @@ def _target_for(context, session, config, family):
     return _target(context, session, config, family_override=family)[0]
 
 
-def _target_for_step(context, session, config, role, family):
+def _target_for_step(context, session, config, role, family, *, effort_seconds=None, effort_meters=None, repeat_count=1):
     """Resolve a provider-neutral executable target from sport + type + role."""
     base = _target_for(context, session, config, family)
     prefix = {"running": "run_pace", "cycling": "bike_power", "swimming": "swim_css"}.get(session.discipline)
@@ -356,7 +358,11 @@ def _target_for_step(context, session, config, role, family):
     bounds = getattr(config, f"{prefix}_{role_family}")
     if base.mode == "percent_reference" and base.reference:
         if base.reference_value and base.reference_unit:
-            return _resolved_target(base.metric, base.reference, bounds, base.reference_value, base.reference_unit, config)
+            resolved = _resolved_target(base.metric, base.reference, bounds, base.reference_value, base.reference_unit, config)
+            return adapt_target(
+                target=resolved, snapshot=context.adaptive_capability, session=session, family=family,
+                effort_seconds=effort_seconds, effort_meters=effort_meters, repeat_count=repeat_count,
+            ) if role == "work" else resolved
         return WorkoutTarget(
             metric=base.metric, mode="percent_reference", reference=base.reference,
             minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config),
@@ -443,7 +449,7 @@ def _quality_catalog_steps(context, session, config, total, progression):
     return (
         _step("warmup", warmup, warmup_target),
         WorkoutNode(kind="repeat", repetitions=repeats, steps=[
-            _step("work", work, _target_for_step(context, session, config, "work", family), label),
+            _step("work", work, _target_for_step(context, session, config, "work", family, effort_seconds=work, repeat_count=repeats), label),
             _step("recovery", recovery, recovery_target, "Recuperación activa"),
         ]),
         _step("cooldown", cooldown, cooldown_target),
@@ -481,7 +487,7 @@ def _swim_steps(context, session, config, total, progression):
             _distance_step("cooldown", cool_m, cool_s, cooldown_target),
         )
     if session.session_type is SessionType.SWIM_AEROBIC and session.phase.value == "SPECIFIC":
-        threshold_target = _target_for_step(context, session, config, "work", "threshold")
+        threshold_target = _target_for_step(context, session, config, "work", "threshold", effort_meters=100, repeat_count=4)
         meters = 100
         work_s = max(20, int(Decimal(meters) * pace * Decimal(str(threshold_target.minimum or 1)) / 100))
         recovery = 30
@@ -496,7 +502,7 @@ def _swim_steps(context, session, config, total, progression):
             _step("work", residual, main_target, "Nado aeróbico estable"),
             _distance_step("cooldown", cool_m, cool_s, cooldown_target),
         )
-    meters = {"easy": 200, "aerobic": (200, 300, 400)[progression], "threshold": (100, 200, 300)[progression], "interval": 50}.get(family, 200)
+    meters = {"easy": 200, "aerobic": (200, 300, 400)[progression], "threshold": (100, 200, 300)[progression], "interval": (50, 100, 200)[progression]}.get(family, 200)
     recovery = 20 if family in {"easy", "aerobic"} else 30
     multiplier = Decimal(str(main_target.minimum or 1)) if main_target.mode == "percent_reference" else Decimal("1.15")
     work_s = max(20, int(Decimal(meters) * pace * multiplier / 100))
@@ -504,6 +510,7 @@ def _swim_steps(context, session, config, total, progression):
     residual = remaining - reps * (work_s + recovery)
     if residual < 1:
         reps = max(2, reps - 1); residual = remaining - reps * (work_s + recovery)
+    main_target = _target_for_step(context, session, config, "work", family, effort_meters=meters, repeat_count=reps)
     return (
         _distance_step("warmup", warm_m, warm_s, warmup_target),
         WorkoutNode(kind="repeat", repetitions=reps, steps=[
@@ -642,11 +649,22 @@ def build_structured_workout(context: PlanningContext, session: SessionPrescript
         title=session.session_type.value, purpose=session.purpose.value,
         steps=list(steps),
     )
+    def adapted_targets(nodes):
+        for node in nodes:
+            if node.kind == "repeat":
+                yield from adapted_targets(node.steps or ())
+            elif node.target and node.target.adaptation:
+                yield node.target.adaptation
+    adaptations = tuple(adapted_targets(definition.steps))
+    adaptive_decisions = tuple(WorkoutDecision(
+        code=WorkoutDecisionCode.TARGET_ADAPTED_FROM_CAPABILITY,
+        context={"algorithm_version": item.algorithm_version, "capability_dimension": item.capability_dimension, "confidence": item.confidence},
+    ) for item in adaptations[:1])
     draft = StructuredWorkoutDraft(
         buildable=True, sport=session.discipline, session_type=session.session_type,
         definition=definition, target_provenance=provenance,
         warnings=tuple((*target_warnings, *template_warnings)),
-        decisions=(WorkoutDecision(code=target_decision), *template_decisions),
+        decisions=(WorkoutDecision(code=target_decision), *adaptive_decisions, *template_decisions),
         configuration_version=config.version, algorithm_version=config.algorithm_version,
         context_fingerprint=context.fingerprint, fingerprint=fingerprint,
     )

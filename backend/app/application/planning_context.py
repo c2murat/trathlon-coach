@@ -22,6 +22,9 @@ from app.db.models import (
 )
 from app.domains.planning.contracts import (
     WINDOW_DAYS,
+    AdaptiveCapabilityPointSnapshot,
+    AdaptiveCapabilitySnapshot,
+    AdaptiveRepeatSnapshot,
     AthleteTrainingSnapshot,
     ContextVersions,
     PerformanceReferenceSnapshot,
@@ -94,7 +97,7 @@ class PlanningContextAssembler:
         self.strength_version = manual_strength_algorithm_version
         self.status_version = training_status_algorithm_version
 
-    def assemble(self, request: PlanningRequest) -> PlanningContext:
+    def assemble(self, request: PlanningRequest, *, include_capability: bool = False) -> PlanningContext:
         if request.mode.value != "INITIAL_PLAN":
             raise PlanningContextError("REPLAN_FROM_DATE is not executable in 0.8F.2")
         athlete = self.session.get(AthleteProfile, request.athlete_id)
@@ -133,6 +136,19 @@ class PlanningContextAssembler:
             request, observation_start, cutoff_date, sessions, daily_loads, status is not None
         )
         warnings = self._warnings(performance, sessions, daily_loads, status)
+        adaptive_capability = None
+        if include_capability:
+            sports = {"run": "running", "bike": "cycling", "swim": "swimming"}
+            relevant = tuple(sports[item.sport] for goal in goals for item in goal.segments)
+            capability = AthleteCapabilityContextAssembler(
+                self.session, training_load_algorithm_version=self.load_version,
+                training_status_algorithm_version=self.status_version,
+            ).assemble(
+                athlete_profile_id=request.athlete_id, as_of_date=request.planning_date,
+                timezone_name=request.timezone_name, performance=performance,
+                relevant_future_sports=relevant,
+            )
+            adaptive_capability = self._adaptive_snapshot(capability)
         versions = ContextVersions(
             planning_algorithm_version=request.algorithm_version,
             configuration_version=request.configuration_version,
@@ -154,6 +170,8 @@ class PlanningContextAssembler:
             "versions": versions,
             "warnings": warnings,
         }
+        if adaptive_capability is not None:
+            payload["adaptive_capability"] = adaptive_capability
         return PlanningContext(**payload, fingerprint=context_fingerprint(payload))
 
     def assemble_capability(self, request: PlanningRequest):
@@ -166,6 +184,36 @@ class PlanningContextAssembler:
             self.session, training_load_algorithm_version=self.load_version,
             training_status_algorithm_version=self.status_version,
         ).assemble(athlete_profile_id=request.athlete_id, as_of_date=request.planning_date, timezone_name=request.timezone_name, performance=performance, relevant_future_sports=relevant)
+
+    @staticmethod
+    def _adaptive_snapshot(capability) -> AdaptiveCapabilitySnapshot:
+        def points(rows):
+            return tuple(AdaptiveCapabilityPointSnapshot(
+                dimension=item.distance_m or item.duration_seconds,
+                usable_value=item.usable_representative_value,
+                confidence=item.representative_confidence.value,
+                days_since_evidence=item.representative_days_since_evidence,
+                support_count=item.representative_support_count,
+                source_activity_ids=item.representative_source_activity_ids,
+            ) for item in rows if item.representative_confidence.value in {"HIGH", "MEDIUM"})
+        def repeats(rows):
+            return tuple(AdaptiveRepeatSnapshot(
+                repeat_count=item.repeat_count,
+                typical_duration_seconds=item.typical_duration_seconds,
+                typical_distance_m=item.typical_distance_m,
+                representative_value=item.representative_value,
+                confidence=item.confidence.value,
+                days_since_evidence=item.days_since_evidence,
+                source_activity_id=item.source_activity_id,
+            ) for item in rows if item.confidence.value in {"HIGH", "MEDIUM"})
+        return AdaptiveCapabilitySnapshot(
+            algorithm_version=capability.algorithm_version, cutoff_date=capability.as_of_date,
+            running_duration=points(capability.running.duration_efforts),
+            cycling_duration=points(capability.cycling.duration_efforts),
+            swimming_distance=points(capability.swimming.distance_efforts),
+            running_repeats=repeats(capability.running.repeat_like_efforts),
+            swimming_repeats=repeats(capability.swimming.repeat_like_efforts),
+        )
 
     def _goals(self, request: PlanningRequest) -> tuple[PlanningGoal, ...]:
         rows = tuple(

@@ -249,6 +249,35 @@ class ContextVersions(FrozenModel):
     planning_preferences_version_number: int | None = None
 
 
+class AdaptiveCapabilityPointSnapshot(FrozenModel):
+    dimension: int = Field(gt=0)
+    usable_value: Decimal = Field(gt=0)
+    confidence: Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
+    days_since_evidence: int = Field(ge=0, le=83)
+    support_count: int = Field(ge=1)
+    source_activity_ids: tuple[UUID, ...] = Field(default=(), max_length=4)
+
+
+class AdaptiveRepeatSnapshot(FrozenModel):
+    repeat_count: int = Field(ge=3)
+    typical_duration_seconds: int = Field(gt=0)
+    typical_distance_m: int | None = Field(default=None, gt=0)
+    representative_value: Decimal = Field(gt=0)
+    confidence: Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
+    days_since_evidence: int = Field(ge=0, le=83)
+    source_activity_id: UUID | None = None
+
+
+class AdaptiveCapabilitySnapshot(FrozenModel):
+    algorithm_version: str
+    cutoff_date: date
+    running_duration: tuple[AdaptiveCapabilityPointSnapshot, ...] = ()
+    cycling_duration: tuple[AdaptiveCapabilityPointSnapshot, ...] = ()
+    swimming_distance: tuple[AdaptiveCapabilityPointSnapshot, ...] = ()
+    running_repeats: tuple[AdaptiveRepeatSnapshot, ...] = ()
+    swimming_repeats: tuple[AdaptiveRepeatSnapshot, ...] = ()
+
+
 class PlanningContext(FrozenModel):
     request: PlanningRequest
     preferences: PlanningPreferences
@@ -258,6 +287,7 @@ class PlanningContext(FrozenModel):
     training_status: TrainingStatusSnapshot | None
     versions: ContextVersions
     warnings: tuple[PlanningWarning, ...]
+    adaptive_capability: AdaptiveCapabilitySnapshot | None = None
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
