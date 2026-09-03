@@ -243,18 +243,23 @@ def _frequency(context, budget: WeeklyTrainingBudget, config: SessionPlanningCon
     return counts
 
 
-def _type_sequence(discipline, phase, count, progression=0):
+def _type_sequence(discipline, phase, count, progression=0, quality_exposure=None):
     recovery = phase is SeasonPhase.RECOVERY
     taper = phase is SeasonPhase.TAPER
     if discipline == "running":
         if taper:
             return [SessionType.RUN_EASY, *([SessionType.RUN_RECOVERY] * count)][:count]
-        quality = (
-            (SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_THRESHOLD)[progression]
-            if phase is SeasonPhase.BUILD else
-            (SessionType.RUN_THRESHOLD, SessionType.RUN_INTERVAL, SessionType.RUN_THRESHOLD)[progression]
-            if phase is SeasonPhase.SPECIFIC else SessionType.RUN_TEMPO
-        )
+        if phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC} and quality_exposure is not None:
+            rotation = (SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_INTERVAL)
+            ordered = rotation[progression:] + rotation[:progression]
+            quality = min(ordered, key=lambda item: quality_exposure.get(item, 0))
+        else:
+            quality = (
+                (SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_THRESHOLD)[progression]
+                if phase is SeasonPhase.BUILD else
+                (SessionType.RUN_THRESHOLD, SessionType.RUN_INTERVAL, SessionType.RUN_THRESHOLD)[progression]
+                if phase is SeasonPhase.SPECIFIC else SessionType.RUN_TEMPO
+            )
         return ([SessionType.RUN_RECOVERY] * count if recovery else [SessionType.RUN_LONG, quality, *([SessionType.RUN_EASY] * count)])[:count]
     if discipline == "cycling":
         if taper:
@@ -412,8 +417,16 @@ def _needs(context, budget, config, previous_long, quality_exposure=None):
     )
     week_ordinal = max(0, (budget.week_start - context.request.planning_date).days // 7)
     progression = week_ordinal % 3
+    single_a_triathlon = (
+        len(context.goals) == 1
+        and context.goals[0].priority == "A"
+        and {item.sport for item in context.goals[0].segments} == {"swim", "bike", "run"}
+    )
     sequences = {
-        discipline: _type_sequence(discipline, budget.dominant_phase, counts.get(discipline, 0), progression)
+        discipline: _type_sequence(
+            discipline, budget.dominant_phase, counts.get(discipline, 0), progression,
+            quality_exposure if single_a_triathlon else None,
+        )
         for discipline in ("running", "cycling", "swimming", "strength")
     }
     quality_candidates = [
@@ -653,6 +666,8 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
             )
             if explicit_quality or embedded_long_quality:
                 quality_exposure[session.discipline] = quality_exposure.get(session.discipline, 0) + 1
+            if explicit_quality:
+                quality_exposure[session.session_type] = quality_exposure.get(session.session_type, 0) + 1
         planned_values = [item.target_load for item in sessions if item.target_load is not None]
         planned = _round(sum(planned_values, Decimal(0))) if budget.target_load is not None else None
         delta = _round(planned - budget.target_load) if planned is not None and budget.target_load is not None else None

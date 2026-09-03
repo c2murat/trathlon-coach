@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -8,11 +8,12 @@ from app.domains.planning.contracts import (
     PerformanceSnapshot, context_fingerprint,
 )
 from app.domains.planning.models import WorkoutTarget
-from app.domains.planning.session_planning import SessionType
+from app.domains.planning.session_planning import SessionType, _type_sequence
 from app.domains.planning.season_structure import SeasonPhase
 from app.domains.planning.workout_builder import WorkoutBuilderConfig, build_structured_workout
 from tests.test_workout_builder import phase_targets, prescription, source
 from tests.test_session_planning import build
+from tests.test_weekly_budget import context, goal
 
 
 CONFIG = WorkoutBuilderConfig(version=ADAPTIVE_PRESCRIPTION_VERSION, algorithm_version=ADAPTIVE_PRESCRIPTION_VERSION)
@@ -170,3 +171,118 @@ def test_capability_changes_only_workout_targets_not_macro_session_plan():
     baseline_plan = build(base)[0]
     adaptive_plan = build(adaptive)[0]
     assert adaptive_plan.weeks == baseline_plan.weeks
+
+
+def test_single_a_triathlon_keeps_quality_selection_independent_from_capability():
+    event = goal(sports=("swim", "bike", "run")).model_copy(update={
+        "event_date": date(2026, 10, 17),
+        "event_format": "triathlon",
+        "priority": "A",
+        "role": "primary",
+    })
+    performance = PerformanceSnapshot(
+        cycling_ftp_watts=Decimal("155"),
+        running_threshold_pace_seconds_per_km=Decimal("250"),
+        swimming_css_seconds_per_100m=Decimal("110"),
+    )
+    baseline = context(goals=(event,)).model_copy(update={"performance": performance})
+    repeat = AdaptiveRepeatSnapshot(
+        repeat_count=6, typical_duration_seconds=190, typical_distance_m=800,
+        representative_value=Decimal("225"), confidence="HIGH", days_since_evidence=7,
+    )
+    adaptive = with_snapshot(baseline, snapshot(
+        run=(point(60, 205, "HIGH"), point(120, 212, "HIGH"), point(180, 220, "MEDIUM")),
+        repeats=(repeat,),
+    ))
+
+    baseline_plan = build(baseline)[0]
+    adaptive_plan = build(adaptive)[0]
+    assert adaptive_plan.weeks == baseline_plan.weeks
+    assert len(adaptive_plan.weeks) == len(baseline_plan.weeks)
+    assert all(
+        len(adaptive_week.sessions) == len(baseline_week.sessions)
+        and adaptive_week.planned_load == baseline_week.planned_load
+        and adaptive_week.budget_target_load == baseline_week.budget_target_load
+        and [item.target_duration_minutes for item in adaptive_week.sessions]
+        == [item.target_duration_minutes for item in baseline_week.sessions]
+        for adaptive_week, baseline_week in zip(adaptive_plan.weeks, baseline_plan.weeks)
+    )
+
+    sessions = tuple(item for week in adaptive_plan.weeks for item in week.sessions)
+    interval = next(item for item in sessions if item.session_type is SessionType.RUN_INTERVAL)
+    assert interval.phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC}
+    assert {item.discipline for item in sessions} >= {"running", "cycling", "swimming"}
+    assert not any(item.phase is SeasonPhase.RECOVERY for item in sessions)
+
+    taper = tuple(item for item in sessions if item.phase is SeasonPhase.TAPER)
+    assert taper and all((event.event_date - item.date).days <= 14 for item in taper)
+    assert not any(item.session_type is SessionType.RUN_INTERVAL for item in taper)
+
+    representative = {
+        discipline: next(item for item in sessions if item.discipline == discipline and item.target_duration_minutes)
+        for discipline in ("running", "cycling", "swimming")
+    }
+    workouts = {
+        discipline: build_structured_workout(adaptive, session, CONFIG)
+        for discipline, session in representative.items()
+    }
+    expected_references = {
+        "running": ("threshold_pace", 250.0),
+        "cycling": ("FTP", 155.0),
+        "swimming": ("CSS", 110.0),
+    }
+    for discipline, draft in workouts.items():
+        target = phase_targets(draft.definition)[0]
+        reference, value = expected_references[discipline]
+        assert target.reference == reference
+        assert target.reference_value == value
+
+    interval_target = phase_targets(build_structured_workout(adaptive, interval, CONFIG).definition)[0]
+    assert interval_target.reference == "threshold_pace"
+    assert interval_target.reference_value == 250.0
+    assert interval_target.adaptation is None
+    five_min_reference = WorkoutTarget(
+        metric="pace", mode="percent_reference", reference="threshold_pace",
+        minimum=.9, maximum=.96, reference_value=250, reference_unit="seconds_per_km",
+        resolved_minimum=225, resolved_maximum=240, resolved_unit="seconds_per_km",
+    )
+    assert adapt_target(
+        target=five_min_reference, snapshot=adaptive.adaptive_capability,
+        session=interval, family="interval", effort_seconds=300, repeat_count=5,
+    ) == five_min_reference
+
+    compatible = with_snapshot(baseline, snapshot(run=(point(240, 220, "HIGH"),)))
+    compatible_plan = build(compatible)[0]
+    assert compatible_plan.weeks == baseline_plan.weeks
+    compatible_interval = next(
+        item for week in compatible_plan.weeks for item in week.sessions
+        if item.session_type is SessionType.RUN_INTERVAL
+    )
+    compatible_target = phase_targets(
+        build_structured_workout(compatible, compatible_interval, CONFIG).definition,
+    )[0]
+    assert compatible_target.adaptation is not None
+    assert (compatible_target.resolved_minimum, compatible_target.resolved_maximum) != (
+        interval_target.resolved_minimum, interval_target.resolved_maximum,
+    )
+
+
+def test_single_a_triathlon_running_quality_choice_is_driven_by_exposure_deficit():
+    low_interval_exposure = {
+        SessionType.RUN_TEMPO: 3,
+        SessionType.RUN_THRESHOLD: 2,
+        SessionType.RUN_INTERVAL: 0,
+    }
+    high_interval_exposure = {
+        SessionType.RUN_TEMPO: 0,
+        SessionType.RUN_THRESHOLD: 2,
+        SessionType.RUN_INTERVAL: 5,
+    }
+
+    deficient = _type_sequence("running", SeasonPhase.BUILD, 3, 0, low_interval_exposure)
+    repeated = _type_sequence("running", SeasonPhase.BUILD, 3, 0, low_interval_exposure)
+    saturated = _type_sequence("running", SeasonPhase.BUILD, 3, 0, high_interval_exposure)
+
+    assert deficient == repeated
+    assert deficient == [SessionType.RUN_LONG, SessionType.RUN_INTERVAL, SessionType.RUN_EASY]
+    assert saturated == [SessionType.RUN_LONG, SessionType.RUN_TEMPO, SessionType.RUN_EASY]
