@@ -40,6 +40,7 @@ from app.domains.planning.contracts import (
     context_fingerprint,
 )
 from app.application.planning_preferences import PlanningPreferencesApplication, preferences_from_row
+from app.application.quality_exposure import QualityExposureAssembler
 from app.application.athlete_capability import AthleteCapabilityContextAssembler
 
 
@@ -137,6 +138,7 @@ class PlanningContextAssembler:
         )
         warnings = self._warnings(performance, sessions, daily_loads, status)
         adaptive_capability = None
+        quality_exposure = None
         if include_capability:
             sports = {"run": "running", "bike": "cycling", "swim": "swimming"}
             relevant = tuple(sports[item.sport] for goal in goals for item in goal.segments)
@@ -149,6 +151,12 @@ class PlanningContextAssembler:
                 relevant_future_sports=relevant,
             )
             adaptive_capability = self._adaptive_snapshot(capability)
+            quality_exposure = QualityExposureAssembler(
+                self.session, training_load_algorithm_version=self.load_version,
+            ).assemble(
+                athlete_profile_id=request.athlete_id, as_of_date=cutoff_date,
+                timezone_name=request.timezone_name, performance=performance,
+            )
         versions = ContextVersions(
             planning_algorithm_version=request.algorithm_version,
             configuration_version=request.configuration_version,
@@ -172,6 +180,7 @@ class PlanningContextAssembler:
         }
         if adaptive_capability is not None:
             payload["adaptive_capability"] = adaptive_capability
+            payload["quality_exposure"] = quality_exposure
         return PlanningContext(**payload, fingerprint=context_fingerprint(payload))
 
     def assemble_capability(self, request: PlanningRequest):

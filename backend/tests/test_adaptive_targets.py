@@ -12,7 +12,7 @@ from app.domains.planning.session_planning import SessionType, _type_sequence
 from app.domains.planning.season_structure import SeasonPhase
 from app.domains.planning.workout_builder import WorkoutBuilderConfig, build_structured_workout
 from tests.test_workout_builder import phase_targets, prescription, source
-from tests.test_session_planning import build
+from tests.test_session_planning import build, exposure, with_quality_exposure
 from tests.test_weekly_budget import context, goal
 
 
@@ -186,6 +186,11 @@ def test_single_a_triathlon_keeps_quality_selection_independent_from_capability(
         swimming_css_seconds_per_100m=Decimal("110"),
     )
     baseline = context(goals=(event,)).model_copy(update={"performance": performance})
+    baseline = with_quality_exposure(baseline, (
+        exposure("running", "TEMPO", 2, recent=2),
+        exposure("cycling", "INTERVAL", 2, recent=2),
+        exposure("swimming", "THRESHOLD", 1, recent=1),
+    ))
     repeat = AdaptiveRepeatSnapshot(
         repeat_count=6, typical_duration_seconds=190, typical_distance_m=800,
         representative_value=Decimal("225"), confidence="HIGH", days_since_evidence=7,
@@ -240,7 +245,6 @@ def test_single_a_triathlon_keeps_quality_selection_independent_from_capability(
     interval_target = phase_targets(build_structured_workout(adaptive, interval, CONFIG).definition)[0]
     assert interval_target.reference == "threshold_pace"
     assert interval_target.reference_value == 250.0
-    assert interval_target.adaptation is None
     five_min_reference = WorkoutTarget(
         metric="pace", mode="percent_reference", reference="threshold_pace",
         minimum=.9, maximum=.96, reference_value=250, reference_unit="seconds_per_km",
@@ -251,7 +255,9 @@ def test_single_a_triathlon_keeps_quality_selection_independent_from_capability(
         session=interval, family="interval", effort_seconds=300, repeat_count=5,
     ) == five_min_reference
 
-    compatible = with_snapshot(baseline, snapshot(run=(point(240, 220, "HIGH"),)))
+    compatible = with_snapshot(baseline, snapshot(run=tuple(
+        point(seconds, 220, "HIGH") for seconds in (120, 180, 240, 300)
+    )))
     compatible_plan = build(compatible)[0]
     assert compatible_plan.weeks == baseline_plan.weeks
     compatible_interval = next(

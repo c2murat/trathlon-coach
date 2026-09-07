@@ -278,6 +278,23 @@ class AdaptiveCapabilitySnapshot(FrozenModel):
     swimming_repeats: tuple[AdaptiveRepeatSnapshot, ...] = ()
 
 
+class QualityExposureSignal(FrozenModel):
+    discipline: Literal["running", "cycling", "swimming"]
+    stimulus: Literal["TEMPO", "SWEET_SPOT", "THRESHOLD", "INTERVAL", "TECHNIQUE", "AEROBIC"]
+    weighted_exposure: Decimal = Field(ge=0)
+    count_0_27d: int = Field(ge=0)
+    count_28_55d: int = Field(ge=0)
+    count_56_83d: int = Field(ge=0)
+    days_since_last: int | None = Field(default=None, ge=0, le=83)
+    confidence: Literal["HIGH", "MEDIUM"]
+
+
+class QualityExposureSnapshot(FrozenModel):
+    algorithm_version: str
+    cutoff_date: date
+    signals: tuple[QualityExposureSignal, ...] = ()
+
+
 class PlanningContext(FrozenModel):
     request: PlanningRequest
     preferences: PlanningPreferences
@@ -288,6 +305,7 @@ class PlanningContext(FrozenModel):
     versions: ContextVersions
     warnings: tuple[PlanningWarning, ...]
     adaptive_capability: AdaptiveCapabilitySnapshot | None = None
+    quality_exposure: QualityExposureSnapshot | None = None
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 

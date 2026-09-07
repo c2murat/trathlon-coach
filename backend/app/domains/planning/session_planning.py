@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import Field, model_validator
 
 from app.domains.planning.contracts import FrozenModel, PlanningContext, PlanningWarning, context_fingerprint
+from app.domains.planning.quality_exposure import QUALITY_SELECTION_VERSION
 from app.domains.planning.season_structure import SeasonPhase, SeasonStructure
 from app.domains.planning.weekly_budget import DisciplineBudget, WeeklyBudgetPlan, WeeklyTrainingBudget
 
@@ -104,6 +105,30 @@ class WeeklySessionPlan(FrozenModel):
     planned_load: Decimal | None = Field(default=None, ge=0)
     load_delta: Decimal | None = None
     warnings: tuple[PlanningWarning, ...] = ()
+    quality_selection_trace: tuple["QualitySelectionDecision", ...] = ()
+
+
+class QualitySelectionDecision(FrozenModel):
+    candidate_discipline: str
+    candidate_session_type: SessionType
+    historical_exposure: Decimal = Field(ge=0)
+    planned_exposure: Decimal = Field(ge=0)
+    stimulus_need: Decimal = Field(ge=0)
+    quality_debt: int = Field(ge=0)
+    phase_relevance: int = Field(ge=0)
+    goal_relevance: Decimal = Field(ge=0)
+    discipline_need: Decimal = Field(ge=0)
+    target_share: Decimal = Field(ge=0)
+    selected: bool
+    reason: str
+    algorithm_version: str
+    base_session_type: SessionType | None = None
+    quality_capable: bool = True
+    quality_candidate_type: SessionType | None = None
+    cold_start: bool = False
+    opportunity_lost: bool = False
+    quality_debt_before: int = Field(default=0, ge=0)
+    quality_debt_after: int = Field(default=0, ge=0)
 
 
 class SessionPlan(FrozenModel):
@@ -243,6 +268,36 @@ def _frequency(context, budget: WeeklyTrainingBudget, config: SessionPlanningCon
     return counts
 
 
+QUALITY_FAMILIES = {
+    "running": (SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_INTERVAL),
+    "cycling": (SessionType.BIKE_TEMPO, SessionType.BIKE_THRESHOLD, SessionType.BIKE_INTERVAL),
+    "swimming": (SessionType.SWIM_THRESHOLD, SessionType.SWIM_INTERVAL),
+}
+QUALITY_CAPABLE_BASE_TYPES = {
+    "running": {SessionType.RUN_EASY},
+    "cycling": {SessionType.BIKE_ENDURANCE},
+    "swimming": {SessionType.SWIM_AEROBIC},
+}
+
+
+def _quality_candidate(discipline, progression, quality_exposure):
+    rotations = {
+        "running": QUALITY_FAMILIES["running"],
+        "cycling": QUALITY_FAMILIES["cycling"],
+        "swimming": QUALITY_FAMILIES["swimming"],
+    }
+    rotation = rotations[discipline]
+    offset = progression % len(rotation)
+    ordered = rotation[offset:] + rotation[:offset]
+    return min(ordered, key=lambda item: quality_exposure.get(item, 0))
+
+
+def _stimulus_need(family, candidate, quality_exposure):
+    exposures = tuple(Decimal(quality_exposure.get(item, 0)) for item in family)
+    target = max((Decimal("1"), *exposures))
+    return max(Decimal(0), target - Decimal(quality_exposure.get(candidate, 0)))
+
+
 def _type_sequence(discipline, phase, count, progression=0, quality_exposure=None):
     recovery = phase is SeasonPhase.RECOVERY
     taper = phase is SeasonPhase.TAPER
@@ -250,9 +305,7 @@ def _type_sequence(discipline, phase, count, progression=0, quality_exposure=Non
         if taper:
             return [SessionType.RUN_EASY, *([SessionType.RUN_RECOVERY] * count)][:count]
         if phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC} and quality_exposure is not None:
-            rotation = (SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_INTERVAL)
-            ordered = rotation[progression:] + rotation[:progression]
-            quality = min(ordered, key=lambda item: quality_exposure.get(item, 0))
+            quality = _quality_candidate(discipline, progression, quality_exposure)
         else:
             quality = (
                 (SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_THRESHOLD)[progression]
@@ -264,12 +317,15 @@ def _type_sequence(discipline, phase, count, progression=0, quality_exposure=Non
     if discipline == "cycling":
         if taper:
             return [SessionType.BIKE_ENDURANCE, *([SessionType.BIKE_RECOVERY] * count)][:count]
-        quality = (
-            (SessionType.BIKE_TEMPO, SessionType.BIKE_THRESHOLD, SessionType.BIKE_TEMPO)[progression]
-            if phase is SeasonPhase.BUILD else
-            (SessionType.BIKE_THRESHOLD, SessionType.BIKE_TEMPO, SessionType.BIKE_INTERVAL)[progression]
-            if phase is SeasonPhase.SPECIFIC else SessionType.BIKE_TEMPO
-        )
+        if phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC} and quality_exposure is not None:
+            quality = _quality_candidate(discipline, progression, quality_exposure)
+        else:
+            quality = (
+                (SessionType.BIKE_TEMPO, SessionType.BIKE_THRESHOLD, SessionType.BIKE_TEMPO)[progression]
+                if phase is SeasonPhase.BUILD else
+                (SessionType.BIKE_THRESHOLD, SessionType.BIKE_TEMPO, SessionType.BIKE_INTERVAL)[progression]
+                if phase is SeasonPhase.SPECIFIC else SessionType.BIKE_TEMPO
+            )
         return ([SessionType.BIKE_RECOVERY] * count if recovery else [SessionType.BIKE_LONG, quality, *([SessionType.BIKE_ENDURANCE] * count)])[:count]
     if discipline == "swimming":
         if taper:
@@ -282,6 +338,8 @@ def _type_sequence(discipline, phase, count, progression=0, quality_exposure=Non
             (SessionType.SWIM_TECHNIQUE, SessionType.SWIM_AEROBIC, SessionType.SWIM_TECHNIQUE)
         )
         first = rotation[progression]
+        if first is SessionType.SWIM_THRESHOLD and quality_exposure is not None:
+            first = _quality_candidate(discipline, progression, quality_exposure)
         return [first, *([SessionType.SWIM_AEROBIC, SessionType.SWIM_TECHNIQUE] * count)][:count]
     return [SessionType.GENERAL_STRENGTH] * count
 
@@ -405,8 +463,10 @@ def _duration(context, budget, discipline, session_type, config, previous_long):
     return value
 
 
-def _needs(context, budget, config, previous_long, quality_exposure=None):
+def _needs(context, budget, config, previous_long, quality_exposure=None, quality_debt=None, trace_out=None, historical_exposure=None):
     quality_exposure = quality_exposure or {}
+    quality_debt = quality_debt if quality_debt is not None else {}
+    historical_exposure = historical_exposure or {}
     counts = _frequency(context, budget, config)
     discipline_map = {item.discipline: item for item in budget.disciplines}
     needs = []
@@ -418,33 +478,107 @@ def _needs(context, budget, config, previous_long, quality_exposure=None):
     week_ordinal = max(0, (budget.week_start - context.request.planning_date).days // 7)
     progression = week_ordinal % 3
     single_a_triathlon = (
-        len(context.goals) == 1
-        and context.goals[0].priority == "A"
+        len(context.goals) == 1 and context.goals[0].priority == "A"
         and {item.sport for item in context.goals[0].segments} == {"swim", "bike", "run"}
     )
     sequences = {
         discipline: _type_sequence(
             discipline, budget.dominant_phase, counts.get(discipline, 0), progression,
-            quality_exposure if single_a_triathlon else None,
+            quality_exposure if context.quality_exposure is not None or single_a_triathlon else None,
         )
         for discipline in ("running", "cycling", "swimming", "strength")
     }
-    quality_candidates = [
-        discipline for discipline, types in sequences.items()
-        if any(_metadata(item)[3] and item not in {SessionType.RUN_LONG, SessionType.BIKE_LONG} for item in types)
-    ]
-    quality_candidates.sort(key=lambda discipline: (
-        quality_exposure.get(discipline, 0),
-        -(discipline_map.get(discipline).target_share or 0) if discipline_map.get(discipline) else 0,
-        discipline,
-    ))
+    opportunities = {}
+    for discipline in ("running", "cycling", "swimming"):
+        types = sequences[discipline]
+        explicit = next(((index, item) for index, item in enumerate(types) if item in QUALITY_FAMILIES[discipline]), None)
+        if explicit is not None:
+            index, session_type = explicit
+            opportunities[discipline] = (index, session_type, session_type)
+            continue
+        alternative = next(((index, item) for index, item in enumerate(types) if item in QUALITY_CAPABLE_BASE_TYPES[discipline]), None) if context.quality_exposure is not None and budget.dominant_phase in {SeasonPhase.BUILD, SeasonPhase.SPECIFIC} else None
+        if alternative is not None:
+            index, base_type = alternative
+            opportunities[discipline] = (
+                index, base_type, _quality_candidate(discipline, progression, quality_exposure),
+            )
+    quality_candidates = list(opportunities)
+    candidate_type = {discipline: item[2] for discipline, item in opportunities.items()}
+    stimulus_need = {
+        discipline: _stimulus_need(QUALITY_FAMILIES[discipline], session_type, quality_exposure)
+        for discipline, session_type in candidate_type.items()
+    }
+    cold_start = {
+        discipline: not any(Decimal(quality_exposure.get(item, 0)) > 0 for item in QUALITY_FAMILIES[discipline])
+        for discipline in quality_candidates
+    }
+    comparable_need = max(stimulus_need.values(), default=Decimal("1"))
+    for discipline in quality_candidates:
+        if cold_start[discipline]:
+            stimulus_need[discipline] = comparable_need
+    maximum_discipline_exposure = max(
+        (Decimal(quality_exposure.get(item, 0)) for item in quality_candidates), default=Decimal(0),
+    )
+    discipline_need = {
+        discipline: maximum_discipline_exposure - Decimal(quality_exposure.get(discipline, 0))
+        for discipline in quality_candidates
+    }
+    if context.quality_exposure is None:
+        quality_candidates.sort(key=lambda discipline: (
+            quality_exposure.get(discipline, 0),
+            -(discipline_map.get(discipline).target_share or 0) if discipline_map.get(discipline) else 0,
+            discipline,
+        ))
+    else:
+        quality_candidates.sort(key=lambda discipline: (
+            -stimulus_need[discipline],
+            -quality_debt.get(discipline, 0),
+            -discipline_need[discipline],
+            -(discipline_map.get(discipline).target_share or 0) if discipline_map.get(discipline) else 0,
+            discipline,
+        ))
     selected_quality = quality_candidates[0] if quality_candidates else None
+    debt_before = {discipline: quality_debt.get(discipline, 0) for discipline in quality_candidates}
+    debt_after = {
+        discipline: 0 if discipline == selected_quality else debt_before[discipline] + 1
+        for discipline in quality_candidates
+    }
+    if trace_out is not None and context.quality_exposure is not None:
+        for discipline in quality_candidates:
+            allocation = discipline_map.get(discipline); session_type = candidate_type[discipline]
+            _, base_type, _ = opportunities[discipline]
+            exposure = Decimal(quality_exposure.get(session_type, 0)); discipline_exposure = Decimal(quality_exposure.get(discipline, 0))
+            historical = Decimal(historical_exposure.get(session_type, 0))
+            trace_out.append(QualitySelectionDecision(
+                candidate_discipline=discipline, candidate_session_type=session_type,
+                historical_exposure=historical, planned_exposure=max(Decimal(0), exposure - historical),
+                stimulus_need=stimulus_need[discipline], quality_debt=quality_debt.get(discipline, 0),
+                phase_relevance=1, goal_relevance=allocation.target_share or Decimal(0),
+                discipline_need=discipline_need[discipline], target_share=allocation.target_share or Decimal(0),
+                selected=discipline == selected_quality,
+                reason="LOWEST_STIMULUS_EXPOSURE_THEN_DEBT_DISCIPLINE_SHARE" if discipline == selected_quality else "GLOBAL_QUALITY_SLOT_AWARDED_TO_OTHER_DISCIPLINE",
+                algorithm_version=QUALITY_SELECTION_VERSION,
+                base_session_type=base_type, quality_capable=True,
+                quality_candidate_type=session_type,
+                cold_start=cold_start[discipline],
+                opportunity_lost=discipline != selected_quality,
+                quality_debt_before=debt_before[discipline],
+                quality_debt_after=debt_after[discipline],
+            ))
+    if context.quality_exposure is not None:
+        quality_debt.update(debt_after)
     non_long_key_limit = min(
         config.max_quality_sessions_per_week,
         max(0, config.max_key_sessions_per_week - max(0, structural_long_count - 1)),
     )
     non_long_key_count = 0
     effective_sequences = {}
+    promoted_bases = {}
+    if selected_quality in opportunities:
+        index, base_type, promoted_type = opportunities[selected_quality]
+        if base_type != promoted_type:
+            sequences[selected_quality][index] = promoted_type
+            promoted_bases[(selected_quality, index)] = base_type
     for discipline in ("running", "cycling", "swimming", "strength"):
         effective = []
         for session_type in sequences[discipline]:
@@ -479,7 +613,7 @@ def _needs(context, budget, config, previous_long, quality_exposure=None):
             needs.append(_Need(
                 discipline, session_type, purpose, intensity, priority, key,
                 optional,
-                _duration(context, budget, discipline, session_type, config, previous_long),
+                _duration(context, budget, discipline, promoted_bases.get((discipline, index), session_type), config, previous_long),
                 allocation.target_share if allocation else None, loads[index],
                 tuple(item.competition_goal_id for item in context.goals), budget.dominant_phase,
             ))
@@ -646,10 +780,28 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
         or len(budgets.budgets) == 0
     ):
         raise ValueError("session planning inputs are incompatible")
-    weeks = []; plan_warnings = []; previous_long = {}; previous_long_dates = {}; quality_exposure = {}
+    stimulus_types = {
+        ("running", "TEMPO"): SessionType.RUN_TEMPO, ("running", "THRESHOLD"): SessionType.RUN_THRESHOLD,
+        ("running", "INTERVAL"): SessionType.RUN_INTERVAL, ("cycling", "TEMPO"): SessionType.BIKE_TEMPO,
+        ("cycling", "SWEET_SPOT"): SessionType.BIKE_TEMPO, ("cycling", "THRESHOLD"): SessionType.BIKE_THRESHOLD,
+        ("cycling", "INTERVAL"): SessionType.BIKE_INTERVAL, ("swimming", "TECHNIQUE"): SessionType.SWIM_TECHNIQUE,
+        ("swimming", "AEROBIC"): SessionType.SWIM_AEROBIC, ("swimming", "THRESHOLD"): SessionType.SWIM_THRESHOLD,
+        ("swimming", "INTERVAL"): SessionType.SWIM_INTERVAL,
+    }
+    historical_exposure = {}
+    for signal in context.quality_exposure.signals if context.quality_exposure is not None else ():
+        session_type = stimulus_types[(signal.discipline, signal.stimulus)]
+        historical_exposure[session_type] = historical_exposure.get(session_type, Decimal(0)) + signal.weighted_exposure
+        historical_exposure[signal.discipline] = historical_exposure.get(signal.discipline, Decimal(0)) + signal.weighted_exposure
+    weeks = []; plan_warnings = []; previous_long = {}; previous_long_dates = {}
+    quality_exposure = dict(historical_exposure); quality_debt = {}
     for budget in budgets.budgets:
+        quality_trace = []
         competitions = _competition_sessions(context, season, budget, config)
-        needs = _needs(context, budget, config, previous_long, quality_exposure)
+        needs = _needs(
+            context, budget, config, previous_long, quality_exposure, quality_debt,
+            quality_trace, historical_exposure,
+        )
         sessions, warnings = _place(context, budget, needs, {item.date for item in competitions}, config, previous_long_dates)
         sessions = tuple(sorted((*competitions, *sessions), key=lambda item: (item.date, item.session_type.value, item.discipline)))
         for session in sessions:
@@ -668,6 +820,9 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
                 quality_exposure[session.discipline] = quality_exposure.get(session.discipline, 0) + 1
             if explicit_quality:
                 quality_exposure[session.session_type] = quality_exposure.get(session.session_type, 0) + 1
+            elif embedded_long_quality:
+                embedded_type = SessionType.RUN_TEMPO if session.discipline == "running" else SessionType.BIKE_TEMPO
+                quality_exposure[embedded_type] = quality_exposure.get(embedded_type, 0) + Decimal("0.50")
         planned_values = [item.target_load for item in sessions if item.target_load is not None]
         planned = _round(sum(planned_values, Decimal(0))) if budget.target_load is not None else None
         delta = _round(planned - budget.target_load) if planned is not None and budget.target_load is not None else None
@@ -745,7 +900,7 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
             iso_year=budget.iso_year, iso_week=budget.iso_week, week_start=budget.week_start, week_end=budget.week_end,
             sessions=sessions, rest_dates=rest, unavailable_dates=unavailable,
             budget_target_load=budget.target_load, planned_load=planned, load_delta=delta,
-            warnings=week_warnings,
+            warnings=week_warnings, quality_selection_trace=tuple(quality_trace),
         ))
     fingerprint = context_fingerprint({
         "context_fingerprint": context.fingerprint, "season_structure": season,

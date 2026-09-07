@@ -166,7 +166,7 @@ def _summary(sport: str, activities: tuple[ActivityEvidence, ...], as_of: date, 
     )
 
 
-def _effort_value(lap: LapEvidence, sport: str) -> Decimal | None:
+def effort_value(lap: LapEvidence, sport: str) -> Decimal | None:
     if sport == "cycling":
         value = lap.average_power_w
         return _q(value) if value is not None and Decimal("20") <= value <= Decimal("2000") else None
@@ -221,7 +221,7 @@ def _points(laps: tuple[LapEvidence, ...], sport: str, as_of: date) -> tuple[Cap
             tolerance = Decimal("0.12") if sport == "swimming" else Decimal("0.35")
             if actual is None or abs(actual - Decimal(target)) > Decimal(target) * tolerance:
                 continue
-            value = _effort_value(lap, sport)
+            value = effort_value(lap, sport)
             if value is not None:
                 candidates.append((value, lap))
         if not candidates:
@@ -251,17 +251,17 @@ def _points(laps: tuple[LapEvidence, ...], sport: str, as_of: date) -> tuple[Cap
 def _repeats(laps: tuple[LapEvidence, ...], sport: str, as_of: date) -> tuple[RepeatLikeEffort, ...]:
     grouped = defaultdict(list)
     for lap in laps:
-        if lap.lap_index < 10000 and lap.sport == sport and lap.coverage >= Decimal("0.50") and _effort_value(lap, sport) is not None:
+        if lap.lap_index < 10000 and lap.sport == sport and lap.coverage >= Decimal("0.50") and effort_value(lap, sport) is not None:
             grouped[lap.activity_id].append(lap)
     out = []
     for activity_id, activity_rows in grouped.items():
         rows = []
         candidates = []
         for seed in activity_rows:
-            seed_value = _effort_value(seed, sport)
+            seed_value = effort_value(seed, sport)
             cluster = []
             for row in activity_rows:
-                value = _effort_value(row, sport)
+                value = effort_value(row, sport)
                 duration_close = abs(Decimal(row.duration_seconds - seed.duration_seconds)) <= Decimal(seed.duration_seconds) * REPEAT_CLUSTER_TOLERANCE
                 distance_close = row.distance_m is not None and seed.distance_m is not None and abs(row.distance_m - seed.distance_m) <= seed.distance_m * REPEAT_CLUSTER_TOLERANCE
                 shape_close = duration_close if sport == "cycling" else distance_close
@@ -271,7 +271,7 @@ def _repeats(laps: tuple[LapEvidence, ...], sport: str, as_of: date) -> tuple[Re
             if len(cluster) >= 3:
                 signature = tuple(sorted(row.lap_index for row in cluster))
                 if signature not in {item[0] for item in candidates}:
-                    values = [_effort_value(row, sport) for row in cluster]
+                    values = [effort_value(row, sport) for row in cluster]
                     candidates.append((signature, cluster, _q(median(values))))
         if candidates:
             candidates.sort(key=lambda item: (-len(item[1]), -item[2] if sport == "cycling" else item[2], item[0]))
@@ -284,7 +284,7 @@ def _repeats(laps: tuple[LapEvidence, ...], sport: str, as_of: date) -> tuple[Re
         distances = [row.distance_m for row in rows if row.distance_m is not None]
         if variation > REPEAT_CLUSTER_TOLERANCE or (distances and (max(distances)-min(distances))/Decimal(str(median(distances))) > REPEAT_CLUSTER_TOLERANCE):
             continue
-        values = [_effort_value(row, sport) for row in rows]
+        values = [effort_value(row, sport) for row in rows]
         day = max(row.local_date for row in rows)
         out.append(RepeatLikeEffort(
             repeat_count=len(rows), typical_duration_seconds=round(typical),

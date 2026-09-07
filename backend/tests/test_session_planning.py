@@ -1,10 +1,14 @@
 from datetime import timedelta
 from decimal import Decimal
 
-from app.domains.planning.contracts import AvailabilitySlot, PlanningPreferences
+from app.domains.planning.contracts import (
+    AvailabilitySlot, PlanningPreferences, QualityExposureSignal, QualityExposureSnapshot,
+    context_fingerprint,
+)
 from app.domains.planning.season_structure import SeasonStructureBuilder, SeasonStructureConfig
 from app.domains.planning.session_planning import (
-    SessionPlanningConfig, SessionType, build_session_plan, validate_session_plan,
+    QUALITY_FAMILIES, SessionPlanningConfig, SessionType, _stimulus_need,
+    build_session_plan, validate_session_plan,
 )
 from app.domains.planning.weekly_budget import WeeklyBudgetConfig, build_weekly_budget_plan
 from tests.test_weekly_budget import START, context, goal, historical_windows, preferences
@@ -32,6 +36,24 @@ def with_running_frequency(activity_count=8):
         )
         updated.append(window.model_copy(update={"sports": sports}))
     return tuple(updated)
+
+
+def with_quality_exposure(ctx, signals):
+    snapshot = QualityExposureSnapshot(
+        algorithm_version="0.8G.2B.3", cutoff_date=ctx.request.planning_date - timedelta(days=1),
+        signals=tuple(signals),
+    )
+    changed = ctx.model_copy(update={"quality_exposure": snapshot})
+    payload = changed.model_dump(mode="python", exclude={"fingerprint"})
+    return changed.model_copy(update={"fingerprint": context_fingerprint(payload)})
+
+
+def exposure(discipline, stimulus, weighted, recent=0, middle=0, old=0, days=5):
+    return QualityExposureSignal(
+        discipline=discipline, stimulus=stimulus, weighted_exposure=Decimal(str(weighted)),
+        count_0_27d=recent, count_28_55d=middle, count_56_83d=old,
+        days_since_last=days, confidence="HIGH",
+    )
 
 
 def constrained_budget_fixture():
@@ -69,6 +91,96 @@ def test_running_week_selects_long_quality_and_easy_with_spacing():
     }
     keys = sorted(item.date for item in sessions if item.key_session)
     assert (keys[1] - keys[0]).days >= 2
+
+
+def test_historical_stimulus_exposure_changes_running_quality_without_capability():
+    source = context(goals=(goal(days=42),), windows=with_running_frequency())
+    interval_heavy = with_quality_exposure(source, (
+        exposure("running", "INTERVAL", 5, recent=5), exposure("running", "THRESHOLD", 3, recent=3),
+    ))
+    tempo_heavy = with_quality_exposure(source, (
+        exposure("running", "TEMPO", 5, recent=5), exposure("running", "THRESHOLD", 3, recent=3),
+    ))
+    first = build(interval_heavy)[0].weeks[0]
+    second = build(tempo_heavy)[0].weeks[0]
+    assert SessionType.RUN_TEMPO in {item.session_type for item in first.sessions}
+    assert SessionType.RUN_INTERVAL in {item.session_type for item in second.sessions}
+    assert interval_heavy.fingerprint != tempo_heavy.fingerprint
+    assert build(interval_heavy)[0] == build(interval_heavy)[0]
+    assert build(interval_heavy)[0].fingerprint != build(tempo_heavy)[0].fingerprint
+
+
+def test_short_horizon_triathlon_uses_stimulus_need_and_debt_without_extra_quality():
+    ctx = context(
+        goals=(goal(days=44, sports=("swim", "bike", "run")),),
+        windows=with_running_frequency(), horizon=START + timedelta(days=44),
+    )
+    ctx = with_quality_exposure(ctx, (
+        exposure("running", "TEMPO", 3, recent=3), exposure("running", "THRESHOLD", 2, recent=2),
+        exposure("cycling", "TEMPO", 3, recent=3), exposure("cycling", "INTERVAL", 2, recent=2),
+        exposure("swimming", "THRESHOLD", 2, recent=2),
+    ))
+    plan, _, budgets, _ = build(ctx)
+    explicit = {SessionType.RUN_TEMPO, SessionType.RUN_THRESHOLD, SessionType.RUN_INTERVAL,
+                SessionType.BIKE_TEMPO, SessionType.BIKE_THRESHOLD, SessionType.BIKE_INTERVAL,
+                SessionType.SWIM_THRESHOLD, SessionType.SWIM_INTERVAL}
+    assert any(item.session_type is SessionType.RUN_INTERVAL for week in plan.weeks for item in week.sessions)
+    assert all(sum(item.session_type in explicit for item in week.sessions) <= 1 for week in plan.weeks)
+    assert all(week.budget_target_load == budget.target_load for week, budget in zip(plan.weeks, budgets.budgets))
+    assert any(
+        trace.selected and trace.candidate_session_type is SessionType.RUN_INTERVAL
+        for week in plan.weeks for trace in week.quality_selection_trace
+    )
+
+
+def test_cold_start_need_is_positive_and_monotonic_for_every_discipline():
+    for discipline, family in QUALITY_FAMILIES.items():
+        candidate = family[0]
+        needs = [
+            _stimulus_need(family, candidate, {candidate: Decimal(value)})
+            for value in ("0", "0.5", "1.0")
+        ]
+        assert needs[0] > 0
+        assert needs[0] >= needs[1] >= needs[2], discipline
+
+
+def test_aerobic_swim_slot_can_offer_quality_accumulate_debt_and_technique_stays_protected():
+    source = context(
+        goals=(goal(days=44, sports=("swim", "bike", "run")),),
+        windows=with_running_frequency(), horizon=START + timedelta(days=44),
+    )
+    source = with_quality_exposure(source, (
+        exposure("running", "THRESHOLD", 1, recent=1),
+        exposure("running", "INTERVAL", 1, recent=1),
+    ))
+    plan, _, _, _ = build(source)
+    swim = [trace for week in plan.weeks for trace in week.quality_selection_trace if trace.candidate_discipline == "swimming"]
+    assert any(
+        trace.base_session_type is SessionType.SWIM_AEROBIC
+        and trace.quality_candidate_type in {SessionType.SWIM_THRESHOLD, SessionType.SWIM_INTERVAL}
+        and trace.quality_capable
+        for trace in swim
+    )
+    assert any(trace.opportunity_lost and trace.quality_debt_after > trace.quality_debt_before for trace in swim)
+    assert any(trace.selected for trace in swim)
+    assert any(item.session_type is SessionType.SWIM_TECHNIQUE for week in plan.weeks for item in week.sessions)
+    explicit = set((*QUALITY_FAMILIES["running"], *QUALITY_FAMILIES["cycling"], *QUALITY_FAMILIES["swimming"]))
+    assert all(sum(item.session_type in explicit for item in week.sessions) <= 1 for week in plan.weeks)
+
+
+def test_fairness_does_not_force_equal_sport_distribution_when_running_need_is_larger():
+    source = context(
+        goals=(goal(days=44, sports=("swim", "bike", "run")),),
+        windows=with_running_frequency(), horizon=START + timedelta(days=44),
+    )
+    rows = (
+        exposure("running", "TEMPO", 10), exposure("running", "THRESHOLD", 10),
+        exposure("cycling", "TEMPO", 10), exposure("cycling", "THRESHOLD", 10), exposure("cycling", "INTERVAL", 10),
+        exposure("swimming", "THRESHOLD", 10), exposure("swimming", "INTERVAL", 10),
+    )
+    plan = build(with_quality_exposure(source, rows))[0]
+    winners = [trace.candidate_discipline for week in plan.weeks for trace in week.quality_selection_trace if trace.selected]
+    assert winners.count("running") >= 2
 
 
 def test_multisport_representation_follows_goal_segments():
