@@ -79,6 +79,18 @@ class WorkoutTargetAdaptation(BaseModel):
         return self
 
 
+class WorkoutTargetPlanningAdaptation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    proposal_version: str
+    proposal_kind: Literal["INCREASE_TARGET", "DECREASE_TARGET"]
+    direction: Literal["FASTER_PACE", "SLOWER_PACE", "HIGHER_POWER", "LOWER_POWER"]
+    confidence: Literal["HIGH", "MEDIUM"]
+    before_minimum: float = Field(gt=0)
+    before_maximum: float = Field(gt=0)
+    after_minimum: float = Field(gt=0)
+    after_maximum: float = Field(gt=0)
+
+
 class WorkoutTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
     metric: Literal["power", "heart_rate", "pace", "swim_pace", "cadence", "rpe", "none"]
@@ -94,6 +106,7 @@ class WorkoutTarget(BaseModel):
     resolved_maximum: float | None = Field(default=None, ge=0)
     resolved_unit: Literal["watts", "seconds_per_km", "seconds_per_100m"] | None = None
     adaptation: WorkoutTargetAdaptation | None = None
+    planning_adaptation: WorkoutTargetPlanningAdaptation | None = None
     @model_validator(mode="after")
     def valid_range(self):
         if self.mode == "none":
@@ -116,6 +129,11 @@ class WorkoutTarget(BaseModel):
                 raise ValueError("adaptation requires resolved target snapshot")
             if self.adaptation.final_minimum != self.resolved_minimum or self.adaptation.final_maximum != self.resolved_maximum:
                 raise ValueError("adaptation final target must match resolved target")
+        if self.planning_adaptation is not None:
+            if self.resolved_minimum is None or self.resolved_maximum is None:
+                raise ValueError("planning adaptation requires resolved target")
+            if self.planning_adaptation.after_minimum != self.resolved_minimum or self.planning_adaptation.after_maximum != self.resolved_maximum:
+                raise ValueError("planning adaptation after target must match resolved target")
         return self
 
 class WorkoutNode(BaseModel):

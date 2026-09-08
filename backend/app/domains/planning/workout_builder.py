@@ -15,6 +15,7 @@ from app.domains.planning.models import (
 from app.domains.planning.session_planning import SessionPrescription, SessionType
 from app.domains.planning.workout_labels import STRENGTH_VARIANTS, SWIM_DRILLS, WORKOUT_ROLE_LABELS
 from app.domains.planning.adaptive_targets import adapt_target
+from app.domains.planning.planning_adaptation import apply_planning_adaptation
 
 
 STRUCTURED_WORKOUT_SCHEMA_VERSION = 1
@@ -41,6 +42,7 @@ class WorkoutDecisionCode(str, Enum):
     RESIDUAL_ASSIGNED_TO_COOLDOWN = "RESIDUAL_ASSIGNED_TO_COOLDOWN"
     COMPETITION_REQUIRES_NO_WORKOUT = "COMPETITION_REQUIRES_NO_WORKOUT"
     TARGET_ADAPTED_FROM_CAPABILITY = "TARGET_ADAPTED_FROM_CAPABILITY"
+    TARGET_ADAPTED_FROM_EXECUTION_PROPOSAL = "TARGET_ADAPTED_FROM_EXECUTION_PROPOSAL"
 
 
 class WorkoutWarning(FrozenModel):
@@ -359,10 +361,17 @@ def _target_for_step(context, session, config, role, family, *, effort_seconds=N
     if base.mode == "percent_reference" and base.reference:
         if base.reference_value and base.reference_unit:
             resolved = _resolved_target(base.metric, base.reference, bounds, base.reference_value, base.reference_unit, config)
-            return adapt_target(
+            resolved = adapt_target(
                 target=resolved, snapshot=context.adaptive_capability, session=session, family=family,
                 effort_seconds=effort_seconds, effort_meters=effort_meters, repeat_count=repeat_count,
             ) if role == "work" else resolved
+            if role == "work":
+                target_kind = {"running": "RUN_PACE", "cycling": "POWER", "swimming": "SWIM_PACE"}[session.discipline]
+                resolved, _ = apply_planning_adaptation(
+                    target=resolved, context=context, sport=session.discipline,
+                    session_type=session.session_type.value, target_kind=target_kind,
+                )
+            return resolved
         return WorkoutTarget(
             metric=base.metric, mode="percent_reference", reference=base.reference,
             minimum=_target_float(bounds[0], config), maximum=_target_float(bounds[1], config),
@@ -660,11 +669,29 @@ def build_structured_workout(context: PlanningContext, session: SessionPrescript
         code=WorkoutDecisionCode.TARGET_ADAPTED_FROM_CAPABILITY,
         context={"algorithm_version": item.algorithm_version, "capability_dimension": item.capability_dimension, "confidence": item.confidence},
     ) for item in adaptations[:1])
+    def proposal_adaptations(nodes):
+        for node in nodes:
+            if node.kind == "repeat":
+                yield from proposal_adaptations(node.steps or ())
+            elif node.target and node.target.planning_adaptation:
+                yield node.target.planning_adaptation
+    proposal_rows = tuple(proposal_adaptations(definition.steps))
+    proposal_decisions = tuple(WorkoutDecision(
+        code=WorkoutDecisionCode.TARGET_ADAPTED_FROM_EXECUTION_PROPOSAL,
+        context={
+            "proposal_version": item.proposal_version,
+            "proposal_kind": item.proposal_kind,
+            "direction": item.direction,
+            "confidence": item.confidence,
+            "before": f"{item.before_minimum:g}-{item.before_maximum:g}",
+            "after": f"{item.after_minimum:g}-{item.after_maximum:g}",
+        },
+    ) for item in proposal_rows[:1])
     draft = StructuredWorkoutDraft(
         buildable=True, sport=session.discipline, session_type=session.session_type,
         definition=definition, target_provenance=provenance,
         warnings=tuple((*target_warnings, *template_warnings)),
-        decisions=(WorkoutDecision(code=target_decision), *adaptive_decisions, *template_decisions),
+        decisions=(WorkoutDecision(code=target_decision), *adaptive_decisions, *proposal_decisions, *template_decisions),
         configuration_version=config.version, algorithm_version=config.algorithm_version,
         context_fingerprint=context.fingerprint, fingerprint=fingerprint,
     )

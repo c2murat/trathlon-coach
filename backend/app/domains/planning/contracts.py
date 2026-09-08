@@ -295,6 +295,65 @@ class QualityExposureSnapshot(FrozenModel):
     signals: tuple[QualityExposureSignal, ...] = ()
 
 
+class PlanningAdaptationItem(FrozenModel):
+    proposal_version: str
+    cutoff_date: date
+    sport: Literal["running", "cycling", "swimming"]
+    session_type: str
+    target_kind: Literal["RUN_PACE", "POWER", "SWIM_PACE"]
+    proposal_kind: Literal["INCREASE_TARGET", "DECREASE_TARGET"]
+    direction: Literal["FASTER_PACE", "SLOWER_PACE", "HIGHER_POWER", "LOWER_POWER"]
+    confidence: Literal["HIGH", "MEDIUM"]
+    current_minimum: Decimal = Field(gt=0)
+    current_maximum: Decimal = Field(gt=0)
+    proposed_minimum: Decimal = Field(gt=0)
+    proposed_maximum: Decimal = Field(gt=0)
+    unit: Literal["watts", "seconds_per_km", "seconds_per_100m"]
+
+    @model_validator(mode="after")
+    def validate_adaptation(self):
+        if self.current_minimum > self.current_maximum or self.proposed_minimum > self.proposed_maximum:
+            raise ValueError("planning adaptation range cannot be inverted")
+        expected = {
+            "running": ("RUN_PACE", "seconds_per_km"),
+            "cycling": ("POWER", "watts"),
+            "swimming": ("SWIM_PACE", "seconds_per_100m"),
+        }[self.sport]
+        if (self.target_kind, self.unit) != expected:
+            raise ValueError("planning adaptation target is incompatible with sport")
+        increasing = self.proposal_kind == "INCREASE_TARGET"
+        expected_direction = (
+            "HIGHER_POWER" if self.sport == "cycling" and increasing else
+            "LOWER_POWER" if self.sport == "cycling" else
+            "FASTER_PACE" if increasing else "SLOWER_PACE"
+        )
+        if self.direction != expected_direction:
+            raise ValueError("planning adaptation direction is inconsistent")
+        if self.sport == "cycling":
+            valid = self.proposed_minimum >= self.current_minimum and self.proposed_maximum >= self.current_maximum if increasing else self.proposed_minimum <= self.current_minimum and self.proposed_maximum <= self.current_maximum
+        else:
+            valid = self.proposed_minimum <= self.current_minimum and self.proposed_maximum <= self.current_maximum if increasing else self.proposed_minimum >= self.current_minimum and self.proposed_maximum >= self.current_maximum
+        if not valid:
+            raise ValueError("planning adaptation values contradict direction")
+        return self
+
+
+class PlanningAdaptationInput(FrozenModel):
+    athlete_id: UUID
+    proposal_version: str
+    cutoff_date: date
+    items: tuple[PlanningAdaptationItem, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def canonical_items(self):
+        keys = [(item.sport, item.session_type, item.target_kind) for item in self.items]
+        if keys != sorted(keys) or len(keys) != len(set(keys)):
+            raise ValueError("planning adaptation items must be unique and canonically ordered")
+        if any(item.proposal_version != self.proposal_version or item.cutoff_date != self.cutoff_date for item in self.items):
+            raise ValueError("planning adaptation versions and cutoffs must agree")
+        return self
+
+
 class PlanningContext(FrozenModel):
     request: PlanningRequest
     preferences: PlanningPreferences
@@ -306,6 +365,7 @@ class PlanningContext(FrozenModel):
     warnings: tuple[PlanningWarning, ...]
     adaptive_capability: AdaptiveCapabilitySnapshot | None = None
     quality_exposure: QualityExposureSnapshot | None = None
+    planning_adaptation: PlanningAdaptationInput | None = None
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 

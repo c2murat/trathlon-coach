@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.application.planning_context import PlanningContextAssembler
+from app.application.execution_proposals import ExecutionAdaptationProposalAssembler
 from app.db.models import (
     AthleteProfile,
     CompetitionGoal, PlannedTrainingSession, StructuredWorkout, TrainingPlan,
@@ -18,6 +19,7 @@ from app.domains.planning.season_structure import SeasonStructureBuilder, Season
 from app.domains.planning.session_planning import SessionPlanningConfig, SessionType, build_session_plan
 from app.domains.planning.weekly_budget import WeeklyBudgetConfig, build_weekly_budget_plan
 from app.domains.planning.workout_builder import WorkoutBuilderConfig, build_structured_workout, structured_workout_payload
+from app.domains.planning.planning_adaptation import normalize_planning_adaptation, with_planning_adaptation
 
 
 class PlanningPreviewError(ValueError):
@@ -64,6 +66,15 @@ class PlanningPreviewApplication:
             manual_strength_algorithm_version="0.7e.1",
             training_status_algorithm_version="0.7f.1",
         ).assemble(request, include_capability=True)
+        proposals = ExecutionAdaptationProposalAssembler(self.session).assemble(
+            athlete_profile_id=request.athlete_id,
+            as_of_date=request.planning_date,
+        )
+        projection = normalize_planning_adaptation(
+            proposals=proposals, athlete_id=request.athlete_id,
+            cutoff_date=request.planning_date,
+        )
+        context = with_planning_adaptation(context, projection.planning_input)
         season = SeasonStructureBuilder(SeasonStructureConfig(version="0.8F.3", algorithm_version="0.8F.3")).build(context)
         if any(warning.blocking for warning in season.warnings):
             raise PlanningPreviewBlockedError()
