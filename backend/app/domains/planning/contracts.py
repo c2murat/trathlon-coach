@@ -297,6 +297,7 @@ class QualityExposureSnapshot(FrozenModel):
 
 class PlanningAdaptationItem(FrozenModel):
     proposal_version: str
+    numeric_policy_version: str | None = None
     cutoff_date: date
     sport: Literal["running", "cycling", "swimming"]
     session_type: str
@@ -341,6 +342,7 @@ class PlanningAdaptationItem(FrozenModel):
 class PlanningAdaptationInput(FrozenModel):
     athlete_id: UUID
     proposal_version: str
+    numeric_policy_version: str | None = None
     cutoff_date: date
     items: tuple[PlanningAdaptationItem, ...] = Field(min_length=1)
 
@@ -351,6 +353,8 @@ class PlanningAdaptationInput(FrozenModel):
             raise ValueError("planning adaptation items must be unique and canonically ordered")
         if any(item.proposal_version != self.proposal_version or item.cutoff_date != self.cutoff_date for item in self.items):
             raise ValueError("planning adaptation versions and cutoffs must agree")
+        if any(item.numeric_policy_version != self.numeric_policy_version for item in self.items):
+            raise ValueError("planning adaptation numeric policy versions must agree")
         return self
 
 
@@ -373,7 +377,9 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return _canonical_value(value.model_dump(mode="python"))
     if isinstance(value, dict):
-        return {str(key): _canonical_value(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+        # Preserve hashes of stored C.4 artifacts that predate this optional field.
+        return {str(key): _canonical_value(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+                if not (key == "numeric_policy_version" and item is None)}
     if isinstance(value, (tuple, list)):
         return [_canonical_value(item) for item in value]
     if isinstance(value, Enum):

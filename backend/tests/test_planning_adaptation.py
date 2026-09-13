@@ -245,9 +245,10 @@ def test_effective_normalized_input_changes_preview_fingerprint_and_audits_befor
     assert all(any(target.planning_adaptation is not None for target in phase_targets(item.workout.definition)) for item in affected)
 
 
-def test_acceptance_materializes_stored_artifact_without_recomputing_c1_to_c4(monkeypatch):
+def test_acceptance_materializes_stored_artifact_without_recomputing_c1_to_c5(monkeypatch):
     engine, preview_id, athlete_id, user_id, source_artifact = seeded()
     monkeypatch.setattr(ExecutionAdaptationProposalAssembler, "assemble", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("accept must not recompute adaptation")))
+    monkeypatch.setattr("app.application.planning_preview.resolve_numeric_adaptations", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("accept must not resolve numeric adaptation")))
     with Session(engine) as db:
         plan = PlanningPreviewApplication(db).accept(
             preview_id=preview_id, athlete_id=athlete_id,

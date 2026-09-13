@@ -19,7 +19,8 @@ from app.domains.planning.season_structure import SeasonStructureBuilder, Season
 from app.domains.planning.session_planning import SessionPlanningConfig, SessionType, build_session_plan
 from app.domains.planning.weekly_budget import WeeklyBudgetConfig, build_weekly_budget_plan
 from app.domains.planning.workout_builder import WorkoutBuilderConfig, build_structured_workout, structured_workout_payload
-from app.domains.planning.planning_adaptation import normalize_planning_adaptation, with_planning_adaptation
+from app.domains.planning.numeric_adaptation import resolve_numeric_adaptations
+from app.domains.planning.planning_adaptation import normalize_numeric_planning_adaptation, with_planning_adaptation
 
 
 class PlanningPreviewError(ValueError):
@@ -70,19 +71,29 @@ class PlanningPreviewApplication:
             athlete_profile_id=request.athlete_id,
             as_of_date=request.planning_date,
         )
-        projection = normalize_planning_adaptation(
-            proposals=proposals, athlete_id=request.athlete_id,
-            cutoff_date=request.planning_date,
-        )
-        context = with_planning_adaptation(context, projection.planning_input)
-        season = SeasonStructureBuilder(SeasonStructureConfig(version="0.8F.3", algorithm_version="0.8F.3")).build(context)
-        if any(warning.blocking for warning in season.warnings):
-            raise PlanningPreviewBlockedError()
-        budgets = build_weekly_budget_plan(context, season, WeeklyBudgetConfig(version="0.8F.4", algorithm_version="0.8F.4"))
-        session_plan = build_session_plan(context, season, budgets, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION))
         workout_config = WorkoutBuilderConfig(version=WORKOUT_BUILDER_VERSION, algorithm_version=WORKOUT_BUILDER_VERSION)
-        prescriptions = tuple(item for week in session_plan.weeks for item in week.sessions)
-        drafts = tuple(build_structured_workout(context, item, workout_config) for item in prescriptions)
+
+        def planning_outputs(current_context):
+            current_season = SeasonStructureBuilder(SeasonStructureConfig(version="0.8F.3", algorithm_version="0.8F.3")).build(current_context)
+            if any(warning.blocking for warning in current_season.warnings):
+                raise PlanningPreviewBlockedError()
+            current_budgets = build_weekly_budget_plan(current_context, current_season, WeeklyBudgetConfig(version="0.8F.4", algorithm_version="0.8F.4"))
+            current_plan = build_session_plan(current_context, current_season, current_budgets, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION))
+            current_prescriptions = tuple(item for week in current_plan.weeks for item in week.sessions)
+            current_drafts = tuple(build_structured_workout(current_context, item, workout_config) for item in current_prescriptions)
+            return current_season, current_budgets, current_plan, current_prescriptions, current_drafts
+
+        season, budgets, session_plan, prescriptions, drafts = planning_outputs(context)
+        resolutions = resolve_numeric_adaptations(
+            proposals=proposals,
+            context=context,
+            prescriptions=prescriptions,
+            drafts=drafts,
+        )
+        planning_input = normalize_numeric_planning_adaptation(resolutions).planning_input
+        if planning_input is not None:
+            context = with_planning_adaptation(context, planning_input)
+            season, budgets, session_plan, prescriptions, drafts = planning_outputs(context)
         roles = {item.goal_id: item.role for item in season.goals}
         artifact_goals = tuple(goal.model_copy(update={"role": roles[goal.competition_goal_id]}) for goal in context.goals)
         artifact = build_preview_artifact(

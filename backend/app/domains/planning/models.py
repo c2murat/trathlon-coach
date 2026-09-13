@@ -82,6 +82,7 @@ class WorkoutTargetAdaptation(BaseModel):
 class WorkoutTargetPlanningAdaptation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     proposal_version: str
+    numeric_policy_version: str | None = None
     proposal_kind: Literal["INCREASE_TARGET", "DECREASE_TARGET"]
     direction: Literal["FASTER_PACE", "SLOWER_PACE", "HIGHER_POWER", "LOWER_POWER"]
     confidence: Literal["HIGH", "MEDIUM"]

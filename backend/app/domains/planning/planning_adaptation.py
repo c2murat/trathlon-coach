@@ -71,6 +71,38 @@ class PlanningAdaptationCutoffMismatchError(ValueError):
     pass
 
 
+def normalize_numeric_planning_adaptation(resolutions) -> PlanningAdaptationProjection:
+    """Project C.5 results without calculating targets or reinterpreting evidence."""
+    from app.domains.planning.numeric_adaptation import project_resolved_adaptations
+
+    statuses = {
+        "NO_SAFE_STEP": (PlanningAdaptationDecisionStatus.SKIPPED_NO_SAFE_STEP, PlanningAdaptationDecisionReason.NUMERIC_RANGE_UNAVAILABLE),
+        "NOT_APPLICABLE": (PlanningAdaptationDecisionStatus.NOT_APPLICABLE, PlanningAdaptationDecisionReason.SOURCE_NOT_ACTIONABLE),
+        "GUARDED": (PlanningAdaptationDecisionStatus.SKIPPED_GUARD, PlanningAdaptationDecisionReason.PROPOSAL_GUARD_PRESENT),
+        "UNSUPPORTED": (PlanningAdaptationDecisionStatus.SKIPPED_GUARD, PlanningAdaptationDecisionReason.PROPOSAL_GUARD_PRESENT),
+        "CONFLICT": (PlanningAdaptationDecisionStatus.SKIPPED_CONFLICT, PlanningAdaptationDecisionReason.CONFLICTING_PROPOSALS),
+    }
+    decisions = []
+    for item in resolutions.resolutions:
+        if item.status == "RESOLVED":
+            continue  # Only target application can report APPLIED.
+        status, reason = statuses[item.status]
+        if "LOW_CONFIDENCE" in item.reason_codes:
+            status = PlanningAdaptationDecisionStatus.SKIPPED_LOW_CONFIDENCE
+            reason = PlanningAdaptationDecisionReason.LOW_PROPOSAL_CONFIDENCE
+        decisions.append(PlanningAdaptationDecision(
+            sport=item.sport, session_type=item.session_type, target_kind=item.target_kind,
+            source_proposal=item.source_proposal_kind, direction=item.direction,
+            confidence=item.confidence.value, status=status, reason=reason,
+            before_minimum=item.current_range.minimum if item.current_range else None,
+            before_maximum=item.current_range.maximum if item.current_range else None,
+            proposal_version=item.source_proposal_version,
+        ))
+    return PlanningAdaptationProjection(
+        planning_input=project_resolved_adaptations(resolutions), decisions=tuple(decisions),
+    )
+
+
 def _decision(proposal: AdaptationProposal, status, reason, *, proposal_version: str) -> PlanningAdaptationDecision:
     return PlanningAdaptationDecision(
         sport=proposal.sport, session_type=proposal.session_type,
@@ -173,7 +205,8 @@ def apply_planning_adaptation(*, target: WorkoutTarget, context: PlanningContext
             proposal_version=item.proposal_version,
         )
     metadata = WorkoutTargetPlanningAdaptation(
-        proposal_version=item.proposal_version, proposal_kind=item.proposal_kind,
+        proposal_version=item.proposal_version, numeric_policy_version=item.numeric_policy_version,
+        proposal_kind=item.proposal_kind,
         direction=item.direction, confidence=item.confidence,
         before_minimum=float(before_min), before_maximum=float(before_max),
         after_minimum=float(item.proposed_minimum), after_maximum=float(item.proposed_maximum),

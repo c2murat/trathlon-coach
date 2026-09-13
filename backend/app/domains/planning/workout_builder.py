@@ -680,6 +680,7 @@ def build_structured_workout(context: PlanningContext, session: SessionPrescript
         code=WorkoutDecisionCode.TARGET_ADAPTED_FROM_EXECUTION_PROPOSAL,
         context={
             "proposal_version": item.proposal_version,
+            "numeric_policy_version": item.numeric_policy_version,
             "proposal_kind": item.proposal_kind,
             "direction": item.direction,
             "confidence": item.confidence,
