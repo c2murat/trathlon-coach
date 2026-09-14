@@ -686,6 +686,12 @@ def build_structured_workout(context: PlanningContext, session: SessionPrescript
             "confidence": item.confidence,
             "before": f"{item.before_minimum:g}-{item.before_maximum:g}",
             "after": f"{item.after_minimum:g}-{item.after_maximum:g}",
+            **({
+                "prescription_level_version": item.prescription_level_transition.policy_version,
+                "prescription_ladder_id": item.prescription_level_transition.ladder_id,
+                "prescription_level_before": item.prescription_level_transition.level_before,
+                "prescription_level_after": item.prescription_level_transition.level_after,
+            } if item.prescription_level_transition is not None else {}),
         },
     ) for item in proposal_rows[:1])
     draft = StructuredWorkoutDraft(

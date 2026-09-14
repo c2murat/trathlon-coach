@@ -295,9 +295,31 @@ class QualityExposureSnapshot(FrozenModel):
     signals: tuple[QualityExposureSignal, ...] = ()
 
 
+class PrescriptionLevelTransition(FrozenModel):
+    policy_version: str = Field(min_length=1)
+    ladder_id: str = Field(min_length=1)
+    level_before: str = Field(min_length=1)
+    level_after: str = Field(min_length=1)
+    index_before: int = Field(ge=0)
+    index_after: int = Field(ge=0)
+    source_before: str = Field(min_length=1)
+    source_after: str = Field(min_length=1)
+    source_version_before: str = Field(min_length=1)
+    source_version_after: str = Field(min_length=1)
+    capability_fingerprint: str
+    base_context_fingerprint: str
+
+    @model_validator(mode="after")
+    def adjacent_levels(self):
+        if self.level_before == self.level_after or abs(self.index_after - self.index_before) != 1:
+            raise ValueError("prescription transition must connect immediate distinct levels")
+        return self
+
+
 class PlanningAdaptationItem(FrozenModel):
     proposal_version: str
     numeric_policy_version: str | None = None
+    prescription_level_transition: PrescriptionLevelTransition | None = None
     cutoff_date: date
     sport: Literal["running", "cycling", "swimming"]
     session_type: str
@@ -313,6 +335,11 @@ class PlanningAdaptationItem(FrozenModel):
 
     @model_validator(mode="after")
     def validate_adaptation(self):
+        if self.prescription_level_transition is not None:
+            transition = self.prescription_level_transition
+            expected_step = 1 if self.proposal_kind == "INCREASE_TARGET" else -1
+            if self.numeric_policy_version is None or transition.index_after - transition.index_before != expected_step:
+                raise ValueError("prescription transition must match numeric policy and proposal direction")
         if self.current_minimum > self.current_maximum or self.proposed_minimum > self.proposed_maximum:
             raise ValueError("planning adaptation range cannot be inverted")
         expected = {
@@ -379,7 +406,7 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, dict):
         # Preserve hashes of stored C.4 artifacts that predate this optional field.
         return {str(key): _canonical_value(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-                if not (key == "numeric_policy_version" and item is None)}
+                if not (key in {"numeric_policy_version", "prescription_level_transition"} and item is None)}
     if isinstance(value, (tuple, list)):
         return [_canonical_value(item) for item in value]
     if isinstance(value, Enum):

@@ -6,7 +6,7 @@ from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import model_validator
 
 from app.domains.planning.contracts import FrozenModel, PlanningAdaptationInput, PlanningAdaptationItem
 from app.domains.planning.execution_adaptation import AdaptationSignalConfidence
@@ -18,6 +18,11 @@ from app.domains.planning.execution_proposals import (
 )
 from app.domains.planning.contracts import PlanningContext, canonical_json
 from app.domains.planning.session_planning import SessionType
+from app.domains.planning.contracts import PrescriptionLevelTransition
+from app.domains.planning.prescription_intensity import (
+    LevelResolutionStatus, LevelStepDirection, PrescriptionLevelResolution,
+    PrescriptionTargetRange as NumericRange, resolve_prescription_intensity_step,
+)
 
 
 NUMERIC_ADAPTATION_RESOLUTION_VERSION = "0.8G.2C.5"
@@ -34,6 +39,10 @@ class NumericResolutionStatus(StrEnum):
 
 class NumericResolutionReason(StrEnum):
     NO_ORDERED_TARGET_LEVELS = "NO_ORDERED_TARGET_LEVELS"
+    CURRENT_LEVEL_NOT_IDENTIFIED = "CURRENT_LEVEL_NOT_IDENTIFIED"
+    LEVEL_BOUNDARY = "LEVEL_BOUNDARY"
+    LEVEL_RESOLUTION_GUARD = "LEVEL_RESOLUTION_GUARD"
+    ADJACENT_PRESCRIPTION_LEVEL = "ADJACENT_PRESCRIPTION_LEVEL"
     SOURCE_NOT_ACTIONABLE = "SOURCE_NOT_ACTIONABLE"
     SOURCE_GUARD = "SOURCE_GUARD"
     SESSION_TYPE_MISMATCH = "SESSION_TYPE_MISMATCH"
@@ -45,18 +54,6 @@ class NumericResolutionReason(StrEnum):
     UNIT_MISMATCH = "UNIT_MISMATCH"
     STRENGTH_UNSUPPORTED = "STRENGTH_UNSUPPORTED"
     CONFLICTING_PROPOSALS = "CONFLICTING_PROPOSALS"
-
-
-class NumericRange(FrozenModel):
-    minimum: Decimal = Field(gt=0, allow_inf_nan=False)
-    maximum: Decimal = Field(gt=0, allow_inf_nan=False)
-    unit: str
-
-    @model_validator(mode="after")
-    def valid_range(self):
-        if self.minimum > self.maximum:
-            raise ValueError("numeric adaptation range cannot be inverted")
-        return self
 
 
 class NumericAdaptationResolution(FrozenModel):
@@ -77,9 +74,20 @@ class NumericAdaptationResolution(FrozenModel):
     source_guards: tuple[ProposalGuard, ...] = ()
     source_proposal_version: str
     numeric_policy_version: str = NUMERIC_ADAPTATION_RESOLUTION_VERSION
+    level_resolution: PrescriptionLevelResolution | None = None
 
     @model_validator(mode="after")
     def coherent_resolution(self):
+        if self.level_resolution is not None:
+            levels = self.level_resolution
+            if (levels.athlete_id, levels.cutoff_date, levels.sport, levels.session_type, levels.target_kind, levels.current_range) != (
+                self.athlete_id, self.cutoff_date, self.sport, self.session_type, self.target_kind, self.current_range,
+            ):
+                raise ValueError("numeric and prescription level resolution scopes must agree")
+            if self.status == NumericResolutionStatus.RESOLVED and (
+                levels.status != LevelResolutionStatus.ADJACENT_LEVEL or levels.level_after.target_range != self.proposed_range
+            ):
+                raise ValueError("numeric candidate must come from the resolved adjacent level")
         if self.status == NumericResolutionStatus.RESOLVED:
             if self.guards or self.confidence not in {AdaptationSignalConfidence.MEDIUM, AdaptationSignalConfidence.HIGH}:
                 raise ValueError("resolved numeric adaptation cannot be guarded or low confidence")
@@ -160,7 +168,7 @@ def _signature(proposal):
     })
 
 
-def _result(proposals, proposal, status, reason, *, current=None, proposed=None, guards=()):
+def _result(proposals, proposal, status, reason, *, current=None, proposed=None, guards=(), levels=None):
     return NumericAdaptationResolution(
         athlete_id=proposals.athlete_profile_id,
         cutoff_date=proposals.as_of_date,
@@ -178,6 +186,7 @@ def _result(proposals, proposal, status, reason, *, current=None, proposed=None,
         guards=tuple(guards),
         source_guards=tuple(sorted(set(proposal.applied_guards))),
         source_proposal_version=proposals.algorithm_version,
+        level_resolution=levels,
     )
 
 
@@ -185,9 +194,8 @@ def resolve_numeric_adaptations(*, proposals: ExecutionAdaptationProposalContext
                                 context: PlanningContext, prescriptions, drafts):
     """Resolve against freshly built, unadapted Planning targets, without IO.
 
-    C.5 has no authorized within-prescription adjacent-level primitive. Family
-    ranges, capability dimensions and quantization must not manufacture one.
-    See docs/numeric-adaptation-audit.md. RESOLVED is deliberately not emitted.
+    C.6 is the only adjacent-level source. Its conservative production catalog
+    has no supported ladders; absence of a real step preserves the C.5 fallback.
     """
     athlete_id = context.request.athlete_id
     cutoff_date = context.request.planning_date
@@ -266,8 +274,24 @@ def resolve_numeric_adaptations(*, proposals: ExecutionAdaptationProposalContext
         if len(ranges) != 1:
             append(NumericResolutionStatus.GUARDED, NumericResolutionReason.TARGET_AMBIGUOUS, guarded=True)
             continue
-        append(NumericResolutionStatus.NO_SAFE_STEP, NumericResolutionReason.NO_ORDERED_TARGET_LEVELS,
-               current=next(iter(ranges)))
+        current = next(iter(ranges))
+        levels = resolve_prescription_intensity_step(
+            context=context, sport=proposal.sport, session_type=proposal.session_type,
+            target_kind=proposal.target_kind, current_range=current,
+            direction=LevelStepDirection.PROGRESSION if increasing else LevelStepDirection.REGRESSION,
+        )
+        if levels.status == LevelResolutionStatus.ADJACENT_LEVEL:
+            resolutions.append(_result(proposals, proposal, NumericResolutionStatus.RESOLVED,
+                NumericResolutionReason.ADJACENT_PRESCRIPTION_LEVEL, current=current,
+                proposed=levels.level_after.target_range, levels=levels))
+        else:
+            reason = {
+                LevelResolutionStatus.NO_SUPPORTED_LADDER: NumericResolutionReason.NO_ORDERED_TARGET_LEVELS,
+                LevelResolutionStatus.CURRENT_LEVEL_NOT_IDENTIFIED: NumericResolutionReason.CURRENT_LEVEL_NOT_IDENTIFIED,
+                LevelResolutionStatus.BOUNDARY: NumericResolutionReason.LEVEL_BOUNDARY,
+            }.get(levels.status, NumericResolutionReason.LEVEL_RESOLUTION_GUARD)
+            resolutions.append(_result(proposals, proposal, NumericResolutionStatus.NO_SAFE_STEP,
+                reason, current=current, levels=levels))
     return NumericAdaptationResolutionContext(
         athlete_id=athlete_id, cutoff_date=cutoff_date,
         source_proposal_version=proposals.algorithm_version,
@@ -276,9 +300,25 @@ def resolve_numeric_adaptations(*, proposals: ExecutionAdaptationProposalContext
 
 
 def _planning_item(item: NumericAdaptationResolution) -> PlanningAdaptationItem:
+    transition = None
+    if item.level_resolution is not None:
+        levels = item.level_resolution
+        if levels.status != LevelResolutionStatus.ADJACENT_LEVEL:
+            raise ValueError("only an adjacent prescription level can affect planning")
+        before, after = levels.level_before, levels.level_after
+        transition = PrescriptionLevelTransition(
+            policy_version=levels.version, ladder_id=levels.ladder_id,
+            level_before=before.level_id, level_after=after.level_id,
+            index_before=before.index, index_after=after.index,
+            source_before=before.source, source_after=after.source,
+            source_version_before=before.source_version, source_version_after=after.source_version,
+            capability_fingerprint=before.capability_reference.capability_fingerprint,
+            base_context_fingerprint=levels.context_fingerprint,
+        )
     return PlanningAdaptationItem(
         proposal_version=item.source_proposal_version,
         numeric_policy_version=item.numeric_policy_version,
+        prescription_level_transition=transition,
         cutoff_date=item.cutoff_date,
         sport=item.sport, session_type=item.session_type, target_kind=item.target_kind,
         proposal_kind=item.source_proposal_kind.value, direction=item.direction.value,

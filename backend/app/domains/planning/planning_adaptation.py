@@ -183,6 +183,10 @@ def with_planning_adaptation(context: PlanningContext, adaptation: PlanningAdapt
         raise PlanningAdaptationAthleteMismatchError("planning adaptation athlete does not match context")
     if adaptation.cutoff_date != context.request.planning_date:
         raise PlanningAdaptationCutoffMismatchError("planning adaptation cutoff does not match context")
+    if any(item.prescription_level_transition is not None and
+           item.prescription_level_transition.base_context_fingerprint != context.fingerprint
+           for item in adaptation.items):
+        raise ValueError("prescription level transition does not match base planning context")
     payload = context.model_dump(mode="python", exclude={"fingerprint", "planning_adaptation"})
     payload["planning_adaptation"] = adaptation
     return PlanningContext(**payload, fingerprint=context_fingerprint(payload))
@@ -206,6 +210,7 @@ def apply_planning_adaptation(*, target: WorkoutTarget, context: PlanningContext
         )
     metadata = WorkoutTargetPlanningAdaptation(
         proposal_version=item.proposal_version, numeric_policy_version=item.numeric_policy_version,
+        prescription_level_transition=item.prescription_level_transition,
         proposal_kind=item.proposal_kind,
         direction=item.direction, confidence=item.confidence,
         before_minimum=float(before_min), before_maximum=float(before_max),

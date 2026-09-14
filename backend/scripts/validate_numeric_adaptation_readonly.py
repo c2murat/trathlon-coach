@@ -1,4 +1,4 @@
-"""Audit the real C.1 -> C.5 -> C.4 path without persisting a preview."""
+"""Audit the real C.1 -> C.6 -> C.5 -> C.4 path without persisting a preview."""
 from __future__ import annotations
 
 import argparse
@@ -20,6 +20,7 @@ from app.domains.planning.contracts import PlanningRequest
 from app.domains.planning.execution_adaptation import build_execution_adaptation_context
 from app.domains.planning.execution_proposals import build_execution_adaptation_proposal_context
 from app.domains.planning.numeric_adaptation import resolve_numeric_adaptations
+from app.domains.planning.prescription_intensity import PRESCRIPTION_INTENSITY_LEVEL_VERSION, build_prescription_intensity_ladder, TARGET_SEMANTICS
 from app.domains.planning.planning_adaptation import normalize_numeric_planning_adaptation
 from app.domains.planning.season_structure import SeasonStructureBuilder, SeasonStructureConfig
 from app.domains.planning.session_planning import SessionPlanningConfig, build_session_plan
@@ -30,7 +31,8 @@ from scripts.audit_multi_athlete_integrity import audit
 
 def validate(cutoff):
     report = {"cutoff": cutoff.isoformat(), "window_start": (cutoff - timedelta(days=84)).isoformat(),
-              "numeric_policy_version": "0.8G.2C.5", "athletes": []}
+              "numeric_policy_version": "0.8G.2C.5",
+              "prescription_intensity_level_version": PRESCRIPTION_INTENSITY_LEVEL_VERSION, "athletes": []}
     with SessionLocal() as db:
         try:
             db.execute(text("SET TRANSACTION READ ONLY"))
@@ -58,6 +60,8 @@ def validate(cutoff):
                        "c3_directional": sum(p.proposal_kind.value in {"INCREASE_TARGET", "DECREASE_TARGET"} for p in proposals.proposals),
                        "c5_resolutions": 0, "RESOLVED": 0, "NO_SAFE_STEP": 0, "NOT_APPLICABLE": 0,
                        "GUARDED": 0, "UNSUPPORTED": 0, "CONFLICT": 0, "c4_APPLIED": 0, "targets": []}
+                row.update(c6_catalog_attempts=0, c6_ladders=0, c6_current_levels=0, c6_adjacent_levels=0,
+                           c6_no_supported_ladder=0, c6_resolutions=0)
                 goals = db.scalars(select(CompetitionGoal).where(
                     CompetitionGoal.athlete_profile_id == athlete.id, CompetitionGoal.status == "active",
                     CompetitionGoal.event_date >= cutoff,
@@ -81,6 +85,13 @@ def validate(cutoff):
                         event.listen(db.bind, "before_cursor_execute", count)
                         query_start = len(queries)
                         try:
+                            keys = sorted({(item.discipline, item.session_type.value) for item in sessions
+                                           if item.discipline in TARGET_SEMANTICS})
+                            catalogs = [build_prescription_intensity_ladder(context=context, sport=sport,
+                                        session_type=kind, target_kind=TARGET_SEMANTICS[sport][0]) for sport, kind in keys]
+                            row["c6_catalog_attempts"] = len(catalogs)
+                            row["c6_ladders"] = sum(item.ladder is not None for item in catalogs)
+                            row["c6_no_supported_ladder"] = sum(item.status == "NO_SUPPORTED_LADDER" for item in catalogs)
                             numeric = resolve_numeric_adaptations(proposals=proposals, context=context, prescriptions=sessions, drafts=drafts)
                             projection = normalize_numeric_planning_adaptation(numeric)
                             assert len(queries) == query_start
@@ -88,6 +99,10 @@ def validate(cutoff):
                             event.remove(db.bind, "before_cursor_execute", count)
                         row["planning"] = "BUILT_IN_MEMORY"
                         row["c5_resolutions"] = len(numeric.resolutions)
+                        levels = [item.level_resolution for item in numeric.resolutions if item.level_resolution is not None]
+                        row["c6_resolutions"] = len(levels)
+                        row["c6_current_levels"] = sum(item.level_before is not None for item in levels)
+                        row["c6_adjacent_levels"] = sum(item.level_after is not None for item in levels)
                         row.update(Counter(item.status.value for item in numeric.resolutions))
                         # No step provider exists in this audited numeric policy.
                         assert projection.planning_input is None

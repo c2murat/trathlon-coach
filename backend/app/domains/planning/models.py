@@ -5,6 +5,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from app.domains.planning.contracts import PrescriptionLevelTransition
 
 CompetitionCategory = Literal["triathlon", "running", "cycling", "swimming", "duathlon", "aquathlon"]
 SegmentSport = Literal["swim", "bike", "run"]
@@ -83,6 +84,7 @@ class WorkoutTargetPlanningAdaptation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     proposal_version: str
     numeric_policy_version: str | None = None
+    prescription_level_transition: PrescriptionLevelTransition | None = None
     proposal_kind: Literal["INCREASE_TARGET", "DECREASE_TARGET"]
     direction: Literal["FASTER_PACE", "SLOWER_PACE", "HIGHER_POWER", "LOWER_POWER"]
     confidence: Literal["HIGH", "MEDIUM"]
