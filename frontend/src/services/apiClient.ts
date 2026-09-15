@@ -41,6 +41,7 @@ const configuredBaseUrl =
 export interface CoachAssignment {membership_id:string;coach_user_id:string;coach_display_name:string;coach_email:string;athlete_profile_id:string;athlete_display_name:string;is_active:boolean;is_default:boolean}
 export interface CoachAssignmentCandidates {coaches:{user_id:string;display_name:string;email:string}[];athletes:{athlete_profile_id:string;display_name:string}[]}
 export interface ApiClient {
+  capabilityReassessment?(asOfDate?:string):Promise<import("../features/profile/reassessmentTypes").CapabilityReassessmentResponse>;
   authMe(): Promise<AuthenticatedUser>;
   login(credentials: LoginCredentials): Promise<AuthenticatedUser>;
   register?(input:RegistrationInput):Promise<AuthenticatedUser>;
@@ -232,6 +233,7 @@ export class FetchApiClient implements ApiClient {
   dashboardConsistency() { return this.request<Consistency>("/dashboard/consistency?weeks=12"); }
 
   performanceProfile(){return this.request<any>("/athlete/performance-profile")}
+  capabilityReassessment(asOfDate?:string){return this.request<import("../features/profile/reassessmentTypes").CapabilityReassessmentResponse>("/athlete/performance-profile/reassessment"+(asOfDate?"?"+new URLSearchParams({as_of_date:asOfDate}):""))}
   performanceProfileHistory(){return this.request<any[]>("/athlete/performance-profile/history")} 
   createPerformanceProfile?(input:Record<string,unknown>){return this.request<any>("/athlete/performance-profile/versions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})}
 

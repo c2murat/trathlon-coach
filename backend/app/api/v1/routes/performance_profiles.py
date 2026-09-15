@@ -1,5 +1,5 @@
 ﻿from datetime import datetime,timezone
-from fastapi import APIRouter,Depends,HTTPException
+from fastapi import APIRouter,Depends,HTTPException,Response
 from pydantic import BaseModel,Field
 from sqlalchemy.orm import Session
 from app.api.dependencies.current_athlete import CurrentAthleteContext,get_current_athlete
@@ -7,7 +7,30 @@ from app.api.dependencies.athlete_permissions import AthleteCapability,require_a
 from app.application.performance_profiles import PerformanceProfileError,PerformanceProfileRepository
 from app.db.session import get_db_session
 from app.domains.performance_profile.zones import *
+from datetime import date
+from zoneinfo import ZoneInfo
+from app.db.base import utc_now
+from app.application.capability_reassessment import CapabilityReassessmentAssembler
+from app.api.v1.schemas.capability_reassessment import CapabilityReassessmentResponse
+
 router=APIRouter(prefix="/athlete/performance-profile",tags=["performance-profile"])
+
+@router.get("/reassessment", response_model=CapabilityReassessmentResponse)
+def reassessment(
+    response: Response,
+    as_of_date: date | None = None,
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.READ_ATHLETE_DATA)),
+    session: Session = Depends(get_db_session),
+):
+    today = utc_now().astimezone(ZoneInfo(current_athlete.athlete_profile.timezone)).date()
+    cutoff = as_of_date or today
+    if cutoff < date(2000, 1, 1) or cutoff > today:
+        raise HTTPException(422, detail={"code": "invalid_reassessment_cutoff"})
+    response.headers["Cache-Control"] = "private, no-store"
+    context = CapabilityReassessmentAssembler(session).assemble(
+        athlete_profile_id=current_athlete.athlete_id, as_of_date=cutoff)
+    return CapabilityReassessmentResponse.from_context(context)
+
 class ProfileIn(BaseModel):
  effective_from:datetime;data_origin:str;source_note:str|None=None;resting_heart_rate_bpm:int|None=None;maximum_heart_rate_bpm:int|None=None;weight_kg:float|None=None;cycling_ftp_watts:float|None=None;cycling_threshold_heart_rate_bpm:int|None=None;running_threshold_heart_rate_bpm:int|None=None;running_threshold_pace_seconds_per_km:float|None=None;swimming_css_seconds_per_100m:float|None=None;preferred_pool_length_metres:int|None=None
 class ZoneOut(BaseModel):number:int;name:str;lower:float;upper:float|None;unit:str;direction:str;reference:float;algorithm_version:str

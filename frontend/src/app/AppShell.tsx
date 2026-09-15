@@ -44,7 +44,7 @@ function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapabi
  if(path==="/settings/coaches")return <CoachAssignmentsPage client={client}/>;
  if(path==="/settings/athlete-profile")return <AthleteProfilePage client={client}/>;
  if(path==="/settings/connections")return <ConnectionsPage client={client}/>;
- if(path==="/settings/performance-profile"){const profile=has(ATHLETE_CAPABILITIES.CREATE_PROFILE),reference=has(ATHLETE_CAPABILITIES.CREATE_REFERENCE);return <div key={`${profile}-${reference}`} className={`${profile?"":"deny-profile "}${reference?"":"deny-reference"}`}><PerformanceProfilePage client={client}/></div>}
+ if(path==="/settings/performance-profile"){const profile=has(ATHLETE_CAPABILITIES.CREATE_PROFILE),reference=has(ATHLETE_CAPABILITIES.CREATE_REFERENCE);return <div key={`${profile}-${reference}`} className={`${profile?"":"deny-profile "}${reference?"":"deny-reference"}`}><PerformanceProfilePage client={client} athleteId={athlete?.athlete_id} canEdit={profile}/></div>}
  if(path==="/statistics/training-load")return <TrainingLoadPage client={client}/>;
  if(path==="/statistics/training-status")return <TrainingStatusPage client={client} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
  if(path.startsWith("/activities/"))return <div className={`${has(ATHLETE_CAPABILITIES.RECALCULATE)?"":"deny-recalculate "}${has(ATHLETE_CAPABILITIES.ENRICH_STRAVA)?"":"deny-enrichment "}${has(ATHLETE_CAPABILITIES.EVIDENCE_STRAVA)?"":"deny-evidence"}`}><ActivitySummaryPage activityId={path.slice(12)} client={client}/></div>;

@@ -1,0 +1,9 @@
+.capability-reassessment { margin-block: 2rem; }
+.reassessment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; }
+.capability-reassessment .reference-card { min-width: 0; color: var(--text); }
+.capability-reassessment .reference-card h3 { margin: 0; font-size: 1.1rem; color: var(--heading); }
+.capability-reassessment .reference-card p { margin: .25rem 0; }
+.capability-reassessment .reference-card strong { font-size: 1rem; color: inherit; }
+.capability-reassessment .reference-card .reassessment-value { font-size: 1.6rem; }
+.capability-reassessment .reference-card ul { padding-left: 1.2rem; font-size: .9rem; line-height: 1.5; }
+.capability-reassessment .reference-card button { margin-top: auto; }
