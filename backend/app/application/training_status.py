@@ -346,6 +346,7 @@ class TrainingStatusApplication:
         training_load_algorithm_version: str,
         manual_strength_algorithm_version: str,
         training_status_algorithm_version: str = ALGORITHM_VERSION,
+        as_of_date: date | None = None,
     ) -> AthleteDailyTrainingStatus | None:
         self._validate_common(
             athlete_id,
@@ -366,5 +367,6 @@ class TrainingStatusApplication:
                 )
             )
             .order_by(AthleteDailyTrainingStatus.local_date.desc())
+            .where(*((AthleteDailyTrainingStatus.local_date <= as_of_date,) if as_of_date is not None else ()))
             .limit(1)
         )

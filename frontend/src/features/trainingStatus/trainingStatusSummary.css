@@ -1,0 +1,15 @@
+.training-status-summary { padding: 1.25rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
+.training-status-summary header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; }
+.training-status-summary h2 { margin: 0; font-size: 1.2rem; }
+.training-status-summary h3 { margin-bottom: .5rem; font-size: 1.1rem; }
+.training-status-summary p { line-height: 1.5; }
+.status-summary-explanations { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; margin-block: 1rem; }
+.status-summary-explanations section { border-left: 3px solid var(--border); padding-left: .75rem; }
+.status-summary-explanations h4 { margin: 0; }
+.status-summary-explanations p { margin-bottom: 0; }
+.status-summary-caveat,.status-summary-date { color: var(--muted); font-size: .85rem; }
+.training-status-summary details summary { cursor: pointer; }
+.training-status-summary details summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.training-status-summary dt { font-weight: 700; }
+.training-status-summary dd { margin: 0 0 .5rem; }
+@media(max-width:700px) { .status-summary-explanations { grid-template-columns: 1fr; } }

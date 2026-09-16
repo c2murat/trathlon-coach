@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 from pydantic import BaseModel, Field
+from app.domains.training_status.interpretation import TrainingStatusInterpretation
 
 
 class DailyTrainingStatusResponse(BaseModel):
@@ -22,3 +23,9 @@ class DailyTrainingStatusResponse(BaseModel):
     manual_strength_algorithm_version: str
     training_status_algorithm_version: str
     calculated_at: datetime
+
+
+class TrainingStatusOverviewResponse(BaseModel):
+    series: list[DailyTrainingStatusResponse]
+    latest: DailyTrainingStatusResponse | None
+    interpretation: TrainingStatusInterpretation

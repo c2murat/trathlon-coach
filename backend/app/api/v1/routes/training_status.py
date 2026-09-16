@@ -1,11 +1,15 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.current_athlete import CurrentAthleteContext, get_current_athlete
 from app.api.dependencies.athlete_permissions import AthleteCapability, require_athlete_capability
 from app.api.v1.schemas.training_status import DailyTrainingStatusResponse
+from app.api.v1.schemas.training_status import TrainingStatusOverviewResponse
+from app.application.training_status_interpretation import TrainingStatusOverviewAssembler
+from app.db.base import utc_now
 from app.application.training_status import (
     DuplicateTrainingStatusSourceDateError,
     InvalidTrainingStatusApplicationRangeError,
@@ -26,6 +30,34 @@ from app.domains.training_status import ALGORITHM_VERSION as TRAINING_STATUS_VER
 TRAINING_LOAD_VERSION = "0.7b.1"
 
 router = APIRouter(prefix="/training-status", tags=["Training status"])
+
+
+@router.get("/overview", response_model=TrainingStatusOverviewResponse)
+def training_status_overview(
+    response: Response,
+    start_date: date,
+    end_date: date,
+    timezone_name: str = Query(..., min_length=1, max_length=64),
+    training_load_algorithm_version: str = Query(TRAINING_LOAD_VERSION, min_length=1, max_length=32),
+    manual_strength_algorithm_version: str = Query(MANUAL_STRENGTH_VERSION, min_length=1, max_length=32),
+    training_status_algorithm_version: str = Query(TRAINING_STATUS_VERSION, min_length=1, max_length=32),
+    current_athlete: CurrentAthleteContext = Depends(get_current_athlete),
+    session: Session = Depends(get_db_session),
+):
+    try:
+        TrainingStatusApplication._validate_timezone(timezone_name)
+        today = utc_now().astimezone(ZoneInfo(timezone_name)).date()
+        if start_date < date(2000, 1, 1) or end_date < start_date or end_date > today or (end_date-start_date).days > 366:
+            raise InvalidTrainingStatusApplicationRangeError("invalid overview range")
+        series, latest, interpretation = TrainingStatusOverviewAssembler(session).assemble(
+            athlete_id=current_athlete.athlete_id, start_date=start_date, as_of_date=end_date,
+            timezone_name=timezone_name, **_version_parameters(training_load_algorithm_version,
+                manual_strength_algorithm_version, training_status_algorithm_version))
+    except TrainingStatusApplicationError as error:
+        raise _application_error(error) from error
+    response.headers["Cache-Control"] = "private, no-store"
+    return TrainingStatusOverviewResponse(series=[_response(row) for row in series],
+        latest=_response(latest) if latest is not None else None, interpretation=interpretation)
 
 
 def _response(row: AthleteDailyTrainingStatus) -> DailyTrainingStatusResponse:
