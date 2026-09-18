@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -10,7 +10,8 @@ from sqlalchemy import select
 from app.application.combined_training_load_aggregation import TrainingLoadAggregationApplication
 from app.application.training_load import ALGORITHM_VERSION as LOAD_VERSION, TrainingLoadApplication
 from app.application.training_status_sync import sync_training_status_after_load_change
-from app.db.models import AthleteProfile, CompletedActivity
+from app.application.planned_session_activity_matching import PlannedSessionActivityMatching, DATE_WINDOW_DAYS, _local_date
+from app.db.models import AthleteProfile, CompletedActivity, PlannedTrainingSession
 from app.domains.manual_strength import ALGORITHM_VERSION as MANUAL_STRENGTH_VERSION
 
 
@@ -92,5 +93,18 @@ class StravaPostSyncProcessingApplication:
             )
         except Exception as error:
             raise StravaPostSyncProcessingError("training_status") from error
+        try:
+            # All imported pages exist before applying the unchanged matching policy.
+            candidate_dates = {_local_date(activity)+timedelta(days=offset)
+                for activity in activities for offset in range(-DATE_WINDOW_DAYS, DATE_WINDOW_DAYS+1)}
+            planned_ids = self.session.scalars(select(PlannedTrainingSession.id).where(
+                PlannedTrainingSession.athlete_profile_id == athlete_id,
+                PlannedTrainingSession.scheduled_date.in_(candidate_dates),
+            ).order_by(PlannedTrainingSession.scheduled_date, PlannedTrainingSession.id)).all()
+            matching = PlannedSessionActivityMatching(self.session)
+            for planned_id in planned_ids:
+                matching.auto_match(athlete_id, planned_id)
+        except Exception as error:
+            raise StravaPostSyncProcessingError("activity_matching") from error
         self.session.flush()
         return PostSyncProcessingResult(len(activities), start_date, end_date)

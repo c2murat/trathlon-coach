@@ -41,6 +41,8 @@ const configuredBaseUrl =
 export interface CoachAssignment {membership_id:string;coach_user_id:string;coach_display_name:string;coach_email:string;athlete_profile_id:string;athlete_display_name:string;is_active:boolean;is_default:boolean}
 export interface CoachAssignmentCandidates {coaches:{user_id:string;display_name:string;email:string}[];athletes:{athlete_profile_id:string;display_name:string}[]}
 export interface ApiClient {
+  dailyOverview?():Promise<import("../features/dashboard/dailyOverviewTypes").DailyOverview>;
+  executionOverview?():Promise<import("../features/dashboard/executionOverviewTypes").ExecutionOverview>;
   trainingStatusOverview?(query:TrainingStatusQuery):Promise<import("../features/trainingStatus/interpretationTypes").TrainingStatusOverview>;
   capabilityReassessment?(asOfDate?:string):Promise<import("../features/profile/reassessmentTypes").CapabilityReassessmentResponse>;
   authMe(): Promise<AuthenticatedUser>;
@@ -253,6 +255,8 @@ export class FetchApiClient implements ApiClient {
   deleteManualStrengthSession(id:string){return this.request<void>(`/manual-strength-sessions/${encodeURIComponent(id)}`,{method:"DELETE"})}
   recalculateManualStrengthLoad(id:string){return this.request<ManualStrengthTrainingLoad>(`/manual-strength-sessions/${encodeURIComponent(id)}/training-load/recalculate`,{method:"POST"})}
   listTrainingStatus(query:TrainingStatusQuery){return this.request<DailyTrainingStatus[]>("/training-status?"+this.trainingStatusParams(query))}
+  executionOverview(){return this.request<import("../features/dashboard/executionOverviewTypes").ExecutionOverview>("/dashboard/execution-overview")}
+  dailyOverview(){return this.request<import("../features/dashboard/dailyOverviewTypes").DailyOverview>("/dashboard/daily-overview")}
   trainingStatusOverview(query:TrainingStatusQuery){return this.request<import("../features/trainingStatus/interpretationTypes").TrainingStatusOverview>("/training-status/overview?"+this.trainingStatusParams(query))}
   async getLatestTrainingStatus(query:LatestTrainingStatusQuery){try{return await this.request<DailyTrainingStatus>("/training-status/latest?"+this.trainingStatusParams(query))}catch(error){if(error instanceof Error&&error.message.includes("(404)")&&error.message.includes("training_status_not_found"))return null;throw error}}
   recalculateTrainingStatus(query:TrainingStatusQuery){return this.request<DailyTrainingStatus[]>("/training-status/recalculate?"+this.trainingStatusParams(query),{method:"POST"})}

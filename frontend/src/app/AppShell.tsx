@@ -33,7 +33,7 @@ const nav:{path:string;label:string;icon:NavIconName}[]=[
 function ActivitySyncButton(_: {client:ApiClient}){return null}
 function greeting(){const hour=new Date().getHours();return hour<12?"Buenos días":hour<20?"Buenas tardes":"Buenas noches"}
 function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapability)=>boolean,athlete?:{athlete_id:string;label:string;role:string}|null){
- if(path==="/dashboard")return <DashboardPage client={client} showSync canManageStrava={has(ATHLETE_CAPABILITIES.CONNECT_STRAVA)} currentAthleteName={athlete?.label} currentAthleteRole={athlete?.role as AthleteRole|undefined} canEditAthleteProfile={has(ATHLETE_CAPABILITIES.EDIT_PROFILE)}/>;
+ if(path==="/dashboard")return <DashboardPage client={client} athleteId={athlete?.athlete_id} showSync canManageStrava={has(ATHLETE_CAPABILITIES.CONNECT_STRAVA)} currentAthleteName={athlete?.label} currentAthleteRole={athlete?.role as AthleteRole|undefined} canEditAthleteProfile={has(ATHLETE_CAPABILITIES.EDIT_PROFILE)}/>;
  if(path==="/activities")return <ActivitiesPage client={client}/>;
  if(path==="/calendar/planning/new")return <PlanGeneratorPage client={client} athleteId={athlete?.athlete_id??""} athleteName={athlete?.label} canGenerate={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
  if(/^\/calendar\/planning\/previews\/[^/]+$/.test(path))return <PlanningPreviewPage client={client} athleteId={athlete?.athlete_id??""} canAccept={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;

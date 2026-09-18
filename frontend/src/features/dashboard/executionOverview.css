@@ -1,0 +1,10 @@
+.execution-overview { padding: 1.25rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
+.execution-overview h2 { margin-top: 1.5rem; }
+.execution-overview h2:first-child { margin-top: 0; }
+.execution-sessions { list-style: none; padding: 0; }
+.execution-sessions > li { padding: .8rem 0; border-top: 1px solid var(--border); }
+.execution-sessions summary { cursor: pointer; line-height: 1.8; }
+.execution-sessions summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.execution-comparison { padding: .5rem 0; }
+.execution-activity p { color: var(--muted); }
+.execution-overview .status-badge { display: inline-block; white-space: normal; }
