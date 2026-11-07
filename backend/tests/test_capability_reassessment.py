@@ -303,7 +303,7 @@ def test_assembler_one_constant_input_query_is_scoped_and_preserves_missing_case
         assert result.summary.candidate_count == 1
         statements.clear()
         empty = CapabilityReassessmentAssembler(db).assemble(athlete_profile_id=UUID(int=999), as_of_date=AS_OF)
-        assert len(statements) == 2  # empty C.1 + one profile/provenance statement
+        assert len(statements) == 3  # empty C.1 batch reads + one profile/provenance statement
         assert empty.summary.unavailable_count == 3
         assert all(statement.lstrip().upper().startswith("SELECT") for statement in statements)
     finally:
@@ -322,7 +322,7 @@ def test_standalone_c1_plus_c7_query_budget_constant(db, n):
     event.listen(db.bind, "before_cursor_execute", count)
     try:
         result = CapabilityReassessmentAssembler(db).assemble(athlete_profile_id=ATHLETE_ID, as_of_date=AS_OF)
-        assert len(statements) == 4
+        assert len(statements) == 6
         assert result.summary.session_count == n
         assert sum("FROM activity_laps" in sql for sql in statements) == 1
         assert all(sql.lstrip().upper().startswith("SELECT") for sql in statements)

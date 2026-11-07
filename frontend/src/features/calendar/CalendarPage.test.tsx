@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../../services/apiClient";
 import type { CompetitionGoal } from "../../types/planning";
 import { CalendarPage } from "./CalendarPage";
@@ -66,6 +66,8 @@ function client(goals: CompetitionGoal[] = []): ApiClient {
   } as unknown as ApiClient;
 }
 describe("Calendar competition goals", () => {
+  beforeEach(() => window.history.replaceState({}, "", "/calendar?view=list"));
+
   it("shows all translated categories and creates ordered preset segments", async () => {
     const api = client();
     render(<CalendarPage client={api} canManage athleteId="a" />);

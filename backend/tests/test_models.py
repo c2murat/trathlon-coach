@@ -148,6 +148,8 @@ def test_model_creation_and_utc_timestamps(session: Session) -> None:
     expected_tables.update({"athlete_planning_preference_versions", "athlete_availability_slots"})
     expected_tables.add("training_plan_previews")
     expected_tables.add("planned_session_activity_links")
+    expected_tables.add("planned_session_schedule_changes")
+    expected_tables.add("planned_session_manual_strength_links")
     assert set(Base.metadata.tables) == expected_tables
     assert activity.start_at.utcoffset() == timedelta(0)
     assert all(

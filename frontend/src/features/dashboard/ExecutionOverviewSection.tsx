@@ -6,21 +6,14 @@ import {durationLabel,sessionLabel,sportLabel} from "../calendar/planningFormat"
 import {dateLabel} from "../calendar/competitionLabels";
 import {WorkoutDetail} from "../calendar/PlanningFlowPages";
 import {formatDate} from "../../utils/format";
-import type {ActivityFacts,CompletionStatus,ExecutionOverview,ExecutionSessionView,TargetAdherenceEvidence} from "./executionOverviewTypes";
+import type {ActivityFacts,ExecutionOverview,ExecutionSessionView} from "./executionOverviewTypes";
 import "./executionOverview.css";
+import {executionLongLabels as labels,targetAdherenceText,unmatchedExplanation} from "../execution/executionPresentation";
+export {targetAdherenceText} from "../execution/executionPresentation";
 
-const labels:Record<CompletionStatus,string>={COMPLETED:"Completado",PARTIAL:"Realizado parcialmente",
-  OVER_DURATION:"Duración superior a la prevista",UNKNOWN:"No hay datos suficientes para valorar el cumplimiento",
-  UNMATCHED:"No se ha encontrado una actividad vinculada"};
 const distance=(meters:number|string|null)=>meters===null?"Distancia no disponible":`${(Number(meters)/1000).toLocaleString("es-ES",{maximumFractionDigits:2})} km`;
 const duration=(seconds:number|null)=>seconds===null?"Duración no disponible":durationLabel(seconds);
 
-export function targetAdherenceText(target:TargetAdherenceEvidence|null){
-  if(!target||["LOW","INSUFFICIENT"].includes(target.confidence))return "No hay datos suficientes para comprobar los intervalos";
-  if(Number(target.target_hit_fraction)===1&&target.matched_repetitions===target.planned_repetitions)return "Objetivos comprobados cumplidos";
-  if(Number(target.target_hit_fraction)>0)return "Objetivos parcialmente cumplidos";
-  return "Los objetivos comprobados están fuera del rango previsto";
-}
 function Activity({value,timezone}:{value:ActivityFacts;timezone?:string}){return <div className="execution-activity">
   <AppLink to={`/activities/${value.id}`}>{value.name}</AppLink>
   <p>{sportLabel(value.sport)} · {formatDate(value.started_at,timezone??value.timezone)} · {duration(value.duration_seconds)} · {distance(value.distance_meters)}</p>

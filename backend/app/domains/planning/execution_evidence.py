@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from enum import StrEnum
 from statistics import median
@@ -113,11 +113,19 @@ class ExecutionHistorySummary(FrozenModel):
     groups: tuple[ExecutionHistoryGroup, ...] = ()
 
 
+class ManualStrengthSourceEvidence(FrozenModel):
+    id: UUID
+    started_at: datetime
+    timezone: str
+    duration_seconds: int
+
+
 class PrescribedCompletedEvidenceContext(FrozenModel):
     athlete_profile_id: UUID
     as_of_date: date
     window_start_date: date
     sessions: tuple[SessionExecutionEvidence, ...] = ()
+    manual_strength_sources: tuple[ManualStrengthSourceEvidence, ...] = ()
     summary: ExecutionHistorySummary
     algorithm_version: str = EXECUTION_EVIDENCE_VERSION
 

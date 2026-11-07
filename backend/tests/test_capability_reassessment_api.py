@@ -88,7 +88,7 @@ def test_explicit_cutoff_and_reference_metadata_readonly(performance_client):
     try:
         first = client.get(PATH, params={"as_of_date": "2026-09-07"})
         assert first.status_code == 200
-        assert len(statements) == 3  # membership + empty C.1 + C.7 profile/provenance
+        assert len(statements) == 4  # membership + empty C.1 batch reads + C.7 profile/provenance
         assert client.get(PATH, params={"as_of_date": "2026-09-07"}).json() == first.json()
         body = first.json()
         assert body["window_start_date"] == "2026-06-15"
@@ -169,7 +169,7 @@ def test_query_budget_including_authorization_is_constant(performance_client, co
     event.listen(engine, "before_cursor_execute", record)
     try:
         assert client.get(PATH).status_code == 200
-        assert len(statements) == 5  # membership + three C.1 statements + one C.7
+        assert len(statements) == 7  # membership + five C.1 batch statements + one C.7
         assert sum("FROM activity_laps" in sql for sql in statements) == 1
     finally:
         event.remove(engine, "before_cursor_execute", record)

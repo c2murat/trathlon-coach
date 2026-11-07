@@ -41,6 +41,7 @@ const configuredBaseUrl =
 export interface CoachAssignment {membership_id:string;coach_user_id:string;coach_display_name:string;coach_email:string;athlete_profile_id:string;athlete_display_name:string;is_active:boolean;is_default:boolean}
 export interface CoachAssignmentCandidates {coaches:{user_id:string;display_name:string;email:string}[];athletes:{athlete_profile_id:string;display_name:string}[]}
 export interface ApiClient {
+  calendarExecution?(startDate:string,endDate:string):Promise<import("../features/calendar/calendarExecutionTypes").CalendarExecution>;
   dailyOverview?():Promise<import("../features/dashboard/dailyOverviewTypes").DailyOverview>;
   executionOverview?():Promise<import("../features/dashboard/executionOverviewTypes").ExecutionOverview>;
   trainingStatusOverview?(query:TrainingStatusQuery):Promise<import("../features/trainingStatus/interpretationTypes").TrainingStatusOverview>;
@@ -75,8 +76,10 @@ export interface ApiClient {
   plannedSessionActivityLinks?(sessionId:string):Promise<PlannedSessionActivityLink[]>;
   plannedSessionActivityCandidates?(sessionId:string):Promise<ActivityLinkCandidate[]>;
   linkPlannedSessionActivity?(sessionId:string,activityId:string):Promise<PlannedSessionActivityLink>;
+  linkPlannedSessionManualStrength?(sessionId:string,manualStrengthSessionId:string):Promise<PlannedSessionActivityLink>;
   unlinkPlannedSessionActivity?(sessionId:string,activityId:string):Promise<void>;
   autoMatchPlannedSessionActivity?(sessionId:string):Promise<AutoMatchResult>;
+  reschedulePlannedSession?(sessionId:string,date:string):Promise<{id:string;scheduled_date:string}>;
   competitionCatalogProviders?():Promise<CatalogProvider[]>;
   searchCompetitionCatalog?(filters:CatalogSearchFilters):Promise<CatalogEvent[]>;
   searchWebCompetitions?(filters:CatalogSearchFilters,phase?:"initial"|"more"):Promise<WebCompetitionSearchResponse>;
@@ -166,8 +169,10 @@ export class FetchApiClient implements ApiClient {
   plannedSessionActivityLinks(sessionId:string){return this.request<PlannedSessionActivityLink[]>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-links`)}
   plannedSessionActivityCandidates(sessionId:string){return this.request<ActivityLinkCandidate[]>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-candidates`)}
   linkPlannedSessionActivity(sessionId:string,activityId:string){return this.request<PlannedSessionActivityLink>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-links`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({completed_activity_id:activityId})})}
+  linkPlannedSessionManualStrength(sessionId:string,manualStrengthSessionId:string){return this.request<PlannedSessionActivityLink>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/manual-strength-links`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({manual_strength_session_id:manualStrengthSessionId})})}
   unlinkPlannedSessionActivity(sessionId:string,activityId:string){return this.request<void>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/activity-links/${encodeURIComponent(activityId)}`,{method:"DELETE"})}
   autoMatchPlannedSessionActivity(sessionId:string){return this.request<AutoMatchResult>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/auto-match`,{method:"POST"})}
+  reschedulePlannedSession(sessionId:string,date:string){return this.request<{id:string;scheduled_date:string}>(`/training-plans/sessions/${encodeURIComponent(sessionId)}/reschedule`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date})})}
   competitionCatalogProviders(){return this.request<CatalogProvider[]>("/competition-catalog/providers")}
   searchCompetitionCatalog(filters:CatalogSearchFilters){const params=new URLSearchParams();Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,String(value))});return this.request<CatalogEvent[]>(`/competition-catalog/search?${params}`)}
   searchWebCompetitions(filters:CatalogSearchFilters,phase:"initial"|"more"="initial"){const params=new URLSearchParams({phase});Object.entries(filters).forEach(([key,value])=>{if(value)params.set(key,String(value))});return this.request<WebCompetitionSearchResponse>(`/competition-catalog/web-search?${params}`)}
@@ -256,6 +261,7 @@ export class FetchApiClient implements ApiClient {
   recalculateManualStrengthLoad(id:string){return this.request<ManualStrengthTrainingLoad>(`/manual-strength-sessions/${encodeURIComponent(id)}/training-load/recalculate`,{method:"POST"})}
   listTrainingStatus(query:TrainingStatusQuery){return this.request<DailyTrainingStatus[]>("/training-status?"+this.trainingStatusParams(query))}
   executionOverview(){return this.request<import("../features/dashboard/executionOverviewTypes").ExecutionOverview>("/dashboard/execution-overview")}
+  calendarExecution(startDate:string,endDate:string){return this.request<import("../features/calendar/calendarExecutionTypes").CalendarExecution>(`/dashboard/calendar-execution?${new URLSearchParams({start_date:startDate,end_date:endDate})}`)}
   dailyOverview(){return this.request<import("../features/dashboard/dailyOverviewTypes").DailyOverview>("/dashboard/daily-overview")}
   trainingStatusOverview(query:TrainingStatusQuery){return this.request<import("../features/trainingStatus/interpretationTypes").TrainingStatusOverview>("/training-status/overview?"+this.trainingStatusParams(query))}
   async getLatestTrainingStatus(query:LatestTrainingStatusQuery){try{return await this.request<DailyTrainingStatus>("/training-status/latest?"+this.trainingStatusParams(query))}catch(error){if(error instanceof Error&&error.message.includes("(404)")&&error.message.includes("training_status_not_found"))return null;throw error}}

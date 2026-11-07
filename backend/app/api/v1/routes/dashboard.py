@@ -10,8 +10,21 @@ from app.application.queries.dashboard_analytics import DashboardAnalyticsQuery
 from app.db.session import get_db_session
 from app.db.base import utc_now
 from app.application.execution_overview import ExecutionOverview, ExecutionOverviewApplication
+from app.application.calendar_execution import CalendarExecution, CalendarExecutionApplication
+from app.api.dependencies.athlete_permissions import AthleteCapability, require_athlete_capability
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+@router.get("/calendar-execution", response_model=CalendarExecution)
+def calendar_execution(response: Response, start_date: date, end_date: date,
+    current_athlete: CurrentAthleteContext = Depends(require_athlete_capability(AthleteCapability.READ_TRAINING_PLANNING)),
+    session: Session = Depends(get_db_session)):
+    if start_date < date(2000,1,1) or end_date > date(9999,12,30) or end_date < start_date or (end_date-start_date).days > 365:
+        raise HTTPException(422, detail={"code":"invalid_calendar_execution_range"})
+    response.headers["Cache-Control"] = "private, no-store"
+    return CalendarExecutionApplication(session).assemble(athlete_id=current_athlete.athlete_id,
+        start_date=start_date, end_date=end_date, timezone_name=current_athlete.athlete_profile.timezone, now=utc_now())
 
 from app.application.athlete_daily_overview import AthleteDailyOverview, AthleteDailyOverviewApplication
 

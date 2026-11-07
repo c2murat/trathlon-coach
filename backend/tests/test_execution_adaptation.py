@@ -232,7 +232,7 @@ def test_real_assembler_adds_no_queries_and_cross_athlete_rows_cannot_influence_
         def count_queries(*args): statements.append(args[2])
         result = ExecutionAdaptationContextAssembler(db).assemble(athlete_profile_id=athlete_a.id, as_of_date=AS_OF)
         event.remove(engine, "before_cursor_execute", count_queries)
-        assert len(statements) == 3
+        assert len(statements) == 5
         assert result.global_summary.session_count == 3
         assert result.global_summary.duration_completed == 3
         assert result.session_type_signals[0].signal == AdaptationSignalKind.MAINTAIN

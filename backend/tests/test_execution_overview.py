@@ -88,7 +88,7 @@ def test_api_readonly_deterministic_authorized_and_bounded(db):
     try:
         client=TestClient(app);first=client.get("/dashboard/execution-overview?as_of_date=2026-01-11")
         assert first.status_code==200
-        assert len(statements)<=8  # Constant batch reads, never one query per session.
+        assert len(statements)<=9  # Constant batch reads, never one query per session.
         assert len(first.json()["recent_sessions"])==5
         assert first.json()==client.get("/dashboard/execution-overview?as_of_date=2026-01-11").json()
         assert client.get("/dashboard/execution-overview",headers={"X-TriCoach-Athlete-Id":other_id}).status_code==403

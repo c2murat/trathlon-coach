@@ -72,11 +72,20 @@ def _duration(activity: CompletedActivity) -> int:
     return activity.moving_time_s if activity.moving_time_s is not None else activity.elapsed_time_s
 
 
+def _week_bounds(value: date) -> tuple[date, date]:
+    start = value - timedelta(days=value.weekday())
+    return start, start + timedelta(days=7)
+
+
+def _compatible_sports(planned: PlannedTrainingSession) -> frozenset[str]:
+    return PLANNED_TO_COMPLETED_SPORTS.get(planned.sport, frozenset())
+
+
 def _score(planned: PlannedTrainingSession, activity: CompletedActivity) -> Candidate:
     local = _local_date(activity); delta = abs((local - planned.scheduled_date).days)
     evidence = ["sport_compatible"]
     score = 0.2 + (0.6 if delta == 0 else 0.3)
-    evidence.append("same_local_date" if delta == 0 else "adjacent_local_date")
+    evidence.append("same_local_date" if delta == 0 else "same_week")
     actual = _duration(activity)
     if planned.planned_duration_seconds and actual >= 0:
         error = abs(actual - planned.planned_duration_seconds) / planned.planned_duration_seconds
@@ -100,17 +109,21 @@ class PlannedSessionActivityMatching:
         return row
 
     def find_candidates(self, athlete_id: UUID, planned: PlannedTrainingSession) -> tuple[Candidate, ...]:
-        sports = PLANNED_TO_COMPLETED_SPORTS.get(planned.sport, frozenset())
+        sports = _compatible_sports(planned)
         if not sports: return ()
+        start, end = _week_bounds(planned.scheduled_date)
         # Broad UTC bounds are narrowed with each activity's persisted timezone in Python.
-        left = datetime.combine(planned.scheduled_date - timedelta(days=DATE_WINDOW_DAYS + 1), time.min, timezone.utc)
-        right = datetime.combine(planned.scheduled_date + timedelta(days=DATE_WINDOW_DAYS + 2), time.min, timezone.utc)
+        left = datetime.combine(start - timedelta(days=1), time.min, timezone.utc)
+        right = datetime.combine(end + timedelta(days=1), time.min, timezone.utc)
+        linked_activity_ids = set(self.session.scalars(select(PlannedSessionActivityLink.completed_activity_id).where(
+            PlannedSessionActivityLink.athlete_profile_id == athlete_id,
+        )).all())
         rows = self.session.scalars(select(CompletedActivity).where(
             CompletedActivity.athlete_id == athlete_id, CompletedActivity.sport.in_(sports),
             CompletedActivity.start_at >= left, CompletedActivity.start_at < right,
             CompletedActivity.deleted_at.is_(None), CompletedActivity.provider_deleted_at.is_(None),
         ).order_by(CompletedActivity.start_at, CompletedActivity.id)).all()
-        candidates = [_score(planned, row) for row in rows if abs((_local_date(row) - planned.scheduled_date).days) <= DATE_WINDOW_DAYS]
+        candidates = [_score(planned, row) for row in rows if start <= _local_date(row) < end and row.id not in linked_activity_ids]
         return tuple(sorted(candidates, key=lambda item: (-item.score, item.activity.start_at, str(item.activity.id)))[:MAX_CANDIDATES])
 
     def evaluate_match(self, athlete_id: UUID, planned: PlannedTrainingSession, candidates: tuple[Candidate, ...] | None = None) -> MatchEvaluation:
@@ -143,6 +156,10 @@ class PlannedSessionActivityMatching:
         planned = self.session_for_athlete(athlete_id, session_id, lock=True)
         activity = self.session.scalar(select(CompletedActivity).where(CompletedActivity.id == activity_id, CompletedActivity.athlete_id == athlete_id, CompletedActivity.deleted_at.is_(None), CompletedActivity.provider_deleted_at.is_(None)).with_for_update())
         if activity is None: raise ActivityNotFoundError()
+        sports = _compatible_sports(planned)
+        local = _local_date(activity)
+        start, end = _week_bounds(planned.scheduled_date)
+        if activity.sport not in sports or not (start <= local < end): raise NoMatchError()
         existing = self.session.scalar(select(PlannedSessionActivityLink).where(PlannedSessionActivityLink.planned_training_session_id == session_id, PlannedSessionActivityLink.completed_activity_id == activity_id))
         if existing:
             if source == "manual" and existing.match_source == "automatic":
@@ -153,6 +170,12 @@ class PlannedSessionActivityMatching:
                 return existing
             if source == "automatic" or existing.match_source == source: return existing
             raise LinkConflictError()
+        linked_elsewhere = self.session.scalar(select(PlannedSessionActivityLink.id).where(
+            PlannedSessionActivityLink.athlete_profile_id == athlete_id,
+            PlannedSessionActivityLink.completed_activity_id == activity_id,
+            PlannedSessionActivityLink.planned_training_session_id != session_id,
+        ).limit(1))
+        if linked_elsewhere is not None: raise LinkConflictError()
         if source == "automatic":
             evaluation = self.evaluate_match(athlete_id, planned)
             if evaluation.classification is MatchClassification.AMBIGUOUS: raise AmbiguousMatchError()

@@ -66,6 +66,38 @@ class PlannedSessionActivityLink(UUIDPrimaryKeyMixin,Base):
     algorithm_version:Mapped[str|None]=mapped_column(String(32))
     created_at:Mapped[datetime]=mapped_column(UTCDateTime(),nullable=False,default=lambda:datetime.now(timezone.utc))
 
+class PlannedSessionScheduleChange(UUIDPrimaryKeyMixin,Base):
+    __tablename__="planned_session_schedule_changes"
+    __table_args__=(
+      CheckConstraint("previous_scheduled_date <> new_scheduled_date",name="planned_session_schedule_change_date_changed"),
+      Index("ix_planned_session_schedule_changes_athlete","athlete_profile_id"),
+      Index("ix_planned_session_schedule_changes_session","planned_training_session_id"),)
+    athlete_profile_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("athlete_profiles.id",ondelete="CASCADE"),nullable=False)
+    planned_training_session_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("planned_training_sessions.id",ondelete="CASCADE"),nullable=False)
+    training_plan_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("training_plans.id",ondelete="CASCADE"),nullable=False)
+    previous_scheduled_date:Mapped[date]=mapped_column(Date,nullable=False)
+    new_scheduled_date:Mapped[date]=mapped_column(Date,nullable=False)
+    changed_by_user_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("users.id",ondelete="RESTRICT"),nullable=False)
+    changed_at:Mapped[datetime]=mapped_column(UTCDateTime(),nullable=False,default=lambda:datetime.now(timezone.utc))
+    reason:Mapped[str|None]=mapped_column(String(200))
+
+class PlannedSessionManualStrengthLink(UUIDPrimaryKeyMixin,Base):
+    __tablename__="planned_session_manual_strength_links"
+    __table_args__=(
+      CheckConstraint("match_source = 'manual'",name="planned_session_manual_strength_link_source_manual"),
+      CheckConstraint("match_confidence IN ('high','medium','low')",name="planned_session_manual_strength_link_confidence_valid"),
+      UniqueConstraint("planned_training_session_id","manual_strength_session_id",name="uq_planned_session_manual_strength_link_pair"),
+      Index("ix_planned_session_manual_strength_links_athlete","athlete_profile_id"),
+      Index("ix_planned_session_manual_strength_links_session","planned_training_session_id"),
+      Index("ix_planned_session_manual_strength_links_manual","manual_strength_session_id"),)
+    athlete_profile_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("athlete_profiles.id",ondelete="CASCADE"),nullable=False)
+    planned_training_session_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("planned_training_sessions.id",ondelete="CASCADE"),nullable=False)
+    manual_strength_session_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("manual_strength_sessions.id",ondelete="CASCADE"),nullable=False)
+    match_source:Mapped[str]=mapped_column(String(16),nullable=False,default="manual")
+    match_confidence:Mapped[str]=mapped_column(String(16),nullable=False,default="high")
+    created_by_user_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("users.id",ondelete="RESTRICT"),nullable=False)
+    created_at:Mapped[datetime]=mapped_column(UTCDateTime(),nullable=False,default=lambda:datetime.now(timezone.utc))
+
 class StructuredWorkout(UUIDPrimaryKeyMixin,TimestampMixin,Base):
     __tablename__="structured_workouts";__table_args__=(CheckConstraint("schema_version = 1",name="structured_workout_schema_version_valid"),UniqueConstraint("planned_training_session_id",name="uq_structured_workout_session"),)
     planned_training_session_id:Mapped[UUID]=mapped_column(Uuid(as_uuid=True),ForeignKey("planned_training_sessions.id",ondelete="CASCADE"),nullable=False);schema_version:Mapped[int]=mapped_column(Integer,nullable=False);definition:Mapped[dict]=mapped_column(JSON_DOCUMENT,nullable=False)

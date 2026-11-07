@@ -16,6 +16,9 @@ import { CompetitionCatalogSearch } from "./CompetitionCatalogSearch";
 import { AppLink } from "../../app/usePathname";
 import { durationLabel, sportLabel } from "./planningFormat";
 import { categoryLabels, dateLabel, segmentLabels } from "./competitionLabels";
+import {CalendarExecutionDetail,ExecutionBadge} from "./CalendarExecution";
+import type {CalendarExecution} from "./calendarExecutionTypes";
+import {activitySyncCompletedEvent} from "../../components/ActivitySyncButton";
 type SegmentDraft = {
   sport: CompetitionSegmentSport;
   distanceKm: string;
@@ -37,6 +40,13 @@ type Form = {
   sourceProvider?: "tavily";
   sourceUrl?: string;
 };
+type CalendarView = "list" | "month" | "year";
+function initialCalendarView(): CalendarView {
+  const value = new URLSearchParams(window.location.search).get("view");
+  return value === "list" || value === "year" || value === "month"
+    ? value
+    : "month";
+}
 const segment = (
   sport: CompetitionSegmentSport,
   distance_m?: number,
@@ -167,23 +177,30 @@ export function CalendarPage({
     [saving, setSaving] = useState(false),
     [feedback, setFeedback] = useState(""),
     [panel, setPanel] = useState<"none" | "form" | "catalog">("none"),
-    [view, setView] = useState<"list" | "month" | "year">("list"),
+    [view, setView] = useState<CalendarView>(initialCalendarView),
     [year, setYear] = useState(new Date().getFullYear()),
     [month, setMonth] = useState(new Date().getMonth()),
     [selectedDate, setSelectedDate] = useState<string | null>(null);
   const generation = useRef(0);
+  const [execution,setExecution]=useState<CalendarExecution|null>(null);
+  const [executionError,setExecutionError]=useState(false);
   const load = async () => {
     const current = ++generation.current;
     const range = view === "month" ? monthGridRange(year, month) : { start: `${year}-01-01`, end: `${year}-12-31` };
     setLoading(true);
     setError("");
+    setExecution(null);setExecutionError(false);
     try {
-      const [value, sessions] = await Promise.all([
+      const [value, sessions, facts] = await Promise.all([
         client.competitionGoals?.(),
         client.plannedTrainingSessions?.(range.start, range.end) ??
           Promise.resolve([]),
+        client.calendarExecution?.(range.start,range.end).catch(()=>null)??Promise.resolve(null),
       ]);
       if (current === generation.current) {
+        const valid=facts&&(!athleteId||facts.athlete_id===athleteId)&&facts.start_date===range.start&&facts.end_date===range.end;
+        setExecution(valid?facts:null);
+        setExecutionError(Boolean(client.calendarExecution&&!valid));
         setGoals(value ?? []);
         setPlanned(sessions);
       }
@@ -198,12 +215,20 @@ export function CalendarPage({
     setGoals([]);
     setPlanned([]);
     setPanel("none");
-    setSelectedDate(null);
     void load();
     return () => {
       generation.current++;
     };
   }, [client, athleteId, view, year, month]);
+  useEffect(()=>{setSelectedDate(null)},[client,athleteId]);
+  useEffect(()=>{
+    const refresh=(event:Event)=>{const source=(event as CustomEvent<{athleteId?:string}>).detail?.athleteId;
+      if(!source||!athleteId||source===athleteId)void load()};
+    window.addEventListener(activitySyncCompletedEvent,refresh);
+    return()=>window.removeEventListener(activitySyncCompletedEvent,refresh);
+  },[client,athleteId,view,year,month]);
+  const scopedExecution=execution&&(!athleteId||execution.athlete_id===athleteId)?execution:null;
+  const evidenceFor=(id:string)=>scopedExecution?.sessions.find(x=>x.id===id&&x.date<scopedExecution.as_of_date);
   const chooseFormat = (category: CompetitionCategory, format: string) =>
     setForm((value) => ({
       ...value,
@@ -632,9 +657,11 @@ export function CalendarPage({
           </fieldset>
         </form>
       )}
+      {executionError&&<p role="alert">No se ha podido consultar la ejecución de las sesiones. La planificación sigue disponible.</p>}
       {view === "year" ? (
         <AnnualCalendar
-          items={calendarItems(goals,planned)}
+          items={calendarItems(goals,planned,scopedExecution)}
+          today={scopedExecution?.as_of_date}
           year={year}
           onYearChange={setYear}
           onSelectDate={(date) => {
@@ -644,10 +671,16 @@ export function CalendarPage({
         />
       ) : view === "month" ? (
         <MonthlyCalendar
-          items={calendarItems(goals, planned)}
+          items={calendarItems(goals, planned,scopedExecution)}
+          today={scopedExecution?.as_of_date}
+          timezone={scopedExecution?.timezone}
           year={year}
           month={month}
           selectedDate={selectedDate}
+          client={client}
+          athleteId={athleteId}
+          canManage={canManage}
+          onExecutionLinked={() => void load()}
           onMonthChange={(nextYear, nextMonth) => {
             setSelectedDate(null);
             setYear(nextYear);
@@ -720,6 +753,8 @@ export function CalendarPage({
                     {sportLabel(session.sport)} ·{" "}
                     {durationLabel(session.planned_duration_seconds)}
                   </p>
+                  <ExecutionBadge value={evidenceFor(session.id)}/>
+                  <CalendarExecutionDetail value={evidenceFor(session.id)} timezone={scopedExecution?.timezone??"UTC"} client={client} athleteId={athleteId} canManage={canManage} onLinked={() => void load()}/>
                 </div>
               </article>
             ))}

@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 describe("AppShell", () => {
-it("marks profile and reference actions as denied for read-only capabilities",async()=>{const viewer={...session,athletes:[{...session.athletes[0],role:"viewer",capabilities:["read_athlete_data","read_strava_integration"]}]};renderShell("/settings/performance-profile",viewer);const heading=await screen.findByRole("heading",{name:"Perfil de rendimiento"});expect(heading.closest(".deny-profile")).toHaveClass("deny-reference")});
+it("marks profile and reference actions as denied for read-only capabilities",async()=>{const viewer={...session,athletes:[{...session.athletes[0],role:"viewer",capabilities:["read_athlete_data","read_strava_integration"]}]};renderShell("/settings/performance-profile",viewer);const heading=await screen.findByRole("heading",{name:"Perfil de rendimiento"});expect(heading.closest(".deny-profile")).toHaveClass("deny-reference");expect(await screen.findByText("Todavía no hay un perfil de rendimiento.")).toBeVisible()});
   it("uses technical capabilities without rendering the membership role in the athlete header",async()=>{const coach={...session,athletes:[{...session.athletes[0],role:"coach",capabilities:["read_athlete_data","create_performance_profile","create_performance_reference"]}]};renderShell("/settings/performance-profile",coach);expect(await screen.findByRole("button",{name:"Crear primera versión"})).toBeVisible();expect(screen.getByRole("button",{name:"Nueva referencia"})).toBeVisible();expect(screen.queryByText("Entrenador")).not.toBeInTheDocument()});
   it("uses accessible decorative SVG icons for primary navigation and keeps subsections icon-free", async () => {
     renderShell("/dashboard");
@@ -111,7 +111,11 @@ it("marks profile and reference actions as denied for read-only capabilities",as
       await screen.findByRole("heading", { name: "Calendario" }),
     ).toBeInTheDocument();
 
-    expect(await screen.findByText("Todavía no tienes objetivos ni sesiones planificadas.")).toBeVisible();
+    expect(await screen.findByRole("grid")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Mes" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("shows a time-aware Spanish greeting", async () => {

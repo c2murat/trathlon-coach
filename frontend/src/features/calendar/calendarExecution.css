@@ -1,0 +1,10 @@
+.calendar-execution-badge { display: inline-block; width: fit-content; max-width: 100%; padding: .15rem .4rem; border: 1px solid currentColor; border-radius: .4rem; font-size: .75rem; line-height: 1.3; color: #49616a; background: #f3f6f6; white-space: normal; }
+.calendar-execution-badge--complete { color: #246157; background: #edf8f4; }
+.calendar-execution-badge--partial, .calendar-execution-badge--duration { color: #79551b; background: #fcf7e9; }
+.calendar-execution-detail { margin-top: .7rem; max-width: 100%; overflow-wrap: anywhere; }
+.calendar-execution-detail summary { cursor: pointer; }
+.calendar-execution-detail section { padding: .75rem 0; }
+.calendar-execution-detail article { border-top: 1px solid #dbe5e5; padding: .6rem 0; }
+.calendar-event .calendar-execution-badge { font-size: .65rem; padding: 0 .2rem; }
+.monthly-event .calendar-execution-badge { font-size: .65rem; }
+.calendar-execution-detail a { text-decoration: underline; }

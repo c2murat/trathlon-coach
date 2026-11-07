@@ -39,7 +39,7 @@ function routeContent(path:string,client:ApiClient,has:(capability:AthleteCapabi
  if(/^\/calendar\/planning\/previews\/[^/]+$/.test(path))return <PlanningPreviewPage client={client} athleteId={athlete?.athlete_id??""} canAccept={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
  if(/^\/calendar\/training-plans\/[^/]+$/.test(path))return <TrainingPlanPage client={client} athleteId={athlete?.athlete_id??""} canManage={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
  if(path==="/calendar")return <CalendarPage client={client} athleteId={athlete?.athlete_id??null} athleteName={athlete?.label} canManage={has(ATHLETE_CAPABILITIES.MANAGE_GOALS)} canGenerate={has(ATHLETE_CAPABILITIES.GENERATE_PLAN)}/>;
- if(path==="/activities/strength")return <ManualStrengthPage client={client} canCreate={has(ATHLETE_CAPABILITIES.CREATE_STRENGTH)} canUpdate={has(ATHLETE_CAPABILITIES.UPDATE_STRENGTH)} canDelete={has(ATHLETE_CAPABILITIES.DELETE_STRENGTH)} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
+ if(path==="/activities/strength")return <ManualStrengthPage client={client} athleteId={athlete?.athlete_id} canCreate={has(ATHLETE_CAPABILITIES.CREATE_STRENGTH)} canUpdate={has(ATHLETE_CAPABILITIES.UPDATE_STRENGTH)} canDelete={has(ATHLETE_CAPABILITIES.DELETE_STRENGTH)} canRecalculate={has(ATHLETE_CAPABILITIES.RECALCULATE)}/>;
  if(path==="/settings/account")return <AccountPage client={client}/>;
  if(path==="/settings/coaches")return <CoachAssignmentsPage client={client}/>;
  if(path==="/settings/athlete-profile")return <AthleteProfilePage client={client}/>;

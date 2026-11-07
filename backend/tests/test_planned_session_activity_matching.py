@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.application.planned_session_activity_matching import (
-    ActivityNotFoundError, MatchClassification, PlannedSessionActivityMatching,
+    ActivityNotFoundError, LinkConflictError, MatchClassification, NoMatchError, PlannedSessionActivityMatching,
 )
 from app.db.base import Base
 from app.db.models import AthleteProfile, CompletedActivity, PlannedSessionActivityLink, PlannedTrainingSession
@@ -43,7 +43,13 @@ def test_clear_match_uses_local_date_duration_and_distance(db):
 def test_adjacent_day_is_candidate_with_penalty(db,day):
     owner=athlete(db); session=planned(db,owner); activity(db,owner,day=day)
     candidate=PlannedSessionActivityMatching(db,today=date(2026,1,12)).find_candidates(owner.id,session)[0]
-    assert candidate.score<.85 and "adjacent_local_date" in candidate.evidence
+    assert candidate.score<.85 and "same_week" in candidate.evidence
+
+
+def test_same_week_non_adjacent_day_is_manual_candidate(db):
+    owner=athlete(db); session=planned(db,owner,day=date(2026,1,10)); actual=activity(db,owner,day=5)
+    candidates=PlannedSessionActivityMatching(db,today=date(2026,1,12)).find_candidates(owner.id,session)
+    assert [item.activity.id for item in candidates]==[actual.id]
 
 
 def test_hard_filters_and_strength_ignores_distance(db):
@@ -70,12 +76,14 @@ def test_manual_nm_idempotency_priority_and_unlink(db):
     owner=athlete(db); one=planned(db,owner);two=planned(db,owner,day=date(2026,1,11));a=activity(db,owner);b=activity(db,owner,hour=10)
     app=PlannedSessionActivityMatching(db,today=date(2026,1,12))
     first=app.create_link(owner.id,one.id,a.id,source="manual");assert app.create_link(owner.id,one.id,a.id,source="manual").id==first.id
-    app.create_link(owner.id,one.id,b.id,source="manual");app.create_link(owner.id,two.id,a.id,source="manual");db.commit()
-    assert db.scalar(select(func.count()).select_from(PlannedSessionActivityLink))==3
+    app.create_link(owner.id,one.id,b.id,source="manual")
+    with pytest.raises(LinkConflictError): app.create_link(owner.id,two.id,a.id,source="manual")
+    db.commit()
+    assert db.scalar(select(func.count()).select_from(PlannedSessionActivityLink))==2
     result,link=app.auto_match(owner.id,one.id);assert link is None and result.classification is MatchClassification.AMBIGUOUS
     app.unlink(owner.id,one.id,a.id);app.unlink(owner.id,one.id,a.id);db.commit()
     assert db.get(PlannedTrainingSession,one.id) and db.get(CompletedActivity,a.id)
-    assert db.scalar(select(func.count()).select_from(PlannedSessionActivityLink))==2
+    assert db.scalar(select(func.count()).select_from(PlannedSessionActivityLink))==1
 
 
 def test_manual_promotes_same_automatic_link_in_place(db):
@@ -91,6 +99,19 @@ def test_manual_promotes_same_automatic_link_in_place(db):
 def test_cross_athlete_is_hidden(db):
     owner=athlete(db);other=athlete(db,"B");session=planned(db,owner);foreign=activity(db,other)
     with pytest.raises(ActivityNotFoundError): PlannedSessionActivityMatching(db).create_link(owner.id,session.id,foreign.id,source="manual")
+
+
+def test_manual_link_rejects_incompatible_sport_and_outside_week(db):
+    owner=athlete(db); session=planned(db,owner,day=date(2026,1,10),sport="cycling"); run=activity(db,owner,sport="running"); outside=activity(db,owner,day=13,sport="cycling")
+    app=PlannedSessionActivityMatching(db,today=date(2026,1,12))
+    with pytest.raises(NoMatchError): app.create_link(owner.id,session.id,run.id,source="manual")
+    with pytest.raises(NoMatchError): app.create_link(owner.id,session.id,outside.id,source="manual")
+
+
+def test_candidates_exclude_already_linked_activity(db):
+    owner=athlete(db); first=planned(db,owner); second=planned(db,owner,day=date(2026,1,11)); actual=activity(db,owner)
+    app=PlannedSessionActivityMatching(db,today=date(2026,1,12)); app.create_link(owner.id,first.id,actual.id,source="manual"); db.commit()
+    assert app.find_candidates(owner.id,second)==()
 
 
 def test_future_session_never_auto_matches(db):

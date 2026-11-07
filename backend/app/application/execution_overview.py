@@ -7,7 +7,7 @@ from sqlalchemy import select
 from pydantic import field_serializer
 
 from app.application.execution_evidence import PrescribedCompletedEvidenceAssembler
-from app.db.models import CompletedActivity, PlannedSessionActivityLink, PlannedTrainingSession, StructuredWorkout
+from app.db.models import CompletedActivity, ManualStrengthSession, PlannedSessionActivityLink, PlannedTrainingSession, StructuredWorkout
 from app.domains.planning.execution_evidence import FrozenModel, SessionExecutionEvidence, EXECUTION_EVIDENCE_VERSION
 from app.domains.planning.models import StructuredWorkoutDefinition
 
@@ -58,6 +58,13 @@ def activity_facts(row):
         average_power_w=row.average_power_w)
 
 
+def manual_strength_facts(row):
+    return ActivityFacts(id=row.id, name="Fuerza manual", sport="strength", started_at=row.started_at,
+        timezone=getattr(row, "timezone_name", getattr(row, "timezone", "UTC")),
+        duration_seconds=getattr(row, "duration_minutes", None) * 60 if hasattr(row, "duration_minutes") else row.duration_seconds,
+        distance_meters=None, average_heart_rate_bpm=None, average_power_w=None)
+
+
 class ExecutionOverviewApplication:
     def __init__(self, session):
         self.session = session
@@ -76,10 +83,17 @@ class ExecutionOverviewApplication:
                 CompletedActivity.athlete_id == athlete_id, CompletedActivity.deleted_at.is_(None),
                 CompletedActivity.provider_deleted_at.is_(None), CompletedActivity.start_at < end,
             ).order_by(CompletedActivity.start_at.desc(), CompletedActivity.id.desc()).limit(1))
+            manual_sources = {row.id: manual_strength_facts(row) for row in context.manual_strength_sources}
+            latest_manual = max(manual_sources.values(), key=lambda item: (item.started_at, str(item.id)), default=None)
+            latest_activity = activity_facts(latest) if latest else None
+            if latest_manual is not None and (latest_activity is None or latest_manual.started_at > latest_activity.started_at):
+                latest_activity = latest_manual
             latest_sessions = () if latest is None else tuple(self.session.scalars(select(PlannedSessionActivityLink.planned_training_session_id).where(
                 PlannedSessionActivityLink.athlete_profile_id == athlete_id,
                 PlannedSessionActivityLink.completed_activity_id == latest.id,
             )).all())
+            if latest_activity is not None and latest_activity.id in manual_sources:
+                latest_sessions = tuple(item.planned_session_id for item in context.sessions if latest_activity.id in item.source_activity_ids)
             ids = {item.planned_session_id for item in recent} | set(latest_sessions)
             plans = () if not ids else self.session.execute(select(PlannedTrainingSession, StructuredWorkout)
                 .outerjoin(StructuredWorkout, StructuredWorkout.planned_training_session_id == PlannedTrainingSession.id)
@@ -92,6 +106,7 @@ class ExecutionOverviewApplication:
                 select(CompletedActivity).where(CompletedActivity.athlete_id == athlete_id,
                     CompletedActivity.id.in_(activity_ids), CompletedActivity.deleted_at.is_(None),
                     CompletedActivity.provider_deleted_at.is_(None))).all()}
+            activities.update({key: value for key, value in manual_sources.items() if key in activity_ids})
             views = {}
             for planned, workout in plans:
                 item = evidence.get(planned.id)
@@ -103,6 +118,6 @@ class ExecutionOverviewApplication:
                     activities=tuple(activities[key] for key in sources if key in activities))
             return ExecutionOverview(athlete_id=athlete_id, as_of_date=as_of_date,
                 window_start_date=context.window_start_date,
-                latest_activity=activity_facts(latest) if latest else None,
+                latest_activity=latest_activity,
                 latest_activity_sessions=tuple(view for key,view in views.items() if key in latest_sessions),
                 recent_sessions=tuple(views[item.planned_session_id] for item in recent))

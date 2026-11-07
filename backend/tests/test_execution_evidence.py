@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.application.execution_evidence import PrescribedCompletedEvidenceAssembler
 from app.db.base import Base
-from app.db.models import ActivityLap, AthleteProfile, CompletedActivity, PlannedSessionActivityLink, PlannedTrainingSession, StructuredWorkout
+from app.db.models import ActivityLap, AthleteProfile, CompletedActivity, ManualStrengthSession, PlannedSessionActivityLink, PlannedTrainingSession, StructuredWorkout
 from app.domains.capability.analysis import LapEvidence
 from app.domains.planning.execution_evidence import (
     ComparisonConfidence, CompletionStatus, EXECUTION_EVIDENCE_VERSION,
@@ -142,6 +142,48 @@ def test_strength_compares_only_link_and_duration_and_low_match_confidence_is_pr
     assert strength.target_comparison is None
 
 
+def test_manual_strength_session_is_direct_duration_evidence_when_unambiguous(db):
+    athlete = AthleteProfile(display_name="A", timezone="Europe/Madrid", unit_system="metric")
+    db.add(athlete); db.flush()
+    row = add_session(db, athlete, day=AS_OF - timedelta(days=1), sport="strength", duration=2400, with_activity=False)
+    manual = ManualStrengthSession(
+        athlete_id=athlete.id,
+        started_at=datetime(2026, 9, 6, 18, 0, tzinfo=timezone.utc),
+        timezone_name="Europe/Madrid",
+        duration_minutes=40,
+        body_regions=["full_body"],
+        perceived_exertion=None,
+    )
+    db.add(manual); db.commit()
+    context = PrescribedCompletedEvidenceAssembler(db).assemble(athlete_profile_id=athlete.id, as_of_date=AS_OF)
+    evidence = context.sessions[0]
+    assert evidence.planned_session_id == row.id
+    assert evidence.source_activity_ids == (manual.id,)
+    assert evidence.actual_duration_seconds == 2400
+    assert evidence.completion_status == CompletionStatus.COMPLETED
+    assert evidence.target_comparison is None
+    assert context.manual_strength_sources[0].id == manual.id
+
+
+def test_multiple_manual_strength_candidates_are_not_chosen_arbitrarily(db):
+    athlete = AthleteProfile(display_name="A", timezone="Europe/Madrid", unit_system="metric")
+    db.add(athlete); db.flush()
+    add_session(db, athlete, day=AS_OF - timedelta(days=1), sport="strength", duration=2400, with_activity=False)
+    for hour in (17, 19):
+        db.add(ManualStrengthSession(
+            athlete_id=athlete.id,
+            started_at=datetime(2026, 9, 6, hour, 0, tzinfo=timezone.utc),
+            timezone_name="Europe/Madrid",
+            duration_minutes=40,
+            body_regions=["full_body"],
+            perceived_exertion=None,
+        ))
+    db.commit()
+    context = PrescribedCompletedEvidenceAssembler(db).assemble(athlete_profile_id=athlete.id, as_of_date=AS_OF)
+    assert context.sessions[0].completion_status == CompletionStatus.UNMATCHED
+    assert context.sessions[0].source_activity_ids == ()
+
+
 @pytest.mark.parametrize(("pace", "relation"), [
     (200, TargetExecutionRelation.FASTER_THAN_TARGET),
     (245, TargetExecutionRelation.SLOWER_THAN_TARGET),
@@ -227,7 +269,7 @@ def test_assembler_excludes_future_and_other_athletes_is_deterministic_and_three
     @event.listens_for(db.bind, "before_cursor_execute")
     def count_queries(*args): statements.append(args[2])
     first = PrescribedCompletedEvidenceAssembler(db).assemble(athlete_profile_id=athlete_a.id, as_of_date=AS_OF)
-    assert len(statements) == 3
+    assert len(statements) == 5
     event.remove(db.bind, "before_cursor_execute", count_queries)
     second = PrescribedCompletedEvidenceAssembler(db).assemble(athlete_profile_id=athlete_a.id, as_of_date=AS_OF)
     assert first.model_dump_json() == second.model_dump_json()
