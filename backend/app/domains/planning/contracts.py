@@ -232,7 +232,7 @@ class PlanningWarning(FrozenModel):
         "WEEKLY_LOAD_BUDGET_UNDERSHOT",
         "WEEKLY_LOAD_BUDGET_OVERSHOT",
         "PREFERRED_REST_DAY_UNAVAILABLE",
-        "PREFERRED_LONG_DAY_UNAVAILABLE",
+        "PREFERRED_LONG_DAY_UNAVAILABLE", "FREQUENCY_TARGET_CONSTRAINED",
     ]
     severity: Literal["WARNING", "ERROR"] = "WARNING"
     blocking: bool = False
@@ -409,7 +409,7 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, dict):
         # Preserve hashes of stored C.4 artifacts that predate this optional field.
         return {str(key): _canonical_value(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-                if not (key in {"numeric_policy_version", "prescription_level_transition", "target_sessions_per_week"} and item is None)}
+                if not (key in {"numeric_policy_version", "prescription_level_transition", "target_sessions_per_week", "frequency_decision"} and item is None)}
     if isinstance(value, (tuple, list)):
         return [_canonical_value(item) for item in value]
     if isinstance(value, Enum):

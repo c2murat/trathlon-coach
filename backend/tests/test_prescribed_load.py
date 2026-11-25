@@ -6,6 +6,7 @@ from app.domains.planning.prescribed_load import estimate_prescribed_load, recon
 from app.domains.planning.preview import preview_artifact_payload, build_preview_artifact
 from app.domains.planning.contracts import context_fingerprint
 from tests.test_planning_preview_artifact import artifact
+from tests.test_frequency_intent import tri
 from tests.test_session_planning import build
 from tests.test_weekly_budget import historical_windows
 from app.domains.planning.workout_builder import build_structured_workout, WorkoutBuilderConfig
@@ -116,3 +117,29 @@ def test_prescription_changes_still_change_preview_fingerprint(change):
         budgets=a.weekly_budget_plan,session_plan=plan,goals=a.goals,workout_drafts=tuple(drafts),
         algorithm_version=a.algorithm_version,configuration_version=a.configuration_version)
     assert b.fingerprint != a.fingerprint
+
+
+def test_frequency_scenarios_estimate_actual_added_work_not_budget():
+    results=[]
+    for target in (5,6,7):
+        ctx=tri(target)
+        ctx=ctx.model_copy(update={'training':ctx.training.model_copy(update={'windows':historical_windows(strength=Decimal('40'))})})
+        ctx=ctx.model_copy(update={'performance':ctx.performance.model_copy(update={
+            'cycling_ftp_watts':Decimal('155'), 'running_threshold_pace_seconds_per_km':Decimal('250'),
+            'swimming_css_seconds_per_100m':Decimal('110')})})
+        plan,*_=build(ctx)
+        # Compare the representative complete BASE week. Full-season generation
+        # is independently exercised by the real 50-week 5/6/7 snapshot script.
+        plan=plan.model_copy(update={'weeks':plan.weeks[:1], 'planning_end':plan.weeks[0].week_end})
+        drafts=tuple(build_structured_workout(ctx,s,WorkoutBuilderConfig(version='test',algorithm_version='test')) for w in plan.weeks for s in w.sessions)
+        diagnostic=reconcile_plan_load(plan,drafts)
+        assert diagnostic == reconcile_plan_load(plan,drafts)
+        week=diagnostic.weeks[0]
+        assert week.allocated_total == week.weekly_load_budget
+        assert week.prescribed_estimated_total != week.weekly_load_budget
+        assert week.tolerance == Decimal('.15')
+        results.append(week)
+    assert results[0].prescribed_estimated_total < results[1].prescribed_estimated_total < results[2].prescribed_estimated_total
+    for kind in ('RUN_LONG','BIKE_LONG'):
+        values=[next(s.prescribed_load_estimate for s in w.sessions if s.session_type==kind) for w in results]
+        assert values[0] == values[1] == values[2]

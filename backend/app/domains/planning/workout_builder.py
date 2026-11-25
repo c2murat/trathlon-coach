@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 from enum import Enum
 from math import isfinite
@@ -620,6 +621,13 @@ def validate_structured_workout_draft(draft: StructuredWorkoutDraft, session: Se
 
 
 def build_structured_workout(context: PlanningContext, session: SessionPrescription, config: WorkoutBuilderConfig) -> StructuredWorkoutDraft:
+    # Distribution changes calendar dates only. Preserve the original date for
+    # existing date-derived progression and variant selection.
+    original_date = session.placement.context.get("original_date")
+    if (session.placement.code == "WEEKLY_STRUCTURAL_DISTRIBUTION"
+            and isinstance(original_date, str)
+            and session.placement.context.get("distributed_date") == session.date.isoformat()):
+        session = session.model_copy(update={"date": date.fromisoformat(original_date)})
     fingerprint = context_fingerprint({
         "context_fingerprint": context.fingerprint,
         "session_prescription": session,

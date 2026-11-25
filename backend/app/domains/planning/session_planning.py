@@ -94,6 +94,7 @@ class SessionPrescription(FrozenModel):
 
 
 class WeeklySessionPlan(FrozenModel):
+    frequency_decision: dict[str, str | int | None] | None = None
     iso_year: int
     iso_week: int
     week_start: date
@@ -225,6 +226,8 @@ def _historical_sport(context, discipline):
 
 
 def _frequency(context, budget: WeeklyTrainingBudget, config: SessionPlanningConfig):
+    if context.preferences.target_sessions_per_week is not None:
+        return _explicit_frequency(context, budget, config)
     active = [item for item in budget.disciplines if item.discipline != "strength" and (item.target_share or 0) > 0]
     requested_strength = context.preferences.strength_sessions_per_week if any(item.discipline == "strength" for item in budget.disciplines) else 0
     counts = {item.discipline: 1 for item in active}
@@ -265,6 +268,44 @@ def _frequency(context, budget: WeeklyTrainingBudget, config: SessionPlanningCon
         for key in sorted(counts, key=lambda value: (value == "strength", value), reverse=True):
             while counts[key] and sum(counts.values()) > capacity:
                 counts[key] -= 1
+    return counts
+
+
+class FrequencyIntentError(ValueError):
+    code = "frequency_target_cannot_preserve_strength_and_active_sports"
+
+
+def _explicit_frequency(context, budget, config):
+    """Resolve training count first; competition consumes capacity, not intent.
+
+    Seed each active sport, then allocate extras by share/(count+1). This uses
+    existing budget shares without inventing physiological sport priorities.
+    """
+    prefs = context.preferences
+    active = [d for d in budget.disciplines if d.discipline != "strength" and (d.target_share or 0) > 0]
+    events = {g.event_date for g in context.goals}
+    from app.domains.planning.session_compatibility import daily_capacity
+    capacity = sum(daily_capacity(context, s, config)
+                   for day, s in _slots(context, budget)
+                   if day not in events and s is not None and s.available_minutes > 0)
+    capacity = min(capacity, budget.max_sessions, max(0, prefs.max_sessions_per_week - len(budget.competition_goal_ids)))
+    desired = ceil(prefs.target_sessions_per_week * budget.available_days_in_horizon / 7)
+    total = min(desired, capacity)
+    strength = prefs.strength_sessions_per_week if any(d.discipline == "strength" for d in budget.disciplines) else 0
+    if budget.dominant_phase is SeasonPhase.TAPER:
+        strength = min(strength, 1)  # Existing phase rule.
+    strength = ceil(strength * budget.available_days_in_horizon / 7)
+    if budget.available_days_in_horizon == 7 and desired < strength + len(active):
+        raise FrequencyIntentError(FrequencyIntentError.code)
+    counts = {d.discipline: 0 for d in active}
+    counts["strength"] = min(strength, total)
+    ranked = sorted(active, key=lambda d: (-(d.target_share or 0), d.discipline))
+    for d in ranked:
+        if sum(counts.values()) < total:
+            counts[d.discipline] += 1
+    while ranked and sum(counts.values()) < total:
+        selected = min(ranked, key=lambda d: (-(d.target_share / (counts[d.discipline] + 1)), -d.target_share, d.discipline))
+        counts[selected.discipline] += 1
     return counts
 
 
@@ -626,7 +667,9 @@ def _slots(context, budget):
 
 
 def _place(context, budget, needs, occupied, config, previous_long_dates):
+    from app.domains.planning.session_compatibility import explicit_doubles, daily_capacity, pair_cost
     sessions = []; warnings = []; used_minutes = {}; used_count = {}; key_dates = list(occupied)
+    used_sessions = {}
     rank = {SessionPriority.REQUIRED: 0, SessionPriority.KEY: 1, SessionPriority.SUPPORT: 2, SessionPriority.OPTIONAL: 3}
     needs = sorted(needs, key=lambda item: (rank[item.priority], not item.session_type.name.endswith("LONG"), item.discipline, item.session_type.value))
     horizon_days = {day for day, _ in _slots(context, budget)}
@@ -638,34 +681,42 @@ def _place(context, budget, needs, occupied, config, previous_long_dates):
     for need in needs:
         candidates = []; fallback_candidates = []
         preferred = context.preferences.preferred_long_run_day if need.session_type is SessionType.RUN_LONG else context.preferences.preferred_long_bike_day if need.session_type is SessionType.BIKE_LONG else None
-        for day, slot in _slots(context, budget):
-            if day in occupied or slot is None or slot.available_minutes <= 0 or slot.max_sessions <= 0:
-                continue
-            max_count = min(slot.max_sessions, context.preferences.max_sessions_per_day)
-            if not config.allow_double_sessions:
-                max_count = min(max_count, 1)
-            if used_count.get(day, 0) >= max_count or used_minutes.get(day, 0) + need.duration > slot.available_minutes:
-                continue
-            if need.discipline == "strength" and any(timedelta(0) < event - day <= timedelta(days=2) for event in competition_dates):
-                continue
-            prior_long = previous_long_dates.get(need.discipline) if need.session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG} else None
-            if prior_long is not None and 0 < (day - prior_long).days < config.minimum_same_long_spacing_days:
-                continue
-            gap = min((abs((day - other).days) for other in key_dates), default=99)
-            score = (config.preferred_day_score if preferred == day.weekday() else 0)
-            score -= config.rest_day_penalty if day.weekday() in context.preferences.preferred_rest_days else 0
-            score += config.key_spacing_score if need.key and gap >= config.minimum_gap_between_key_sessions_days else 0
-            score += slot.available_minutes - used_minutes.get(day, 0) - need.duration
-            candidate = (score, day, preferred == day.weekday(), gap)
-            fallback_candidates.append(candidate)
-            if day not in reserved_rest:
-                candidates.append(candidate)
+        for use_compatible_double in ((False, True) if explicit_doubles(context) else (False,)):
+            for day, slot in _slots(context, budget):
+                if day in occupied or slot is None or slot.available_minutes <= 0 or slot.max_sessions <= 0:
+                    continue
+                max_count = min(slot.max_sessions, context.preferences.max_sessions_per_day)
+                if use_compatible_double:
+                    max_count = daily_capacity(context, slot, config)
+                elif not config.allow_double_sessions:
+                    max_count = min(max_count, 1)
+                if explicit_doubles(context) and any(pair_cost(need, other, context) is None for other in used_sessions.get(day, ())):
+                    continue
+                if used_count.get(day, 0) >= max_count or used_minutes.get(day, 0) + need.duration > slot.available_minutes:
+                    continue
+                if need.discipline == "strength" and any(timedelta(0) < event - day <= timedelta(days=2) for event in competition_dates):
+                    continue
+                prior_long = previous_long_dates.get(need.discipline) if need.session_type in {SessionType.RUN_LONG, SessionType.BIKE_LONG} else None
+                if prior_long is not None and 0 < (day - prior_long).days < config.minimum_same_long_spacing_days:
+                    continue
+                gap = min((abs((day - other).days) for other in key_dates), default=99)
+                score = (config.preferred_day_score if preferred == day.weekday() else 0)
+                score -= config.rest_day_penalty if day.weekday() in context.preferences.preferred_rest_days else 0
+                score += config.key_spacing_score if need.key and gap >= config.minimum_gap_between_key_sessions_days else 0
+                score += slot.available_minutes - used_minutes.get(day, 0) - need.duration
+                candidate = (score, day, preferred == day.weekday(), gap)
+                fallback_candidates.append(candidate)
+                if day not in reserved_rest:
+                    candidates.append(candidate)
+            if candidates or fallback_candidates:
+                break
         if not candidates and fallback_candidates:
             candidates = fallback_candidates
         if not candidates:
             warnings.append(PlanningWarning(code="WEEKLY_SESSION_LIMIT_REACHED" if need.optional else "SESSION_PLACEMENT_CONSTRAINT", context={"discipline": need.discipline, "session_type": need.session_type.value}))
             continue
         score, day, preferred_used, gap = sorted(candidates, key=lambda item: (-item[0], item[1], need.session_type.value, need.discipline))[0]
+        used_sessions.setdefault(day, []).append(need)
         used_count[day] = used_count.get(day, 0) + 1; used_minutes[day] = used_minutes.get(day, 0) + need.duration
         if need.key:
             if gap < config.minimum_gap_between_key_sessions_days:
@@ -709,6 +760,7 @@ def _competition_sessions(context, season, budget, config):
 
 
 def validate_session_plan(plan: SessionPlan, context: PlanningContext, season: SeasonStructure, budgets: WeeklyBudgetPlan, config: SessionPlanningConfig):
+    from app.domains.planning.session_compatibility import explicit_doubles, pair_cost
     issues = []
     if len(plan.weeks) != len(budgets.budgets):
         issues.append(SessionPlanValidationIssue(code="WEEK_COUNT_MISMATCH"))
@@ -746,6 +798,8 @@ def validate_session_plan(plan: SessionPlan, context: PlanningContext, season: S
                 daily_limit = min(daily_limit, slot.max_sessions)
             if len(sessions) > daily_limit:
                 issues.append(SessionPlanValidationIssue(code="DAILY_SESSION_LIMIT_EXCEEDED", date=day))
+            if explicit_doubles(context) and any(pair_cost(a,b,context) is None for i,a in enumerate(training_sessions) for b in training_sessions[:i]):
+                issues.append(SessionPlanValidationIssue(code="DAILY_COMBINATION_INCOMPATIBLE", date=day))
             if any(item.session_type is SessionType.COMPETITION for item in sessions) and len(sessions) > 1:
                 issues.append(SessionPlanValidationIssue(code="COMPETITION_DAY_NOT_EXCLUSIVE", date=day))
         training_count = sum(item.session_type is not SessionType.COMPETITION for item in week.sessions)
@@ -894,18 +948,42 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
                 code="DISCIPLINE_UNDERREPRESENTED",
                 context={"discipline": "strength", "requested_sessions": requested_strength, "planned_sessions": actual_strength},
             ))
+        target = context.preferences.target_sessions_per_week
+        training_count = sum(s.discipline != "competition" for s in sessions)
+        desired = ceil(target * budget.available_days_in_horizon / 7) if target is not None else sum(_frequency(context, budget, config).values())
+        if target is not None and training_count != desired:
+            week_warnings.append(PlanningWarning(code="FREQUENCY_TARGET_CONSTRAINED", context={"target": desired, "generated": training_count}))
         week_warnings = tuple(sorted({(item.code, str(item.context)): item for item in week_warnings}.values(), key=lambda item: (item.code, str(item.context))))
         plan_warnings.extend(week_warnings)
         weeks.append(WeeklySessionPlan(
+            frequency_decision={"source": "EXPLICIT" if target is not None else "LEGACY_FALLBACK",
+                                "target_sessions_per_week": target, "week_target": desired,
+                                "generated_training_sessions": training_count},
             iso_year=budget.iso_year, iso_week=budget.iso_week, week_start=budget.week_start, week_end=budget.week_end,
             sessions=sessions, rest_dates=rest, unavailable_dates=unavailable,
             budget_target_load=budget.target_load, planned_load=planned, load_delta=delta,
             warnings=week_warnings, quality_selection_trace=tuple(quality_trace),
         ))
-    fingerprint = context_fingerprint({
+    # Optimize after prescribing every week so changed dates cannot feed back
+    # into progression, quality selection, frequency or workout content.
+    from app.domains.planning.weekly_distribution import distribute_week
+
+    def calendar(weeks):
+        return tuple(tuple((s.date, s.discipline, s.session_type) for s in week.sessions) for week in weeks)
+
+    original_calendar = calendar(weeks)
+    for index, week in enumerate(weeks):
+        other_sessions = tuple(s for j, other in enumerate(weeks) if j != index for s in other.sessions)
+        weeks[index] = distribute_week(week, context, config, other_sessions)
+    if context.preferences.target_sessions_per_week is not None and original_calendar != calendar(weeks):
+        plan_warnings = [warning for week in weeks for warning in week.warnings]
+    fingerprint_payload = {
         "context_fingerprint": context.fingerprint, "season_structure": season,
         "weekly_budget_fingerprint": budgets.fingerprint, "config": config,
-    })
+    }
+    if original_calendar != calendar(weeks):
+        fingerprint_payload["distributed_calendar"] = calendar(weeks)
+    fingerprint = context_fingerprint(fingerprint_payload)
     plan = SessionPlan(
         planning_start=season.planning_start_date, planning_end=season.planning_end_date,
         timezone_name=context.training.timezone_name, weeks=tuple(weeks),
