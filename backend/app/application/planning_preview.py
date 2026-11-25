@@ -24,6 +24,7 @@ from app.domains.planning.numeric_adaptation import resolve_numeric_adaptations
 from app.domains.planning.planning_adaptation import normalize_numeric_planning_adaptation, with_planning_adaptation
 from app.domains.planning.weekly_intent import build_session_plan_with_intent, PlanningIntentShadowReport
 from app.domains.planning.intent_workouts import IntentWorkoutBuild
+from app.domains.planning.volume_intent import VolumeShadowBuild, VolumeShadowReport
 
 
 logger = logging.getLogger(__name__)
@@ -74,9 +75,11 @@ class PlanningPreviewApplication:
         self.session = session
         # Ephemeral diagnostics, deliberately outside artifact/persistence/identity.
         self.shadow_report: PlanningIntentShadowReport | None = None
+        self.volume_shadow_report: VolumeShadowReport | None = None
 
     def generate(self, *, request: PlanningRequest, user_id: UUID) -> TrainingPlanPreview:
         self.shadow_report = None
+        self.volume_shadow_report = None
         context = PlanningContextAssembler(
             self.session,
             training_load_algorithm_version="0.7b.1",
@@ -96,16 +99,22 @@ class PlanningPreviewApplication:
                 raise PlanningPreviewBlockedError()
             current_budgets = build_weekly_budget_plan(current_context, current_season, WeeklyBudgetConfig(version="0.8F.4", algorithm_version="0.8F.4"))
             content = IntentWorkoutBuild(current_context, workout_config)
-            current_plan, current_shadow, current_structure = build_session_plan_with_intent(current_context, current_season, current_budgets, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION), workout_observer=content.prepare)
+            volume = VolumeShadowBuild(current_context, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION))
+
+            def prepare(intent, prescriptions):
+                volume.prepare(intent, prescriptions)
+                content.prepare(intent, prescriptions)
+
+            current_plan, current_shadow, current_structure = build_session_plan_with_intent(current_context, current_season, current_budgets, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION), workout_observer=prepare, coherent_volume=True)
             current_prescriptions = tuple(item for week in current_plan.weeks for item in week.sessions)
             if current_structure is not None:
                 current_drafts = content.finish(current_plan, current_structure)
                 current_structure = content.annotate(current_structure)
             else:
                 current_drafts = tuple(build_structured_workout(current_context, item, workout_config) for item in current_prescriptions)
-            return current_season, current_budgets, current_plan, current_prescriptions, current_drafts, current_shadow, current_structure
+            return current_season, current_budgets, current_plan, current_prescriptions, current_drafts, current_shadow, current_structure, volume
 
-        season, budgets, session_plan, prescriptions, drafts, shadow, structure = planning_outputs(context)
+        season, budgets, session_plan, prescriptions, drafts, shadow, structure, volume = planning_outputs(context)
         resolutions = resolve_numeric_adaptations(
             proposals=proposals,
             context=context,
@@ -115,7 +124,7 @@ class PlanningPreviewApplication:
         planning_input = normalize_numeric_planning_adaptation(resolutions).planning_input
         if planning_input is not None:
             context = with_planning_adaptation(context, planning_input)
-            season, budgets, session_plan, prescriptions, drafts, shadow, structure = planning_outputs(context)
+            season, budgets, session_plan, prescriptions, drafts, shadow, structure, volume = planning_outputs(context)
         # Publish only the final pass; numeric adaptation may have rebuilt inputs.
         self.shadow_report = shadow
         logger.debug("weekly_planning_intent_shadow", extra={"weekly_planning_shadow": shadow.model_dump(mode="json")})
@@ -128,6 +137,8 @@ class PlanningPreviewApplication:
             algorithm_version=PREVIEW_ARTIFACT_VERSION, configuration_version=PREVIEW_ARTIFACT_VERSION,
             structural_planning=structure,
         )
+        if structure is not None:
+            self.volume_shadow_report = volume.finish(session_plan, shadow, drafts, artifact.load_reconciliation)
         row = TrainingPlanPreview(
             athlete_profile_id=request.athlete_id, created_by_user_id=user_id,
             status="pending", artifact=artifact.model_dump(mode="json", exclude_none=True),

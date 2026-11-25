@@ -987,7 +987,7 @@ def _finalize_structural_week(week, context, budget, config, intent):
 
 
 def build_session_plan(context: PlanningContext, season: SeasonStructure, budgets: WeeklyBudgetPlan, config: SessionPlanningConfig,
-                       *, intent_observer=None, structural_observer=None, structural_intent=True, workout_observer=None) -> SessionPlan:
+                       *, intent_observer=None, structural_observer=None, structural_intent=True, workout_observer=None, coherent_volume=False) -> SessionPlan:
     if (
         budgets.context_fingerprint != context.fingerprint
         or budgets.planning_start != season.planning_start_date
@@ -1019,7 +1019,7 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
             from app.domains.planning.weekly_intent import create_weekly_planning_intent, needs_from_intent
             intent = create_weekly_planning_intent(
                 context, budget, budgets.baseline, config, previous_long, previous_long_dates,
-                quality_exposure, quality_debt, quality_trace, historical_exposure,
+                quality_exposure, quality_debt, quality_trace, historical_exposure, coherent_volume=coherent_volume,
             )
             needs = needs_from_intent(intent)
             if intent_observer is not None:
@@ -1187,6 +1187,20 @@ def build_session_plan(context: PlanningContext, season: SeasonStructure, budget
     }
     if original_calendar != calendar(weeks):
         fingerprint_payload["distributed_calendar"] = calendar(weeks)
+    # Metadata alone must not change identity. Include duration changes only
+    # when they reached the final calendar, relative to the legacy candidate.
+    if owns_structure and coherent_volume:
+        from app.domains.planning.weekly_intent import prescriptions_by_intent
+        changed = any(
+            p.target_duration_minutes != s.progression.final_legacy_minutes
+            for week in weeks
+            for intent in (structures[week.week_start][0],)
+            for placed in (prescriptions_by_intent(intent, week),)
+            for s in intent.session_intents if (p := placed.get(s.intent_id)) is not None
+        )
+        if changed:
+            fingerprint_payload["volume_durations"] = tuple(
+                tuple((s.date, s.discipline, s.session_type, s.target_duration_minutes) for s in w.sessions) for w in weeks)
     fingerprint = context_fingerprint(fingerprint_payload)
     plan = SessionPlan(
         planning_start=season.planning_start_date, planning_end=season.planning_end_date,

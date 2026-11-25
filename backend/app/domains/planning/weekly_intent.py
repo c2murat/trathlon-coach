@@ -86,6 +86,7 @@ class SessionIntent(FrozenModel):
     optional: bool = False
     target_share: Decimal | None = None
     phase: str | None = None
+    duration_source: str | None = None
 
 
 class GoalIntentContext(FrozenModel):
@@ -156,6 +157,7 @@ class WeeklyPlanningIntent(FrozenModel):
     reasons: tuple[IntentReason, ...]
     authority: Literal["shadow", "frequency_composition"] = "shadow"
     competition_sessions: int = 0
+    duration_authority: Literal["legacy", "endurance_volume_intent"] = "legacy"
 
     @property
     def intended_session_count(self):
@@ -362,7 +364,7 @@ def build_weekly_intent(context, budget, baseline, config, needs, trace, previou
 
 
 def create_weekly_planning_intent(context, budget, baseline, config, previous_long, previous_dates,
-                                  quality_exposure, quality_debt, quality_trace, historical_exposure):
+                                  quality_exposure, quality_debt, quality_trace, historical_exposure, *, coherent_volume=False):
     """Own frequency/composition once; reuse legacy role/duration/allocation rules."""
     from app.domains.planning.session_planning import _frequency, _needs
     frequency_trace = {}
@@ -378,6 +380,9 @@ def create_weekly_planning_intent(context, budget, baseline, config, previous_lo
         "reasons": (reason("FREQUENCY_COMPOSITION_AUTHORITY", "weekly_intent.create_weekly_planning_intent"),)
                    + tuple(r for r in intent.reasons if r.code != "SHADOW_ONLY_EXISTING_DECISIONS"),
     })
+    if coherent_volume:
+        from app.domains.planning.volume_intent import activate_endurance_volume
+        intent = activate_endurance_volume(context, intent, config)
     return intent.validate_structure()
 
 
@@ -531,13 +536,14 @@ def prescriptions_by_intent(intent, week):
     return result
 
 
-def _build_with_reports(context, season, budgets, config, structural_intent, workout_observer=None):
+def _build_with_reports(context, season, budgets, config, structural_intent, workout_observer=None, coherent_volume=False):
     from app.domains.planning.session_planning import build_session_plan
 
     intents = []
     results = []
     plan = build_session_plan(context, season, budgets, config, intent_observer=intents.append,
-                              structural_observer=results.append, structural_intent=structural_intent, workout_observer=workout_observer)
+                              structural_observer=results.append, structural_intent=structural_intent, workout_observer=workout_observer,
+                              coherent_volume=coherent_volume)
     report = PlanningIntentShadowReport(
         mode="STRUCTURAL_INTENT" if results else "SHADOW_NO_GENERATION_EFFECT",
         athlete_id=context.request.athlete_id, context_fingerprint=context.fingerprint, plan_fingerprint=plan.fingerprint,
@@ -555,5 +561,5 @@ def build_session_plan_with_shadow(context, season, budgets, config, *, structur
     return plan, report
 
 
-def build_session_plan_with_intent(context, season, budgets, config, *, workout_observer=None):
-    return _build_with_reports(context, season, budgets, config, True, workout_observer)
+def build_session_plan_with_intent(context, season, budgets, config, *, workout_observer=None, coherent_volume=False):
+    return _build_with_reports(context, season, budgets, config, True, workout_observer, coherent_volume)

@@ -16,6 +16,7 @@ import {activitySyncCompletedEvent} from "../../components/ActivitySyncButton";
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()});
 const year=new Date().getFullYear(),month=new Date().getMonth();
 const day=(number:number)=>`${year}-${String(month+1).padStart(2,'0')}-${String(number).padStart(2,'0')}`;
+const dateCaption=(number:number)=>`${String(number).padStart(2,'0')}/${String(month+1).padStart(2,'0')}/${year}`;
 function view(status:CompletionStatus='COMPLETED'):ExecutionSessionView {
   const activities=[{id:'a1',name:'Actividad primera',sport:'running',started_at:day(10)+'T15:00:00Z',timezone:'UTC',duration_seconds:1200,distance_meters:3000,average_heart_rate_bpm:null,average_power_w:null},
     {id:'a2',name:'Actividad segunda',sport:'running',started_at:day(10)+'T16:00:00Z',timezone:'UTC',duration_seconds:1500,distance_meters:4000,average_heart_rate_bpm:null,average_power_w:null}];
@@ -85,7 +86,7 @@ it('links manual strength from the month execution panel after explicit cross-da
   await userEvent.click(screen.getByText(/Ver ejecución/));
   await userEvent.click(screen.getByRole('button',{name:'Vincular actividad realizada'}));
   await waitFor(()=>expect(client.plannedSessionActivityCandidates).toHaveBeenCalledWith('strength-session'));
-  expect(await screen.findByText(/22\/09\/2026.*60 min/)).toBeVisible();
+  expect(await screen.findByText(new RegExp(`${dateCaption(22)}.*60 min`))).toBeVisible();
   await userEvent.click(screen.getByRole('button',{name:'Vincular'}));
   expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('sesión planificada'));
   await waitFor(()=>expect(client.linkPlannedSessionManualStrength).toHaveBeenCalledWith('strength-session','manual-strength'));
@@ -103,10 +104,10 @@ it('links a completed cycling activity from the month execution panel without mo
   await userEvent.click(screen.getByText(/Ver ejecuci/));
   await userEvent.click(screen.getByRole('button',{name:'Vincular actividad realizada'}));
   expect(await screen.findByText('Bicicleta por la tarde')).toBeVisible();
-  expect(screen.getByText(/21\/09\/2026.*72 min/)).toBeVisible();
+  expect(screen.getByText(new RegExp(`${dateCaption(21)}.*72 min`))).toBeVisible();
   expect(screen.getByText(/34,8 km/)).toBeVisible();
   await userEvent.click(within(screen.getByText('Bicicleta por la tarde').closest('article')!).getByRole('button',{name:'Vincular'}));
-  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('22/09/2026'));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining(dateCaption(22)));
   await waitFor(()=>expect(client.linkPlannedSessionActivity).toHaveBeenCalledWith('cycling-session','cycling-activity'));
   await waitFor(()=>expect(screen.getAllByText('Duración superior').length).toBeGreaterThan(0));
   expect(screen.getByText(/Planificado:/).parentElement).toHaveTextContent('1 h 0 min');
