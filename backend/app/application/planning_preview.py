@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,11 +17,16 @@ from app.db.models import (
 from app.domains.planning.contracts import PlanningRequest
 from app.domains.planning.preview import TrainingPlanPreviewArtifact, build_preview_artifact
 from app.domains.planning.season_structure import SeasonStructureBuilder, SeasonStructureConfig
-from app.domains.planning.session_planning import SessionPlanningConfig, SessionType, build_session_plan
+from app.domains.planning.session_planning import SessionPlanningConfig, SessionType
 from app.domains.planning.weekly_budget import WeeklyBudgetConfig, build_weekly_budget_plan
 from app.domains.planning.workout_builder import WorkoutBuilderConfig, build_structured_workout, structured_workout_payload
 from app.domains.planning.numeric_adaptation import resolve_numeric_adaptations
 from app.domains.planning.planning_adaptation import normalize_numeric_planning_adaptation, with_planning_adaptation
+from app.domains.planning.weekly_intent import build_session_plan_with_intent, PlanningIntentShadowReport
+from app.domains.planning.intent_workouts import IntentWorkoutBuild
+
+
+logger = logging.getLogger(__name__)
 
 
 class PlanningPreviewError(ValueError):
@@ -66,8 +72,11 @@ def persistence_goal_role(season_role: str) -> str:
 class PlanningPreviewApplication:
     def __init__(self, session: Session):
         self.session = session
+        # Ephemeral diagnostics, deliberately outside artifact/persistence/identity.
+        self.shadow_report: PlanningIntentShadowReport | None = None
 
     def generate(self, *, request: PlanningRequest, user_id: UUID) -> TrainingPlanPreview:
+        self.shadow_report = None
         context = PlanningContextAssembler(
             self.session,
             training_load_algorithm_version="0.7b.1",
@@ -86,12 +95,17 @@ class PlanningPreviewApplication:
             if any(warning.blocking for warning in current_season.warnings):
                 raise PlanningPreviewBlockedError()
             current_budgets = build_weekly_budget_plan(current_context, current_season, WeeklyBudgetConfig(version="0.8F.4", algorithm_version="0.8F.4"))
-            current_plan = build_session_plan(current_context, current_season, current_budgets, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION))
+            content = IntentWorkoutBuild(current_context, workout_config)
+            current_plan, current_shadow, current_structure = build_session_plan_with_intent(current_context, current_season, current_budgets, SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION), workout_observer=content.prepare)
             current_prescriptions = tuple(item for week in current_plan.weeks for item in week.sessions)
-            current_drafts = tuple(build_structured_workout(current_context, item, workout_config) for item in current_prescriptions)
-            return current_season, current_budgets, current_plan, current_prescriptions, current_drafts
+            if current_structure is not None:
+                current_drafts = content.finish(current_plan, current_structure)
+                current_structure = content.annotate(current_structure)
+            else:
+                current_drafts = tuple(build_structured_workout(current_context, item, workout_config) for item in current_prescriptions)
+            return current_season, current_budgets, current_plan, current_prescriptions, current_drafts, current_shadow, current_structure
 
-        season, budgets, session_plan, prescriptions, drafts = planning_outputs(context)
+        season, budgets, session_plan, prescriptions, drafts, shadow, structure = planning_outputs(context)
         resolutions = resolve_numeric_adaptations(
             proposals=proposals,
             context=context,
@@ -101,7 +115,10 @@ class PlanningPreviewApplication:
         planning_input = normalize_numeric_planning_adaptation(resolutions).planning_input
         if planning_input is not None:
             context = with_planning_adaptation(context, planning_input)
-            season, budgets, session_plan, prescriptions, drafts = planning_outputs(context)
+            season, budgets, session_plan, prescriptions, drafts, shadow, structure = planning_outputs(context)
+        # Publish only the final pass; numeric adaptation may have rebuilt inputs.
+        self.shadow_report = shadow
+        logger.debug("weekly_planning_intent_shadow", extra={"weekly_planning_shadow": shadow.model_dump(mode="json")})
         roles = {item.goal_id: item.role for item in season.goals}
         artifact_goals = tuple(goal.model_copy(update={"role": roles[goal.competition_goal_id]}) for goal in context.goals)
         artifact = build_preview_artifact(
@@ -109,6 +126,7 @@ class PlanningPreviewApplication:
             context_fingerprint_value=context.fingerprint, season=season, budgets=budgets,
             session_plan=session_plan, goals=artifact_goals, workout_drafts=drafts,
             algorithm_version=PREVIEW_ARTIFACT_VERSION, configuration_version=PREVIEW_ARTIFACT_VERSION,
+            structural_planning=structure,
         )
         row = TrainingPlanPreview(
             athlete_profile_id=request.athlete_id, created_by_user_id=user_id,
@@ -142,9 +160,12 @@ class PlanningPreviewApplication:
             workout_drafts=tuple(item.workout for item in artifact.sessions),
             algorithm_version=artifact.algorithm_version,
             configuration_version=artifact.configuration_version,
+            structural_planning=artifact.structural_planning,
         )
         if artifact.fingerprint != reconstructed.fingerprint:
             raise PlanningPreviewFingerprintMismatchError()
+        # Recompute diagnostics from the fingerprint-verified prescription; do not
+        # trust stale metadata stored with a preview. No persistence is changed.
         return artifact.model_copy(update={"load_reconciliation": reconstructed.load_reconciliation})
 
     def accept(self, *, preview_id: UUID, athlete_id: UUID, user_id: UUID, role: str, expected_fingerprint: str | None = None, fail_after_sessions: int | None = None) -> TrainingPlan:

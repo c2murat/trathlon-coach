@@ -306,6 +306,12 @@ def test_normal_preview_generation_uses_c5_and_preserves_active_plan(monkeypatch
             monkeypatch.setattr(PrescribedCompletedEvidenceAssembler, "assemble", lambda *args, **kwargs: evidence)
         generated = app.artifact(app.generate(request=context.request, user_id=user_id))
         assert generated.model_dump_json() == baseline.model_dump_json()
+        assert app.shadow_report is not None
+        assert app.shadow_report.context_fingerprint == generated.context_fingerprint
+        assert app.shadow_report.plan_fingerprint == generated.session_plan.fingerprint
+        assert app.shadow_report.athlete_id == athlete_id
+        assert "shadow_report" not in generated.model_dump()
+        assert "weekly_planning_intent" not in generated.model_dump()
         assert captured[-1].resolutions or case == "zero"
         assert all(item.proposed_range is None for item in captured[-1].resolutions)
         assert db.scalars(select(TrainingPlan)).all() == [active]
@@ -316,7 +322,7 @@ def test_normal_preview_generation_uses_c5_and_preserves_active_plan(monkeypatch
 
 
 @pytest.mark.parametrize("version", [None, "0.8G.2C.5"])
-def test_stored_c4_numeric_artifacts_accept_without_recomputation(monkeypatch, version):
+def test_stored_c4_numeric_artifacts_accept_uncalibrated_projection_without_recomputation(monkeypatch, version):
     from sqlalchemy.orm import Session
     from app.application.planning_preview import PlanningPreviewApplication
     from tests.test_planning_adaptation import planning_item
@@ -346,6 +352,10 @@ def test_stored_c4_numeric_artifacts_accept_without_recomputation(monkeypatch, v
     monkeypatch.setattr("app.application.execution_proposals.ExecutionAdaptationProposalAssembler.assemble", forbidden)
     with Session(engine) as db:
         app = PlanningPreviewApplication(db)
+        # Uncalibrated projections keep a visible review warning, preserving historical
+        # acceptance rather than treating complete coverage as high confidence.
+        assert any(w.reconciliation_state == 'REVIEW_REQUIRED' for w in stored.load_reconciliation.weeks)
+        assert not stored.load_reconciliation.acceptance_blocked
         plan = app.accept(preview_id=preview_id, athlete_id=athlete_id, user_id=user_id, role="athlete")
         assert plan.source_preview_id == preview_id
         assert app.artifact(app.get(preview_id=preview_id, athlete_id=athlete_id)) == stored

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, model_validator, model_serializer
 
 from app.domains.planning.contracts import FrozenModel, PlanningGoal, context_fingerprint
 from app.domains.planning.season_structure import SeasonStructure
@@ -11,6 +11,7 @@ from app.domains.planning.session_planning import SessionPlan, SessionPrescripti
 from app.domains.planning.weekly_budget import WeeklyBudgetPlan
 from app.domains.planning.workout_builder import StructuredWorkoutDraft, structured_workout_payload
 from app.domains.planning.prescribed_load import PlannedLoadReconciliation, reconcile_plan_load
+from app.domains.planning.weekly_intent import StructuralPlanningReport
 
 
 PREVIEW_ARTIFACT_SCHEMA_VERSION = 1
@@ -53,6 +54,7 @@ class PreviewSessionArtifact(FrozenModel):
 
 
 class TrainingPlanPreviewArtifact(FrozenModel):
+    structural_planning: StructuralPlanningReport | None = None
     load_reconciliation: PlannedLoadReconciliation | None = None
     schema_version: int = PREVIEW_ARTIFACT_SCHEMA_VERSION
     athlete_id: UUID
@@ -69,6 +71,19 @@ class TrainingPlanPreviewArtifact(FrozenModel):
     configuration_version: str
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
+    @model_serializer(mode="wrap")
+    def serialize_legacy_compatible(self, handler, info):
+        data = handler(self)
+        if self.structural_planning is None:
+            data.pop("structural_planning", None)
+        elif "structural_planning" in data:
+            # Persistence uses exclude_none=True for historical artifacts. The
+            # intent contract distinguishes unknown quantities explicitly.
+            data["structural_planning"] = self.structural_planning.model_dump(mode=info.mode)
+            if "load_reconciliation" in data and self.load_reconciliation is not None:
+                data["load_reconciliation"] = self.load_reconciliation.model_dump(mode=info.mode)
+        return data
+
     @model_validator(mode="after")
     def validate_consistency(self):
         prescriptions = tuple(item for week in self.session_plan.weeks for item in week.sessions)
@@ -76,18 +91,28 @@ class TrainingPlanPreviewArtifact(FrozenModel):
             raise ValueError("preview sessions do not match session plan")
         if self.plan_start != self.session_plan.planning_start or self.plan_end != self.session_plan.planning_end:
             raise ValueError("preview dates do not match session plan")
+        if self.structural_planning is not None:
+            if self.structural_planning.athlete_id != self.athlete_id or self.structural_planning.context_fingerprint != self.context_fingerprint:
+                raise ValueError("structural report context mismatch")
+            if len(self.structural_planning.weeks) != len(self.session_plan.weeks):
+                raise ValueError("structural report week mismatch")
+            for result, week in zip(self.structural_planning.weeks, self.session_plan.weeks, strict=True):
+                result.intent.validate_structure()
+                if result.placed != sum(s.discipline != "competition" for s in week.sessions) or result.placed + len(result.unplaced) != result.intended_sessions:
+                    raise ValueError("structural report placement mismatch")
         return self
 
 
 def preview_artifact_payload(artifact: TrainingPlanPreviewArtifact) -> dict:
-    payload = artifact.model_dump(mode="json", exclude={"fingerprint", "load_reconciliation"}, exclude_none=True)
+    # Diagnostic metadata is intentionally outside prescription identity.
+    payload = artifact.model_dump(mode="json", exclude={"fingerprint", "load_reconciliation", "structural_planning"}, exclude_none=True)
     for item, session in zip(payload["sessions"], artifact.sessions):
         if session.workout.definition is not None:
             item["workout"]["definition"] = structured_workout_payload(session.workout.definition)
     return payload
 
 
-def build_preview_artifact(*, athlete_id, timezone_name, context_fingerprint_value, season, budgets, session_plan, goals, workout_drafts, algorithm_version, configuration_version):
+def build_preview_artifact(*, athlete_id, timezone_name, context_fingerprint_value, season, budgets, session_plan, goals, workout_drafts, algorithm_version, configuration_version, structural_planning=None):
     prescriptions = tuple(item for week in session_plan.weeks for item in week.sessions)
     if len(prescriptions) != len(workout_drafts):
         raise ValueError("one workout draft is required per prescription")
@@ -103,4 +128,4 @@ def build_preview_artifact(*, athlete_id, timezone_name, context_fingerprint_val
     )
     fingerprint = context_fingerprint(values)
     return TrainingPlanPreviewArtifact(**values, fingerprint=fingerprint,
-        load_reconciliation=reconcile_plan_load(session_plan, workout_drafts))
+        load_reconciliation=reconcile_plan_load(session_plan, workout_drafts), structural_planning=structural_planning)

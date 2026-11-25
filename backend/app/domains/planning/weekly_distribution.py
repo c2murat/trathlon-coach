@@ -8,18 +8,21 @@ MAX_SEARCH_NODES = 12000
 LONG_TYPES = {"RUN_LONG", "BIKE_LONG"}
 
 
-def distribute_week(week, context, config, other_sessions=()):
+def distribute_week(week, context, config, other_sessions=(), status_observer=None):
     from app.domains.planning.session_planning import SessionPlacementDecision
 
     movable = tuple(s for s in week.sessions if s.flexible and s.discipline != "competition")
     fixed = tuple(s for s in week.sessions if s not in movable)
     if not movable:
+        if status_observer is not None:
+            status_observer(True)
         return week
     slots = {s.weekday: s for s in context.preferences.availability_slots}
     days = tuple(week.week_start + timedelta(days=i) for i in range((week.week_end - week.week_start).days + 1))
     events = {g.event_date for g in context.goals}
     primary_rest = {g.event_date - timedelta(days=1) for g in context.goals if g.priority == "A"}
     compatible_doubles = explicit_doubles(context)
+    explicit_preferences = context.preferences.target_sessions_per_week is not None
     pairing = tuple(tuple(pair_cost(a,b,context) for b in movable) for a in movable) if compatible_doubles else ()
     fixed_dates = {s.date for s in fixed} | events
 
@@ -64,13 +67,16 @@ def distribute_week(week, context, config, other_sessions=()):
                 spacing += (len(days) - gap) ** 2 if same_type else 0
                 concentration += (len(days) - gap) ** 2
         rest = sum(d in primary_rest or d.weekday() in context.preferences.preferred_rest_days for d in dates)
+        explicit_rest = sum(d.weekday() in context.preferences.preferred_rest_days for d in dates)
+        domain_rest = sum(d in primary_rest for d in dates)
         long_pref = sum(preferred(s) is not None and preferred(s) != d.weekday() for s, d in zip(movable, dates))
         key_conflicts = sum(
             abs((d - e).days) < config.minimum_gap_between_key_sessions_days
             for i, (s, d) in enumerate(zip(movable, dates)) if s.key_session
             for t, e in zip(movable[:i], dates[:i]) if t.key_session
         )
-        prefix = (strength_adj, rest, long_pref, key_conflicts, type_adj, long_adj)
+        prefix = ((explicit_rest, long_pref, strength_adj, domain_rest, key_conflicts, type_adj, long_adj)
+                  if explicit_preferences else (strength_adj, rest, long_pref, key_conflicts, type_adj, long_adj))
         # A compatible double can win on rest/long/key spacing. When those
         # outcomes tie, prefer fewer doubles rather than filling daily capacity.
         return (prefix + ((pairing_cost,) if compatible_doubles else ())
@@ -93,7 +99,7 @@ def distribute_week(week, context, config, other_sessions=()):
     counts = Counter()
     minutes = Counter()
     order = sorted(range(len(movable)), key=lambda i: (len(candidates[i]), i))
-    if compatible_doubles:
+    if explicit_preferences:
         order = sorted(order, key=lambda i: (len(candidates[i]), preferred(movable[i]) is None, not movable[i].key_session, i))
         candidates = tuple(tuple(sorted(options, key=lambda day: (
             preferred(s) is not None and preferred(s) != day.weekday(),
@@ -133,6 +139,8 @@ def distribute_week(week, context, config, other_sessions=()):
             minutes[day] -= duration
 
     search(0)
+    if status_observer is not None:
+        status_observer(best_score is not None)
     if best == original:
         return week
     updated = tuple(s.model_copy(update={
@@ -140,7 +148,8 @@ def distribute_week(week, context, config, other_sessions=()):
         "placement": SessionPlacementDecision(
             code="WEEKLY_STRUCTURAL_DISTRIBUTION", preferred_date_used=preferred(s) == day.weekday(),
             context={"search_nodes": nodes, "search_limit_reached": nodes >= MAX_SEARCH_NODES,
-                     "strength_adjacencies": best_score[0], "same_type_adjacencies": best_score[4],
+                     "strength_adjacencies": best_score[2] if explicit_preferences else best_score[0],
+                     "same_type_adjacencies": best_score[5] if explicit_preferences else best_score[4],
                      "reason": "improves_weekly_spacing", "original_date": (
                          s.placement.context.get("original_date", s.date.isoformat())
                          if s.placement.code == "WEEKLY_STRUCTURAL_DISTRIBUTION" and s.placement.context.get("distributed_date") == s.date.isoformat()
@@ -168,3 +177,50 @@ def distribute_week(week, context, config, other_sessions=()):
             for i,s in enumerate(keys) if any(abs((s.date-t.date).days)<config.minimum_gap_between_key_sessions_days for t in keys[:i]))
         warnings = tuple(sorted(warnings,key=lambda w:(w.code,str(w.context))))
     return week.model_copy(update={"sessions": sessions, "rest_dates": tuple(d for d in days if d not in occupied),"warnings":warnings})
+
+
+def refresh_explicit_date_warnings(week, context, config):
+    """Evaluate final dates even if the optimizer kept its input unchanged."""
+    from app.domains.planning.contracts import PlanningWarning
+    derived = {"PREFERRED_REST_DAY_UNAVAILABLE", "PREFERRED_LONG_DAY_UNAVAILABLE", "KEY_SESSION_SPACING_CONSTRAINT"}
+    warnings = [w for w in week.warnings if w.code not in derived]
+    training = [s for s in week.sessions if s.discipline != "competition"]
+    used_rest = sorted({s.date.weekday() for s in training if s.date.weekday() in context.preferences.preferred_rest_days})
+    if used_rest:
+        warnings.append(PlanningWarning(code="PREFERRED_REST_DAY_UNAVAILABLE", context={"weekdays": ",".join(map(str, used_rest))}))
+    if (week.week_end - week.week_start).days == 6:
+        for s in training:
+            day = context.preferences.preferred_long_run_day if s.session_type.value == "RUN_LONG" else context.preferences.preferred_long_bike_day if s.session_type.value == "BIKE_LONG" else None
+            if day is not None and s.date.weekday() != day:
+                warnings.append(PlanningWarning(code="PREFERRED_LONG_DAY_UNAVAILABLE", context={"discipline": s.discipline, "preferred_weekday": day}))
+    keys = [s for s in week.sessions if s.key_session]
+    warnings.extend(PlanningWarning(code="KEY_SESSION_SPACING_CONSTRAINT", context={"date": s.date.isoformat()})
+                    for i, s in enumerate(keys) if any(abs((s.date - t.date).days) < config.minimum_gap_between_key_sessions_days for t in keys[:i]))
+    return week.model_copy(update={"warnings": tuple(sorted(warnings, key=lambda w: (w.code, str(w.context))))})
+
+
+def distribute_structural_week(week, context, config, other_sessions, budget, needs, outcome):
+    """Try the complete fixed intent list before retaining a constrained subset.
+
+    The existing bounded optimizer owns dates only. Every omitted intent remains
+    in the external execution result, including a search-limit/feasibility reason.
+    """
+    from app.domains.planning.session_planning import _prescribe_need, SessionPlacementDecision
+    event_count = sum(s.discipline == "competition" for s in week.sessions)
+    complete_fits_weekly_limit = (len(needs) <= budget.max_sessions and
+                                 len(needs) + event_count <= context.preferences.max_sessions_per_week)
+    if outcome and complete_fits_weekly_limit:
+        pending = tuple(_prescribe_need(needs[i], budget, config, week.week_start,
+                        SessionPlacementDecision(code="UNPLACED_INTENT_SEED")) for i in sorted(outcome))
+        candidate = week.model_copy(update={"sessions": (*week.sessions, *pending)})
+        status = []
+        result = distribute_week(candidate, context, config, other_sessions, status.append)
+        if status and status[0]:
+            if len(result.sessions) != len(candidate.sessions):
+                raise ValueError("DISTRIBUTION_CHANGED_SESSION_COUNT")
+            outcome.clear()
+            return result
+    result = distribute_week(week, context, config, other_sessions)
+    if len(result.sessions) != len(week.sessions):
+        raise ValueError("DISTRIBUTION_CHANGED_SESSION_COUNT")
+    return result
