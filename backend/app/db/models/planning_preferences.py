@@ -16,6 +16,7 @@ class AthletePlanningPreferenceVersion(UUIDPrimaryKeyMixin, Base):
         CheckConstraint("version_number >= 1", name="planning_preferences_version_positive"),
         CheckConstraint("max_sessions_per_day BETWEEN 0 AND 4", name="planning_preferences_daily_sessions_valid"),
         CheckConstraint("max_sessions_per_week BETWEEN 0 AND 28", name="planning_preferences_weekly_sessions_valid"),
+        CheckConstraint("target_sessions_per_week IS NULL OR (target_sessions_per_week BETWEEN 1 AND 28 AND target_sessions_per_week <= max_sessions_per_week)", name="planning_preferences_target_sessions_valid"),
         CheckConstraint("strength_sessions_per_week BETWEEN 0 AND 7", name="planning_preferences_strength_sessions_valid"),
         Index("ix_planning_preferences_athlete_version", "athlete_profile_id", "version_number"),
     )
@@ -23,6 +24,7 @@ class AthletePlanningPreferenceVersion(UUIDPrimaryKeyMixin, Base):
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     max_sessions_per_day: Mapped[int] = mapped_column(Integer, nullable=False)
     max_sessions_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_sessions_per_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
     preferred_rest_days: Mapped[list[int]] = mapped_column(JSON_DOCUMENT, nullable=False, default=list)
     preferred_long_run_day: Mapped[int | None] = mapped_column(Integer)
     preferred_long_bike_day: Mapped[int | None] = mapped_column(Integer)

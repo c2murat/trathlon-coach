@@ -12,7 +12,7 @@ export interface CatalogEvent {provider:string;external_id:string;name:string;st
 export interface CatalogSearchFilters {text?:string;category?:CompetitionCategory|"";start_date?:string;end_date?:string;location?:string;provider?:string}
 
 export interface AvailabilitySlot {weekday:number;available_minutes:number;max_sessions:number;earliest_time?:string|null;latest_time?:string|null}
-export interface PlanningPreferences {availability_slots:AvailabilitySlot[];max_sessions_per_day:number;max_sessions_per_week:number;preferred_rest_days:number[];preferred_long_run_day:number|null;preferred_long_bike_day:number|null;strength_sessions_per_week:number}
+export interface PlanningPreferences {target_sessions_per_week?:number|null;availability_slots:AvailabilitySlot[];max_sessions_per_day:number;max_sessions_per_week:number;preferred_rest_days:number[];preferred_long_run_day:number|null;preferred_long_bike_day:number|null;strength_sessions_per_week:number}
 export interface PlanningPreferencesVersion {id:string;athlete_profile_id:string;version_number:number;created_at:string;preferences:PlanningPreferences}
 export interface PlanningPreviewRequest {planning_date:string;start_date:string;horizon_end_date?:string;goal_ids:string[];preferences:PlanningPreferences}
 export interface PlanningWarning {code:string;severity:"WARNING"|"ERROR";blocking:boolean;context:Record<string,string|number|boolean|null>}

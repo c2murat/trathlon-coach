@@ -58,6 +58,7 @@ class PlanningPreferencesApplication:
             version_number=latest_number + 1,
             max_sessions_per_day=preferences.max_sessions_per_day,
             max_sessions_per_week=preferences.max_sessions_per_week,
+            target_sessions_per_week=preferences.target_sessions_per_week,
             preferred_rest_days=list(preferences.preferred_rest_days),
             preferred_long_run_day=preferences.preferred_long_run_day,
             preferred_long_bike_day=preferences.preferred_long_bike_day,
@@ -76,6 +77,7 @@ class PlanningPreferencesApplication:
 
 def preferences_from_row(row: AthletePlanningPreferenceVersion) -> PlanningPreferences:
     return PlanningPreferences(
+        target_sessions_per_week=row.target_sessions_per_week,
         availability_slots=tuple(AvailabilitySlot(
             weekday=slot.weekday, available_minutes=slot.available_minutes,
             max_sessions=slot.max_sessions, earliest_time=slot.earliest_time,

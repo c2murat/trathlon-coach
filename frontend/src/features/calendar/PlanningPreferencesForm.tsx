@@ -16,6 +16,7 @@ export const emptyPreferences = (): PlanningPreferences => ({
   })),
   max_sessions_per_day: 0,
   max_sessions_per_week: 0,
+  target_sessions_per_week: null,
   preferred_rest_days: [],
   preferred_long_run_day: null,
   preferred_long_bike_day: null,
@@ -139,7 +140,7 @@ export function PlanningPreferencesForm({
           />
         </label>
         <label>
-          Máximo por semana
+          Máximo de sesiones por semana
           <input
             type="number"
             min="0"
@@ -153,6 +154,14 @@ export function PlanningPreferencesForm({
             }
           />
         </label>
+        <p>Máximo semanal: límite que nunca debe superar el planificador.</p>
+        <label>
+          Sesiones por semana
+          <input type="number" min="1" max={Math.min(28, value.max_sessions_per_week)}
+            value={value.target_sessions_per_week ?? ""}
+            onChange={e => onChange({...value, target_sessions_per_week: e.target.value === "" ? null : Number(e.target.value)})} />
+        </label>
+        <p>Número habitual de sesiones que quieres que el plan genere. Si lo dejas vacío, se mantiene el cálculo anterior; no se registra una frecuencia elegida.</p>
         <label>
           Sesiones de fuerza
           <input

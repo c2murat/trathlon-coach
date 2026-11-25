@@ -42,6 +42,7 @@ class AvailabilitySlot(FrozenModel):
 
 
 class PlanningPreferences(FrozenModel):
+    target_sessions_per_week: int | None = Field(default=None, ge=1, le=28)
     availability_slots: tuple[AvailabilitySlot, ...] = ()
     max_sessions_per_day: int = Field(ge=0, le=4)
     max_sessions_per_week: int = Field(ge=0, le=28)
@@ -52,6 +53,8 @@ class PlanningPreferences(FrozenModel):
 
     @model_validator(mode="after")
     def validate_days(self):
+        if self.target_sessions_per_week is not None and self.target_sessions_per_week > self.max_sessions_per_week:
+            raise ValueError("target_sessions_per_week exceeds max_sessions_per_week")
         weekdays = tuple(slot.weekday for slot in self.availability_slots)
         if len(set(weekdays)) != len(weekdays):
             raise ValueError("availability weekdays must be unique")
@@ -406,7 +409,7 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, dict):
         # Preserve hashes of stored C.4 artifacts that predate this optional field.
         return {str(key): _canonical_value(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-                if not (key in {"numeric_policy_version", "prescription_level_transition"} and item is None)}
+                if not (key in {"numeric_policy_version", "prescription_level_transition", "target_sessions_per_week"} and item is None)}
     if isinstance(value, (tuple, list)):
         return [_canonical_value(item) for item in value]
     if isinstance(value, Enum):
