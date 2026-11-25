@@ -10,6 +10,7 @@ from app.domains.planning.season_structure import SeasonStructure
 from app.domains.planning.session_planning import SessionPlan, SessionPrescription, SessionType
 from app.domains.planning.weekly_budget import WeeklyBudgetPlan
 from app.domains.planning.workout_builder import StructuredWorkoutDraft, structured_workout_payload
+from app.domains.planning.prescribed_load import PlannedLoadReconciliation, reconcile_plan_load
 
 
 PREVIEW_ARTIFACT_SCHEMA_VERSION = 1
@@ -52,6 +53,7 @@ class PreviewSessionArtifact(FrozenModel):
 
 
 class TrainingPlanPreviewArtifact(FrozenModel):
+    load_reconciliation: PlannedLoadReconciliation | None = None
     schema_version: int = PREVIEW_ARTIFACT_SCHEMA_VERSION
     athlete_id: UUID
     timezone_name: str
@@ -78,7 +80,7 @@ class TrainingPlanPreviewArtifact(FrozenModel):
 
 
 def preview_artifact_payload(artifact: TrainingPlanPreviewArtifact) -> dict:
-    payload = artifact.model_dump(mode="json", exclude={"fingerprint"}, exclude_none=True)
+    payload = artifact.model_dump(mode="json", exclude={"fingerprint", "load_reconciliation"}, exclude_none=True)
     for item, session in zip(payload["sessions"], artifact.sessions):
         if session.workout.definition is not None:
             item["workout"]["definition"] = structured_workout_payload(session.workout.definition)
@@ -100,4 +102,5 @@ def build_preview_artifact(*, athlete_id, timezone_name, context_fingerprint_val
         configuration_version=configuration_version,
     )
     fingerprint = context_fingerprint(values)
-    return TrainingPlanPreviewArtifact(**values, fingerprint=fingerprint)
+    return TrainingPlanPreviewArtifact(**values, fingerprint=fingerprint,
+        load_reconciliation=reconcile_plan_load(session_plan, workout_drafts))

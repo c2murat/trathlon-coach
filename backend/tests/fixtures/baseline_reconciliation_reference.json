@@ -1,0 +1,855 @@
+{
+  "source": "synthetic policy fixtures; no athlete observations",
+  "weeks": [
+    {
+      "case": 0,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 1,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 2,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 3,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 4,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 5,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 6,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 7,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 8,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 9,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 10,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 11,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 12,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 13,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 14,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 15,
+      "baseline_outside": true,
+      "e1_outside": true,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 16,
+      "baseline_outside": true,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 17,
+      "baseline_outside": true,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 18,
+      "baseline_outside": true,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": false,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 19,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 20,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 21,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 22,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 23,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 24,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 25,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 26,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 27,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 28,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 29,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 30,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 31,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 32,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 33,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 34,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 35,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 36,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 37,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 38,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 39,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 40,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 41,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 42,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 43,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 44,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 45,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 46,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 47,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 48,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    },
+    {
+      "case": 49,
+      "baseline_outside": false,
+      "e1_outside": false,
+      "baseline": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      },
+      "e1_target5": {
+        "within_tolerance": true,
+        "coverage": "COMPLETE",
+        "quality": "LOW",
+        "sessions": 5
+      }
+    }
+  ]
+}

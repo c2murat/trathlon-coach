@@ -31,6 +31,14 @@ class PlanningPreviewNotFoundError(PlanningPreviewError): code = "planning_previ
 class PlanningPreviewAthleteMismatchError(PlanningPreviewError): code = "planning_preview_athlete_mismatch"
 class PlanningPreviewFingerprintMismatchError(PlanningPreviewError): code = "preview_fingerprint_mismatch"
 class PlanningPreviewGoalInvalidError(PlanningPreviewError): code = "planning_preview_goal_invalid"
+class PlanningPreviewLoadNotReconciledError(PlanningPreviewError):
+    code = "planning_preview_load_not_reconciled"
+
+    def __init__(self, reconciliation):
+        self.blocked_weeks = tuple(str(w.week_start) for w in reconciliation.weeks if w.acceptance_blocked)
+        super().__init__(self.code)
+
+
 class PlanningPreviewBlockedError(PlanningPreviewError): code = "planning_preview_blocked"
 
 
@@ -126,7 +134,7 @@ class PlanningPreviewApplication:
         artifact = TrainingPlanPreviewArtifact.model_validate(row.artifact)
         if artifact.fingerprint != row.artifact_fingerprint:
             raise PlanningPreviewFingerprintMismatchError()
-        if artifact.fingerprint != build_preview_artifact(
+        reconstructed = build_preview_artifact(
             athlete_id=artifact.athlete_id, timezone_name=artifact.timezone_name,
             context_fingerprint_value=artifact.context_fingerprint,
             season=artifact.season_structure, budgets=artifact.weekly_budget_plan,
@@ -134,9 +142,10 @@ class PlanningPreviewApplication:
             workout_drafts=tuple(item.workout for item in artifact.sessions),
             algorithm_version=artifact.algorithm_version,
             configuration_version=artifact.configuration_version,
-        ).fingerprint:
+        )
+        if artifact.fingerprint != reconstructed.fingerprint:
             raise PlanningPreviewFingerprintMismatchError()
-        return artifact
+        return artifact.model_copy(update={"load_reconciliation": reconstructed.load_reconciliation})
 
     def accept(self, *, preview_id: UUID, athlete_id: UUID, user_id: UUID, role: str, expected_fingerprint: str | None = None, fail_after_sessions: int | None = None) -> TrainingPlan:
         try:
@@ -181,6 +190,8 @@ class PlanningPreviewApplication:
             )
             if overlap is not None:
                 raise TrainingPlanOverlapError(overlap)
+            if artifact.load_reconciliation is not None and artifact.load_reconciliation.acceptance_blocked:
+                raise PlanningPreviewLoadNotReconciledError(artifact.load_reconciliation)
             plan = TrainingPlan(
                 athlete_profile_id=athlete_id,
                 title=f"Generated training plan {artifact.plan_start.isoformat()}–{artifact.plan_end.isoformat()}",

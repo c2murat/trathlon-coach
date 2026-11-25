@@ -15,7 +15,7 @@ from app.api.v1.schemas.planning_previews import (
 from app.application.planning_preview import (
     PlanningPreviewApplication, PlanningPreviewAthleteMismatchError,
     PlanningPreviewBlockedError, PlanningPreviewFingerprintMismatchError,
-    PlanningPreviewGoalInvalidError, PlanningPreviewNotFoundError,
+    PlanningPreviewGoalInvalidError, PlanningPreviewNotFoundError, PlanningPreviewLoadNotReconciledError,
     TrainingPlanOverlapError, VISIBLE_TRAINING_PLAN_STATUSES,
 )
 from app.application.training_plan_lifecycle import (
@@ -50,6 +50,8 @@ def _raise(error: Exception):
         raise HTTPException(status_code=403, detail={"code": error.code}) from None
     if isinstance(error, PlanningPreviewFingerprintMismatchError):
         raise HTTPException(status_code=409, detail={"code": error.code}) from None
+    if isinstance(error, PlanningPreviewLoadNotReconciledError):
+        raise HTTPException(status_code=409, detail={"code": error.code, "blocked_weeks": error.blocked_weeks}) from None
     if isinstance(error, TrainingPlanOverlapError):
         raise HTTPException(status_code=409, detail={
             "code": error.code,
@@ -135,7 +137,7 @@ def accept_preview(preview_id: UUID, payload: PlanningPreviewAccept, current: Cu
             expected_fingerprint=payload.expected_fingerprint,
         )
         return TrainingPlanAcceptedResponse(training_plan_id=plan.id, preview_id=preview_id, status=plan.status)
-    except (PlanningPreviewNotFoundError, PlanningPreviewAthleteMismatchError, PlanningPreviewFingerprintMismatchError, PlanningPreviewGoalInvalidError, TrainingPlanOverlapError) as error:
+    except (PlanningPreviewNotFoundError, PlanningPreviewAthleteMismatchError, PlanningPreviewFingerprintMismatchError, PlanningPreviewGoalInvalidError, TrainingPlanOverlapError, PlanningPreviewLoadNotReconciledError) as error:
         _raise(error)
 
 

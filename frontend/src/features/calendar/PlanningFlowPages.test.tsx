@@ -43,3 +43,23 @@ describe("planning overlap UX",()=>{
  it("keeps the preview visible when accept finds an overlapping plan",async()=>{window.history.replaceState({},"",`/calendar/planning/previews/${preview.id}`);const client=base();client.acceptPlanningPreview=vi.fn().mockRejectedValue(new Error('(409) {"code":"training_plan_overlap","existing_training_plan_id":"plan-old"}'));render(<PlanningPreviewPage client={client} canAccept athleteId="athlete-a"/>);await screen.findByRole("button",{name:"Aceptar plan"});await userEvent.click(screen.getByRole("button",{name:"Aceptar plan"}));expect(await screen.findByRole("alert")).toHaveTextContent("Ya existe un plan de entrenamiento para parte de este periodo.");expect(screen.getByRole("heading",{name:"Revisa tu plan"})).toBeVisible();expect(window.location.pathname).toContain(preview.id)});
  it("restores acceptance after a pending 409 without duplicate requests",async()=>{window.history.replaceState({},"",`/calendar/planning/previews/${preview.id}`);let reject!:(reason:Error)=>void;const client=base();client.acceptPlanningPreview=vi.fn().mockReturnValue(new Promise((_,fail)=>{reject=fail}));render(<PlanningPreviewPage client={client} canAccept athleteId="athlete-a"/>);const button=await screen.findByRole("button",{name:"Aceptar plan"});await userEvent.dblClick(button);expect(client.acceptPlanningPreview).toHaveBeenCalledTimes(1);expect(screen.getByRole("button",{name:/Aceptando/})).toBeDisabled();reject(new Error('(409) {"code":"training_plan_overlap"}'));expect(await screen.findByRole("alert")).toHaveTextContent("Ya existe un plan de entrenamiento para parte de este periodo.");expect(screen.getByRole("button",{name:"Aceptar plan"})).toBeEnabled()});
 });
+
+describe("weekly load reconciliation acceptance",()=>{
+ it.each([[5,"346.79","11.62",false,"LOW"],[6,"386.70","24.47",false,"LOW"],[7,"435.98","40.33",false,"LOW"],[6,"386.70","24.47",false,"MEDIUM"]] as const)("shows target %s honestly and guards acceptance",async(_target,total,variance,blocked,quality)=>{
+  window.history.replaceState({},"",`/calendar/planning/previews/${preview.id}`);
+  const scenario:PlanningPreview={...preview,artifact:{...preview.artifact,load_reconciliation:{algorithm_version:"test",mode:"DIAGNOSTIC_NO_SCALING",tolerance_source:"SessionPlanningConfig.load_tolerance",weeks:[{
+   week_start:"2099-01-04",weekly_load_budget:"310.68",allocated_total:"310.68",prescribed_estimated_total:total,variance:null,absolute_variance:null,variance_percent:variance,tolerance:".15",within_tolerance:_target===5,status:_target===5?"WITHIN_TOLERANCE":"OUTSIDE_TOLERANCE",quality,coverage:"COMPLETE",reconciliation_state:blocked?"NOT_RECONCILED":_target===5?"RECONCILED":"REVIEW_REQUIRED",quality_warning:quality==="LOW",acceptance_blocked:blocked,sessions:[]
+  }]}}};
+  const client=base();client.savePlanningPreferences=vi.fn();client.planningPreview=vi.fn().mockResolvedValue(scenario);
+  render(<PlanningPreviewPage client={client} canAccept athleteId="athlete-a"/>);
+  expect(await screen.findByRole("heading",{name:"Carga semanal estimada"})).toBeVisible();
+  expect(screen.getByText(total.replace(".",","))).toBeVisible();
+  expect(screen.getByText(`+${variance.replace(".",",")} %`)).toBeVisible();
+  expect(screen.getByText(quality==="LOW"?"Baja":"Media")).toBeVisible();
+  if(quality==="LOW")expect(screen.getByText("La estimación tiene cobertura limitada.")).toBeVisible();
+  const button=screen.getByRole("button",{name:"Aceptar plan"});
+  if(blocked){expect(button).toBeDisabled();await userEvent.click(button);expect(client.acceptPlanningPreview).not.toHaveBeenCalled();expect(screen.getByText("No reconciliado con el presupuesto semanal")).toBeVisible()}
+  else{expect(button).toBeEnabled();expect(screen.getByText(_target===5?"Dentro de la tolerancia del presupuesto semanal":"Fuera de la tolerancia estimada: requiere revisión")).toBeVisible()}
+  expect(client.savePlanningPreferences).not.toHaveBeenCalled();
+ });
+});
