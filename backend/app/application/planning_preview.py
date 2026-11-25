@@ -25,6 +25,9 @@ from app.domains.planning.planning_adaptation import normalize_numeric_planning_
 from app.domains.planning.weekly_intent import build_session_plan_with_intent, PlanningIntentShadowReport
 from app.domains.planning.intent_workouts import IntentWorkoutBuild
 from app.domains.planning.volume_intent import VolumeShadowBuild, VolumeShadowReport
+from app.domains.planning.strength_intent import build_strength_shadow, StructuredStrengthShadowReport
+from app.domains.planning.strength_timing import build_strength_timing_shadow, StrengthTimingShadowReport
+from app.domains.planning.strength_timing_policy import build_strength_temporal_policy_shadow, StrengthTemporalPolicyReport
 
 
 logger = logging.getLogger(__name__)
@@ -76,10 +79,16 @@ class PlanningPreviewApplication:
         # Ephemeral diagnostics, deliberately outside artifact/persistence/identity.
         self.shadow_report: PlanningIntentShadowReport | None = None
         self.volume_shadow_report: VolumeShadowReport | None = None
+        self.strength_shadow_report: StructuredStrengthShadowReport | None = None
+        self.strength_timing_shadow_report: StrengthTimingShadowReport | None = None
+        self.strength_temporal_policy_report: StrengthTemporalPolicyReport | None = None
 
     def generate(self, *, request: PlanningRequest, user_id: UUID) -> TrainingPlanPreview:
         self.shadow_report = None
         self.volume_shadow_report = None
+        self.strength_shadow_report = None
+        self.strength_timing_shadow_report = None
+        self.strength_temporal_policy_report = None
         context = PlanningContextAssembler(
             self.session,
             training_load_algorithm_version="0.7b.1",
@@ -139,6 +148,10 @@ class PlanningPreviewApplication:
         )
         if structure is not None:
             self.volume_shadow_report = volume.finish(session_plan, shadow, drafts, artifact.load_reconciliation)
+        self.strength_shadow_report = build_strength_shadow(context, artifact,
+            SessionPlanningConfig(version=SESSION_PLANNING_VERSION, algorithm_version=SESSION_PLANNING_VERSION))
+        self.strength_timing_shadow_report = build_strength_timing_shadow(context, artifact)
+        self.strength_temporal_policy_report = build_strength_temporal_policy_shadow(context, artifact)
         row = TrainingPlanPreview(
             athlete_profile_id=request.athlete_id, created_by_user_id=user_id,
             status="pending", artifact=artifact.model_dump(mode="json", exclude_none=True),
